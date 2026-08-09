@@ -1,0 +1,12 @@
+node_modules/
+dist/
+build/
+.env
+.DS_Store
+*.log
+coverage/
+apps/api/uploads/
+apps/web/dist/
+apps/web/public/qz-signing/private-key.pem
+apps/web/public/qz-signing/digital-certificate.txt
+.tools/

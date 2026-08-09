@@ -1,0 +1,17 @@
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: lscala-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: lscala
+      POSTGRES_PASSWORD: lscala
+      POSTGRES_DB: lscala
+    ports:
+      - "5432:5432"
+    volumes:
+      - lscala_pg_data:/var/lib/postgresql/data
+      - ./db/migrations:/docker-entrypoint-initdb.d:ro
+
+volumes:
+  lscala_pg_data:

@@ -1,0 +1,40 @@
+---
+description: Contexto de producto, cliente y stack técnico L'Scala
+alwaysApply: true
+---
+
+# Atria Solutions SpA × Boutique L'Scala
+
+## Quiénes somos
+- Proveedor: **Atria Solutions SpA**
+- Cliente: **Boutique L'Scala** (Calama) — ropa femenina y vestidos exclusivos
+- Documento base: `Diagnostico Operacional y Tecnológico L'Scala.pdf` (ATR-DIAG-001)
+
+## Producto
+**Sistema Web de Gestión de Inventarios** para centralizar compras, productos, stock, ventas, mermas, cambios/devoluciones, gastos, dashboard y trazabilidad por usuario.
+
+Módulos etapa 1: Dashboard, Productos, Compras, Inventario, Ventas, Movimientos, Mermas, Usuarios, Reportes (+ voucher de cambio, etiquetas/códigos, alertas).
+
+## Stack obligatorio
+| Capa | Tecnología |
+|------|------------|
+| Base de datos | **PostgreSQL** |
+| Backend | **Node.js + Express** |
+| Frontend | **Vite** (SPA) |
+
+No proponer otro stack salvo que el usuario lo pida explícitamente.
+
+## Principios del dominio
+- Compra → recepción confirmada → stock disponible
+- Venta/merma/ajuste actualizan stock y generan movimiento trazable
+- Precio sugerido: ~2× costo (editable por autorizados)
+- Vestidos de fiesta: sin cambios/devoluciones por defecto
+- Auditoría: usuario + fecha/hora en operaciones relevantes
+- Multi-sucursal / multi-POS desde el modelo: stock y operaciones por `branch_id`; ventas con `pos_id` + vendedora
+- Marca: logo L'Scala (fucsia `#E6007E` + negro); UX editorial de boutique (ver `docs/brand.md`)
+- Copy UI: español de **Chile** (Calama); **sin voseo** rioplatense (`querés`→`quieres`, `agregá`→`agrega`, etc.)
+
+## Inventario en piso (Calama)
+- Vista `/inventario`: stock **solo de la sucursal activa**, búsqueda rápida, filtro stock bajo, valor a precio de venta, enlace a movimientos.
+- No duplicar el título del AppShell en la página; header fijo + lista con scroll (patrón `ing-list` / `ing-list-scroll`).
+- Precio costo vive en **Ingresos/compras**; Inventario muestra disponibilidad y valor de sala, no el registro de compra.

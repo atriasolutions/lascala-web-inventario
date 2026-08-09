@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 280" role="img" aria-hidden="true">
+  <defs>
+    <linearGradient id="idleDress" x1="0.15" y1="0" x2="0.9" y2="1">
+      <stop offset="0%" stop-color="#E6007E" stop-opacity="0.78"/>
+      <stop offset="48%" stop-color="#C2186A" stop-opacity="0.72"/>
+      <stop offset="100%" stop-color="#8F0E4E" stop-opacity="0.68"/>
+    </linearGradient>
+  </defs>
+  <!-- Silueta A-line idle: sin label Sin foto (ese va solo en prenda sin imagen) -->
+  <path
+    fill="url(#idleDress)"
+    d="M95 42
+       C95 30 106 22 120 22
+       C134 22 145 30 145 42
+       L158 50
+       C163 53 164 60 160 65
+       L150 80
+       L156 90
+       C161 98 161 108 156 116
+       L178 240
+       C181 250 174 258 164 258
+       L76 258
+       C66 258 59 250 62 240
+       L84 116
+       C79 108 79 98 84 90
+       L90 80
+       L80 65
+       C76 60 77 53 82 50
+       Z"
+  />
+</svg>

@@ -1,0 +1,46 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 240 320" role="img" aria-label="Sin foto">
+  <defs>
+    <linearGradient id="phBg" x1="0" y1="0" x2="0.3" y2="1">
+      <stop offset="0%" stop-color="#FFF2F7"/>
+      <stop offset="100%" stop-color="#FFE3EF"/>
+    </linearGradient>
+    <linearGradient id="dressFill" x1="0.15" y1="0" x2="0.9" y2="1">
+      <stop offset="0%" stop-color="#E6007E"/>
+      <stop offset="48%" stop-color="#C2186A"/>
+      <stop offset="100%" stop-color="#8F0E4E"/>
+    </linearGradient>
+  </defs>
+  <rect width="240" height="320" fill="url(#phBg)"/>
+  <!-- Vestido A-line filled: prenda sola, sin cabeza ni monigote -->
+  <path
+    fill="url(#dressFill)"
+    d="M95 70
+       C95 58 106 50 120 50
+       C134 50 145 58 145 70
+       L158 78
+       C163 81 164 88 160 93
+       L150 108
+       L156 118
+       C161 126 161 136 156 144
+       L178 268
+       C181 278 174 286 164 286
+       L76 286
+       C66 286 59 278 62 268
+       L84 144
+       C79 136 79 126 84 118
+       L90 108
+       L80 93
+       C76 88 77 81 82 78
+       Z"
+  />
+  <text
+    x="120"
+    y="308"
+    text-anchor="middle"
+    font-family="DM Sans, 'Segoe UI', system-ui, sans-serif"
+    font-size="12.5"
+    font-weight="500"
+    letter-spacing="0.06em"
+    fill="#8A6B76"
+  >Sin foto</text>
+</svg>

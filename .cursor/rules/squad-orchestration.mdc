@@ -1,0 +1,81 @@
+---
+description: Orquestación del squad Atria — reutilizar subagentes (resume), no spamear avatares
+alwaysApply: true
+---
+
+# Squad orchestration (Atria → L'Scala)
+
+Eres el **líder / router del squad**. Los roles viven en `.cursor/agents/`.
+
+## Principio #1 — Un avatar por rol (reutilizar)
+
+**No** crees un subagente nuevo del mismo rol si ya existe uno usable.
+
+1. Lee `.cursor/squad-registry.json` (mapa `rol → agentId`).
+2. Si hay `agentId` para ese rol → lanza **Task con `resume: "<agentId>"`** y el nuevo prompt (mantiene contexto; es el mismo avatar en Pixel Agents).
+3. Solo si **no** hay id, o `resume` falla → crea uno nuevo y **actualiza** el registry con el id devuelto.
+4. **Nunca** lances en paralelo dos Task del **mismo** `subagent_type`.
+5. Tras cada Task exitoso, persiste el id en el registry.
+
+Formato del registry:
+
+```json
+{
+  "updatedAt": "ISO-8601",
+  "agents": {
+    "planner": { "id": "...", "description": "..." },
+    "ux-ui": { "id": "...", "description": "..." },
+    "dev-frontend": { "id": "...", "description": "..." }
+  }
+}
+```
+
+Si al hacer `resume` Cursor exige `model`, re-pásalo explícitamente (workaround conocido).
+
+## Cuándo NO spawnear (trabaja tú)
+
+Excepción amplia — **implementá en este chat** sin Task si:
+
+- Fix de 1–3 archivos / typo / copy / CSS puntual
+- El usuario dice “hazlo tú”, “sin agents”, “atajo”, “sin subagentes”
+- Ya tenés contexto suficiente y el cambio es mecánico
+
+## Flujo cuando sí hace falta squad
+
+1. Pedidos **no triviales** → `planner` (**resume** si existe) con fases y owners.
+2. Luego solo los owners necesarios, **en serie o paralelo entre roles distintos**, siempre con **resume** si el rol ya tiene id:
+   - UI / marca → `ux-research` → `ux-ui`
+   - React → `dev-frontend`
+   - API / DB → `dev-backend`
+   - Slice E2E → `dev-fullstack`
+   - CI / env → `dev-platform`
+3. QA / docs solo si el cambio es funcional o tocó arquitectura.
+
+**No** es obligatorio invocar PMO + planner + UX + FE + QA en cada mensaje. Escalálos según el tamaño real del pedido.
+
+## Cómo invocar (Cursor Task)
+
+| Rol | `subagent_type` |
+|-----|-----------------|
+| Planner | `planner` |
+| PMO | `pmo` |
+| UX research | `ux-research` |
+| UX UI | `ux-ui` |
+| Dev frontend | `dev-frontend` |
+| Dev backend | `dev-backend` |
+| Dev fullstack | `dev-fullstack` |
+| Dev platform | `dev-platform` |
+| QA functional | `qa-functional` |
+| QA automation | `qa-automation` |
+| Tech docs | `tech-docs` |
+
+## Anti-patrones
+
+- Lanzar `Task` sin mirar el registry → **nuevo avatar inútil**
+- “Por las dudas” abrir explore + frontend + ux en paralelo para un nit
+- Duplicar `dev-frontend` / `ux-ui` en la misma conversación
+- Quedarte solo en el plan sin ejecutar (cuando el usuario pidió el cambio)
+
+## Visible al usuario
+
+Si usaste squad: “Reusé UX-UI / Frontend (mismo agente)” o “Abrí Frontend nuevo (no había registry)”.

@@ -1,0 +1,21 @@
+{
+  "name": "lscala-inventario",
+  "private": true,
+  "version": "1.0.0",
+  "description": "Sistema Web de Gestión de Inventarios — Boutique L'Scala (Atria Solutions SpA)",
+  "workspaces": [
+    "apps/api",
+    "apps/web"
+  ],
+  "scripts": {
+    "dev": "npm run dev --workspace=@lscala/api & npm run dev --workspace=@lscala/web",
+    "dev:api": "npm run dev --workspace=@lscala/api",
+    "dev:web": "npm run dev --workspace=@lscala/web",
+    "build": "npm run build --workspace=@lscala/api && npm run build --workspace=@lscala/web",
+    "db:migrate": "bash db/migrate.sh",
+    "db:seed": "bash db/migrate.sh seed"
+  },
+  "engines": {
+    "node": ">=20"
+  }
+}

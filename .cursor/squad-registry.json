@@ -1,0 +1,34 @@
+{
+  "updatedAt": "2026-08-09T04:10:00.000Z",
+  "notes": "IDs de subagentes reutilizables (Task resume). Un id por rol.",
+  "agents": {
+    "planner": {
+      "id": "9c07e882-47ef-4261-8077-3f0eaf573b53",
+      "description": "Plan Productos UX/FE"
+    },
+    "ux-ui": {
+      "id": "9b3b75ad-863b-4afc-a819-389d3ee72e04",
+      "description": "Placeholder vestido foto real"
+    },
+    "ux-research": {
+      "id": "9b3b75ad-863b-4afc-a819-389d3ee72e04",
+      "description": "Spec layout POS /vender"
+    },
+    "dev-backend": {
+      "id": "6952ceda-d17b-443c-8358-97a2050b8552",
+      "description": "API filtros productos"
+    },
+    "dev-frontend": {
+      "id": "23387b1c-dc1a-4e31-b78c-2b0a4df39296",
+      "description": "Swatch selector color modal"
+    },
+    "dev-fullstack": {
+      "id": "ea3bfbd3-fa6c-42d3-b0ac-7cc3538fa295",
+      "description": "Fix etiquetas N Allow doble"
+    },
+    "qa-functional": {
+      "id": "81d7647c-8a8b-4306-8a4a-75803230bc5d",
+      "description": "QA funcional Productos"
+    }
+  }
+}

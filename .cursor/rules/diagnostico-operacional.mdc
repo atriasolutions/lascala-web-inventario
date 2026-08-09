@@ -1,0 +1,38 @@
+---
+description: Foco operacional del diagnóstico ATR-DIAG-001 (Boutique L'Scala Calama)
+alwaysApply: true
+---
+
+# Diagnóstico operacional — no perder el foco
+
+Fuente: `Diagnostico Operacional y Tecnológico L'Scala.pdf` (ATR-DIAG-001). Boutique en **Calama**: ropa femenina y vestidos exclusivos; dueña + vendedoras en piso.
+
+## Problema que resolvemos
+Centralizar operación que hoy está dispersa (planillas / memoria): compras → recepción → stock por sucursal → venta/merma → trazabilidad por usuaria.
+
+## Flujos que la UI debe respetar
+1. **Ingresos** registran mercadería (factura o sin doc) con **Precio costo** en la línea — no inventar costo en la ficha de catálogo como fuente primaria.
+2. Recepción confirmada → **stock disponible** en la sucursal (`branch_id`).
+3. Venta / merma / ajuste → actualizan stock y dejan **movimiento** auditable (usuaria + fecha/hora).
+4. Precio de venta sugerido ≈ **2× Precio costo** (editable por roles autorizados).
+5. Vestidos de fiesta: **sin cambios/devoluciones** por defecto.
+
+## Módulos (etapa 1) — una tarea clara cada uno
+| Vista | Para qué en piso |
+|-------|------------------|
+| Dashboard | Resumen del día + alertas accionables |
+| Ingresos | Entrada a stock |
+| Productos | Catálogo / ficha (foto, código, tipología) |
+| Inventario | Stock **de la sucursal activa**, stock bajo, valor a p. venta, búsqueda rápida → movimientos |
+| Ventas (POS) | Cobrar; no registrar compras |
+| Movimientos / Mermas | Trazabilidad y bajas |
+| Reportes / Usuarios | Control y acceso |
+
+## Copy y datos sensibles de UI
+- Label siempre **“Precio costo”** (nunca “Ester”, nunca solo “Costo” ambiguo).
+- Stock y listados scoped por sucursal activa (`X-Branch-Id`); ventas también por POS + vendedora.
+- Español operativo de boutique; evitar jerga de ERP genérico.
+- **Copy UI en español de Chile; sin voseo (rioplatense).** Preferir tú estándar (`puedes`, `ingresa`, `agrega`) alineado al resto de la UI.
+
+## Anti-deriva
+No proponer módulos/stack fuera del diagnóstico salvo pedido explícito. Si un cambio de UI/API contradice compra→stock→venta o multi-sucursal, parar y alinear con este foco.
