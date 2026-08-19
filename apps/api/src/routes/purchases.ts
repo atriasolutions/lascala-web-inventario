@@ -7,9 +7,7 @@ import {
   applyStockDeltaWithClient,
   assertBarcodeAvailable,
   getSettingNumber,
-  allocateNextBarcodeWithClient,
   nextInternalCodeWithClient,
-  noteBarcodeUsedWithClient,
   normalizeBarcode,
 } from '../services/inventory.js';
 import { asyncHandler, HttpError } from '../utils/errors.js';
@@ -27,6 +25,7 @@ const createProductSchema = z.object({
   color: z.string().optional().nullable(),
   productType: z.string().optional().nullable(),
   season: z.string().optional().nullable(),
+  description: z.string().optional().nullable(),
   /** Precio costo; por defecto usa unit_cost de la línea */
   costPrice: z.number().nonnegative().optional(),
   /** Sugerido ~2× costo si se omite */
@@ -80,38 +79,32 @@ async function createProductFromPurchaseItem(
     create: z.infer<typeof createProductSchema>;
   },
 ) {
-  let barcode = normalizeBarcode(params.create.barcode);
-  let allocated = false;
-  if (!barcode) {
-    barcode = await allocateNextBarcodeWithClient(client, params.organizationId);
-    allocated = true;
-  }
-  await assertBarcodeAvailable(params.organizationId, barcode, { client });
-  if (!allocated) {
-    await noteBarcodeUsedWithClient(client, params.organizationId, barcode);
-  }
-
   const costPrice = params.create.costPrice ?? params.unitCost;
   const salePrice =
     params.create.salePrice ??
     params.suggestedSalePrice ??
     Number((costPrice * params.priceMultiplier).toFixed(2));
-  const internalCode = await nextInternalCodeWithClient(client, params.organizationId);
+  const requestedCode = normalizeBarcode(params.create.barcode);
+  if (requestedCode) {
+    await assertBarcodeAvailable(params.organizationId, requestedCode, { client });
+  }
+  const internalCode =
+    requestedCode ?? (await nextInternalCodeWithClient(client, params.organizationId));
   const name = params.create.name ?? params.description;
 
   const result = await client.query(
     `INSERT INTO products (
-       organization_id, category_id, internal_code, barcode, name, brand, size_label, color,
+       organization_id, category_id, internal_code, barcode, name, description, brand, size_label, color,
        product_type, season, cost_price, sale_price, status, allows_exchange, allows_return,
        notes, created_by
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'draft',true,true,$13,$14)
+     ) VALUES ($1,$2,$3,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'draft',true,true,$13,$14)
      RETURNING *`,
     [
       params.organizationId,
       params.create.categoryId ?? null,
       internalCode,
-      barcode,
       name,
+      params.create.description ?? null,
       params.create.brand ?? null,
       params.create.sizeLabel ?? null,
       params.create.color ?? null,
@@ -248,6 +241,7 @@ purchasesRouter.post(
         invoiceNumber: z.string().min(1, 'El número de documento es obligatorio'),
         purchasedAt: z.string().optional().nullable(),
         notes: z.string().optional().nullable(),
+        destinationBranchId: z.string().uuid().optional(),
         items: z
           .array(
             z.object({
@@ -263,6 +257,18 @@ purchasesRouter.post(
       })
       .parse(req.body);
 
+    const destinationBranchId = body.destinationBranchId || req.activeBranchId!;
+    const branchOk = await query<{ id: string }>(
+      `SELECT id FROM branches WHERE id = $1 AND organization_id = $2`,
+      [destinationBranchId, req.user!.organizationId],
+    );
+    if (!branchOk.rows[0]) throw new HttpError(404, 'Sucursal destino no encontrada');
+    const access = req.user!.branches.find((b) => b.branchId === destinationBranchId);
+    const isOwner = req.user!.branches.some((b) => b.role === 'owner');
+    if (!access && !isOwner) {
+      throw new HttpError(403, 'Sin permiso para registrar compras hacia esa sucursal');
+    }
+
     const multiplier = await getSettingNumber(req.user!.organizationId, 'price_multiplier', 2);
     const client = await pool.connect();
     try {
@@ -274,7 +280,7 @@ purchasesRouter.post(
          VALUES ($1,$2,$3,$4,$5,$6,$7,$8,'pending_reception') RETURNING *`,
         [
           req.user!.organizationId,
-          req.activeBranchId,
+          destinationBranchId,
           body.supplierId ?? null,
           body.invoiceNumber.trim(),
           body.documentType,

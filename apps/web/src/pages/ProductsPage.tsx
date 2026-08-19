@@ -7,7 +7,11 @@ import {
   useState,
 } from 'react';
 import { ProductPhotoPlaceholder } from '../components/ProductPhotoPlaceholder';
+import { ProductFichaFields } from '../components/ProductFichaFields';
 import { api, mediaUrl, money } from '../lib/api';
+import { useAuth } from '../lib/auth';
+import { toast } from '../lib/toast';
+import { printLabelJob } from '../services/printing';
 import { fileToDataUrl } from './compras/purchaseFormTypes';
 
 type Product = {
@@ -83,8 +87,6 @@ const emptyForm = (): FormState => ({
   lowStockThreshold: '1',
   noMovementAlertDays: '',
 });
-
-const SEASONS = ['Todo el año', 'Verano', 'Otoño', 'Invierno', 'Primavera', 'Fiestas'];
 
 function isLowStock(p: Product) {
   if (!p.tracks_stock) return false;
@@ -219,6 +221,7 @@ function ProductCardMedia({
 }
 
 export function ProductsPage() {
+  const { branchId } = useAuth();
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [q, setQ] = useState('');
@@ -244,9 +247,15 @@ export function ProductsPage() {
   const [draftPendingPhoto, setDraftPendingPhoto] = useState(false);
   const [draftAllowsReturn, setDraftAllowsReturn] = useState<ReturnFilter>('');
   const [draftTracksStock, setDraftTracksStock] = useState<TracksFilter>('');
+  const [labelQtyOpen, setLabelQtyOpen] = useState(false);
+  const [labelCopies, setLabelCopies] = useState('1');
+  const [labelQtyError, setLabelQtyError] = useState('');
+  const [printBusy, setPrintBusy] = useState(false);
 
   const modalTitleId = useId();
   const filtersTitleId = useId();
+  const labelQtyTitleId = useId();
+  const labelCopiesRef = useRef<HTMLInputElement>(null);
   const nameRef = useRef<HTMLInputElement>(null);
   const filtersPanelRef = useRef<HTMLDivElement>(null);
   const triggerRef = useRef<HTMLElement | null>(null);
@@ -306,8 +315,8 @@ export function ProductsPage() {
 
   useEffect(() => {
     void load();
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- reload on filter changes
-  }, [qDebounced, categoryId, lowStock, pendingPhoto, allowsReturn, tracksStockFilter]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- reload on filter / sucursal
+  }, [qDebounced, categoryId, lowStock, pendingPhoto, allowsReturn, tracksStockFilter, branchId]);
 
   useEffect(() => {
     if (!modalOpen) return;
@@ -413,7 +422,7 @@ export function ProductsPage() {
       description: product.description || '',
       notes: product.notes || '',
       exclusiveNotes: product.exclusive_notes || '',
-      barcode: product.barcode || '',
+      barcode: product.barcode || product.internal_code || '',
       photoUrl: product.photo_url || '',
       allowsReturn: product.allows_return !== false,
       allowsExchange: product.allows_exchange !== false,
@@ -438,6 +447,10 @@ export function ProductsPage() {
     setFormError('');
     setSaving(false);
     setPhotoBusy(false);
+    setLabelQtyOpen(false);
+    setLabelQtyError('');
+    setPrintBusy(false);
+    setLabelCopies('1');
     revokeBlob();
     setPhotoPreview(null);
     setModalPhotoFailed(false);
@@ -473,6 +486,64 @@ export function ProductsPage() {
       }
       return next;
     });
+  }
+
+  function openLabelQty() {
+    const code = (editing?.internal_code || form.barcode).trim();
+    if (!code) {
+      toast.warn(
+        'No hay código para imprimir. Guarda la prenda primero.',
+      );
+      return;
+    }
+    setLabelCopies('1');
+    setLabelQtyError('');
+    setLabelQtyOpen(true);
+    window.setTimeout(() => {
+      labelCopiesRef.current?.focus();
+      labelCopiesRef.current?.select();
+    }, 40);
+  }
+
+  function closeLabelQty() {
+    if (printBusy) return;
+    setLabelQtyOpen(false);
+    setLabelQtyError('');
+  }
+
+  async function confirmLabelPrint() {
+    const code = (editing?.internal_code || form.barcode).trim();
+    if (!code) {
+      setLabelQtyError('Falta el código de la prenda para la etiqueta.');
+      return;
+    }
+    const raw = Number(labelCopies);
+    const n = Math.floor(raw);
+    if (!Number.isFinite(raw) || n < 1 || n > 100) {
+      setLabelQtyError('Indica un número entre 1 y 100.');
+      return;
+    }
+    const name = form.name.trim() || editing?.name || 'Prenda';
+    setLabelQtyError('');
+    setPrintBusy(true);
+    try {
+      const result = await printLabelJob(name, code, n);
+      if (result.ok) {
+        const via = `código ${code}`;
+        toast.success(
+          n === 1
+            ? `Etiqueta (${via}) enviada a ${result.printer || 'la impresora'}`
+            : `${n} etiquetas (${via}) enviadas a ${result.printer || 'la impresora'}`,
+        );
+        setLabelQtyOpen(false);
+        return;
+      }
+      toast.error(result.reason || 'No se pudieron imprimir las etiquetas');
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'No se pudieron imprimir las etiquetas');
+    } finally {
+      setPrintBusy(false);
+    }
   }
 
   async function onPhoto(file: File | null) {
@@ -551,7 +622,6 @@ export function ProductsPage() {
       description: form.description.trim() || null,
       notes: form.notes.trim() || null,
       exclusiveNotes: form.exclusiveNotes.trim() || null,
-      barcode: form.barcode.trim() || null,
       allowsReturn: form.allowsReturn,
       allowsExchange: form.allowsExchange,
       tracksStock: form.tracksStock,
@@ -574,13 +644,17 @@ export function ProductsPage() {
     try {
       if (editing) {
         await api(`/api/products/${editing.id}`, { method: 'PATCH', body });
+        toast.success('Prenda actualizada');
       } else {
         await api('/api/products', { method: 'POST', body });
+        toast.success('Prenda creada');
       }
       closeModal();
       await load();
     } catch (err) {
-      setFormError(err instanceof Error ? err.message : 'Error');
+      const msg = err instanceof Error ? err.message : 'No se pudo guardar la prenda';
+      setFormError(msg);
+      toast.error(msg);
       setSaving(false);
     }
   }
@@ -738,21 +812,30 @@ export function ProductsPage() {
       )}
 
       {!loading && !products.length && !filtersActive && (
-        <div className="prod-empty">
-          <div className="prod-empty-visual" aria-hidden />
+        <div className="sales-empty">
           <h3>Aún no hay prendas</h3>
-          <p>Agrega la primera para armar el catálogo visual.</p>
-          <button type="button" className="btn" onClick={(e) => openCreate(e.currentTarget)}>
+          <p className="muted">Agrega la primera para armar el catálogo.</p>
+          <button
+            type="button"
+            className="btn secondary"
+            style={{ marginTop: '0.75rem' }}
+            onClick={(e) => openCreate(e.currentTarget)}
+          >
             Nueva prenda
           </button>
         </div>
       )}
 
       {!loading && !products.length && filtersActive && (
-        <div className="prod-empty prod-empty-filter">
+        <div className="sales-empty">
           <h3>Ninguna prenda coincide</h3>
-          <p>Prueba otra búsqueda o quita filtros activos.</p>
-          <button type="button" className="btn secondary" onClick={clearFilters}>
+          <p className="muted">Prueba otra búsqueda o quita filtros.</p>
+          <button
+            type="button"
+            className="btn secondary"
+            style={{ marginTop: '0.75rem' }}
+            onClick={clearFilters}
+          >
             Limpiar filtros
           </button>
         </div>
@@ -784,7 +867,9 @@ export function ProductsPage() {
                 <div className="prod-card-body">
                   <strong className="prod-card-name" title={p.name}>{p.name}</strong>
                   <div className="prod-card-meta">
-                    {p.internal_code}
+                    {p.barcode && p.internal_code && p.barcode !== p.internal_code
+                      ? `${p.barcode} · ${p.internal_code}`
+                      : p.barcode || p.internal_code}
                     {p.brand ? ` · ${p.brand}` : ''}
                     {p.size_label ? ` · ${p.size_label}` : ''}
                     {p.product_type ? ` · ${p.product_type}` : ''}
@@ -808,7 +893,7 @@ export function ProductsPage() {
           className="pos-modal open"
           role="presentation"
           onClick={(e) => {
-            if (e.target === e.currentTarget) closeModal();
+            if (e.target === e.currentTarget && !labelQtyOpen) closeModal();
           }}
         >
           <form
@@ -870,145 +955,62 @@ export function ProductsPage() {
               </div>
 
               <div className="prod-modal-fields">
-                <section className="prod-section">
-                  <h4 className="prod-section-title">Identidad</h4>
-                  <div className="prod-section-grid">
-                    <div className="field prod-span-2">
-                      <label htmlFor="prod-modal-name">Nombre</label>
-                      <input
-                        id="prod-modal-name"
-                        ref={nameRef}
-                        required
-                        value={form.name}
-                        onChange={(e) => patchForm({ name: e.target.value })}
-                        autoComplete="off"
-                        placeholder="Ej. Vestido satén negro"
-                      />
-                    </div>
-                    <div className="field">
-                      <label htmlFor="prod-modal-cat">Categoría</label>
-                      <select
-                        id="prod-modal-cat"
-                        value={form.categoryId}
-                        onChange={(e) => patchForm({ categoryId: e.target.value })}
+                <ProductFichaFields
+                  idPrefix="prod-modal"
+                  values={{
+                    name: form.name,
+                    categoryId: form.categoryId,
+                    brand: form.brand,
+                    productType: form.productType,
+                    sizeLabel: form.sizeLabel,
+                    color: form.color,
+                    season: form.season,
+                    description: form.description,
+                  }}
+                  onChange={patchForm}
+                  categories={categories}
+                  disabled={saving || photoBusy}
+                  nameRef={nameRef}
+                  code={
+                    editing
+                      ? { locked: true, value: editing.internal_code || form.barcode }
+                      : {
+                          locked: true,
+                          value: '',
+                          helper:
+                            'El código (LS-…) se genera al guardar: es el de la etiqueta y de la pistola.',
+                        }
+                  }
+                  salePrice={{
+                    mode: 'edit',
+                    value: form.salePrice,
+                    onChange: (salePrice) => patchForm({ salePrice }),
+                  }}
+                  extraAfterIdentity={
+                    showLastCost ? (
+                      <p className="ing-hint prod-cost-hint">
+                        Último Precio costo (desde ingreso): {money(lastCost)}. Se define al
+                        ingresar mercadería, no en el catálogo.
+                      </p>
+                    ) : (
+                      <p className="ing-hint prod-cost-hint">
+                        El Precio costo se registra en Ingresos, no en la ficha del catálogo.
+                      </p>
+                    )
+                  }
+                  extraAfterCode={
+                    editing ? (
+                      <button
+                        type="button"
+                        className="btn prod-print-labels-btn"
+                        onClick={openLabelQty}
+                        disabled={saving || photoBusy || printBusy}
                       >
-                        <option value="">Seleccionar</option>
-                        {categories.map((c) => (
-                          <option key={c.id} value={c.id}>
-                            {c.name}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="field">
-                      <label htmlFor="prod-modal-sale">Precio venta</label>
-                      <input
-                        id="prod-modal-sale"
-                        required
-                        type="number"
-                        min={0}
-                        step={1}
-                        inputMode="decimal"
-                        value={form.salePrice}
-                        onChange={(e) => patchForm({ salePrice: e.target.value })}
-                        placeholder="0"
-                      />
-                    </div>
-                  </div>
-                  {showLastCost ? (
-                    <p className="ing-hint prod-cost-hint">
-                      Último Precio costo (desde ingreso): {money(lastCost)}. Se define al
-                      ingresar mercadería, no en el catálogo.
-                    </p>
-                  ) : (
-                    <p className="ing-hint prod-cost-hint">
-                      El Precio costo se registra en Ingresos, no en la ficha del catálogo.
-                    </p>
-                  )}
-                  <p className="muted prod-modal-code">
-                    {editing
-                      ? `Código: ${editing.internal_code}`
-                      : 'Código interno: se genera al guardar.'}
-                  </p>
-                </section>
-
-                <section className="prod-section">
-                  <h4 className="prod-section-title">Detalle</h4>
-                  <div className="prod-section-grid">
-                    <div className="field">
-                      <label htmlFor="prod-modal-brand">Marca</label>
-                      <input
-                        id="prod-modal-brand"
-                        value={form.brand}
-                        onChange={(e) => patchForm({ brand: e.target.value })}
-                        autoComplete="off"
-                      />
-                    </div>
-                    <div className="field">
-                      <label htmlFor="prod-modal-type">Tipología</label>
-                      <input
-                        id="prod-modal-type"
-                        value={form.productType}
-                        onChange={(e) => patchForm({ productType: e.target.value })}
-                        placeholder="Ej. vestido, jeans"
-                        autoComplete="off"
-                      />
-                    </div>
-                    <div className="field">
-                      <label htmlFor="prod-modal-size">Talla</label>
-                      <input
-                        id="prod-modal-size"
-                        value={form.sizeLabel}
-                        onChange={(e) => patchForm({ sizeLabel: e.target.value })}
-                        autoComplete="off"
-                      />
-                    </div>
-                    <div className="field">
-                      <label htmlFor="prod-modal-color">Color</label>
-                      <input
-                        id="prod-modal-color"
-                        value={form.color}
-                        onChange={(e) => patchForm({ color: e.target.value })}
-                        autoComplete="off"
-                      />
-                    </div>
-                    <div className="field">
-                      <label htmlFor="prod-modal-season">Temporada</label>
-                      <select
-                        id="prod-modal-season"
-                        value={form.season}
-                        onChange={(e) => patchForm({ season: e.target.value })}
-                      >
-                        <option value="">Sin definir</option>
-                        {SEASONS.map((s) => (
-                          <option key={s} value={s}>
-                            {s}
-                          </option>
-                        ))}
-                      </select>
-                    </div>
-                    <div className="field">
-                      <label htmlFor="prod-modal-barcode">Código de barras</label>
-                      <input
-                        id="prod-modal-barcode"
-                        value={form.barcode}
-                        onChange={(e) => patchForm({ barcode: e.target.value })}
-                        autoComplete="off"
-                        placeholder="Opcional"
-                      />
-                    </div>
-                    <div className="field prod-span-2">
-                      <label htmlFor="prod-modal-desc">Descripción</label>
-                      <textarea
-                        id="prod-modal-desc"
-                        rows={2}
-                        value={form.description}
-                        onChange={(e) => patchForm({ description: e.target.value })}
-                        placeholder="Detalle de la prenda"
-                      />
-                    </div>
-                  </div>
-                </section>
+                        Imprimir etiquetas
+                      </button>
+                    ) : null
+                  }
+                />
 
                 <section className="prod-section">
                   <h4 className="prod-section-title">Políticas</h4>
@@ -1097,14 +1099,91 @@ export function ProductsPage() {
             {formError && <p className="error">{formError}</p>}
 
             <div className="btn-row ing-line-modal-actions prod-modal-actions">
-              <button type="button" className="btn secondary" onClick={closeModal} disabled={saving}>
+              <button type="button" className="btn secondary" onClick={closeModal} disabled={saving || printBusy}>
                 Cancelar
               </button>
-              <button type="submit" className="btn" disabled={saving || photoBusy}>
+              <button type="submit" className="btn" disabled={saving || photoBusy || printBusy}>
                 {saving ? 'Guardando…' : editing ? 'Guardar cambios' : 'Agregar'}
               </button>
             </div>
           </form>
+        </div>
+      )}
+
+      {labelQtyOpen && (
+        <div
+          className="pos-modal open confirm-dialog no-print"
+          role="presentation"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closeLabelQty();
+          }}
+        >
+          <div
+            className="pos-modal-panel confirm-dialog-panel"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={labelQtyTitleId}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="pos-modal-head">
+              <h3 id={labelQtyTitleId}>Imprimir etiquetas</h3>
+              <button
+                type="button"
+                className="btn ghost"
+                onClick={closeLabelQty}
+                disabled={printBusy}
+                aria-label="Cerrar"
+              >
+                Cerrar
+              </button>
+            </div>
+            <p className="confirm-dialog-message">
+              ¿Cuántas etiquetas quieres imprimir? (máximo 100)
+            </p>
+            <div className="field">
+              <label htmlFor="prod-label-copies">Cantidad</label>
+              <input
+                id="prod-label-copies"
+                ref={labelCopiesRef}
+                type="number"
+                min={1}
+                max={100}
+                step={1}
+                inputMode="numeric"
+                value={labelCopies}
+                disabled={printBusy}
+                onChange={(e) => {
+                  setLabelCopies(e.target.value);
+                  setLabelQtyError('');
+                }}
+                onKeyDown={(e) => {
+                  if (e.key === 'Enter') {
+                    e.preventDefault();
+                    void confirmLabelPrint();
+                  }
+                }}
+              />
+            </div>
+            {labelQtyError ? <p className="error">{labelQtyError}</p> : null}
+            <div className="btn-row confirm-dialog-actions">
+              <button
+                type="button"
+                className="btn secondary"
+                onClick={closeLabelQty}
+                disabled={printBusy}
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                className="btn"
+                onClick={() => void confirmLabelPrint()}
+                disabled={printBusy}
+              >
+                {printBusy ? 'Imprimiendo…' : 'Imprimir'}
+              </button>
+            </div>
+          </div>
         </div>
       )}
 

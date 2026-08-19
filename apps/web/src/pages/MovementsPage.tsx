@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { InfiniteListFooter } from '../components/InfiniteListFooter';
+import { IconChevronDown } from '../components/icons';
 import { SortableTh } from '../components/SortableTh';
 import { useInfiniteList } from '../hooks/useInfiniteList';
 import { api } from '../lib/api';
+import { useAuth } from '../lib/auth';
+import { loadListFilters, saveListFilters } from '../lib/listFiltersPersist';
 import {
   nextMovementSort,
   sortMovements,
@@ -42,6 +45,8 @@ type AppliedFilters = {
   q: string;
 };
 
+type ListFilters = AppliedFilters & { branchId: string };
+
 const DEFAULT_FILTERS: AppliedFilters = {
   type: 'all',
   dateFrom: '',
@@ -61,9 +66,9 @@ const SORT_OPTIONS: { key: MovementSortKey; label: string }[] = [
   { key: 'date', label: 'Fecha' },
   { key: 'type', label: 'Tipo' },
   { key: 'product', label: 'Producto' },
-  { key: 'delta', label: 'Δ' },
-  { key: 'after', label: 'Después' },
-  { key: 'user', label: 'Usuaria' },
+  { key: 'delta', label: 'Cambio' },
+  { key: 'after', label: 'Stock' },
+  { key: 'user', label: 'Usuario' },
 ];
 
 function buildQuery(f: AppliedFilters, offset: number, limit: number) {
@@ -138,7 +143,10 @@ function deltaClass(delta: number) {
 }
 
 export function MovementsPage() {
-  const [filters, setFilters] = useState<AppliedFilters>(DEFAULT_FILTERS);
+  const { branchId } = useAuth();
+  const [filters, setFilters] = useState<AppliedFilters>(() =>
+    loadListFilters('movimientos', branchId, DEFAULT_FILTERS),
+  );
 
   const [sortKey, setSortKey] = useState<MovementSortKey>('date');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
@@ -150,7 +158,20 @@ export function MovementsPage() {
   const filtersTitleId = useId();
   const modalRef = useRef<HTMLDivElement>(null);
 
-  const fetchPage = useCallback(async (f: AppliedFilters, offset: number, limit: number) => {
+  const listFilters: ListFilters = useMemo(
+    () => ({ ...filters, branchId: branchId || '' }),
+    [filters, branchId],
+  );
+
+  useEffect(() => {
+    setFilters(loadListFilters('movimientos', branchId, DEFAULT_FILTERS));
+  }, [branchId]);
+
+  useEffect(() => {
+    saveListFilters('movimientos', branchId, filters);
+  }, [branchId, filters]);
+
+  const fetchPage = useCallback(async (f: ListFilters, offset: number, limit: number) => {
     const data = await api<{
       movements: Movement[];
       hasMore: boolean;
@@ -172,13 +193,40 @@ export function MovementsPage() {
     scrollRef,
     sentinelRef,
   } = useInfiniteList({
-    filters,
+    filters: listFilters,
     fetchPage,
   });
+
+  const [showMoreHint, setShowMoreHint] = useState(false);
 
   useEffect(() => {
     if (error) toast.error(error);
   }, [error]);
+
+  useEffect(() => {
+    const node = scrollRef.current;
+    if (!node) return;
+
+    const updateHint = () => {
+      const el = scrollRef.current;
+      if (!el || !hasMore) {
+        setShowMoreHint(false);
+        return;
+      }
+      const canScroll = el.scrollHeight > el.clientHeight + 12;
+      const nearBottom = el.scrollTop + el.clientHeight >= el.scrollHeight - 56;
+      setShowMoreHint(canScroll && !nearBottom);
+    };
+
+    updateHint();
+    node.addEventListener('scroll', updateHint, { passive: true });
+    const ro = new ResizeObserver(updateHint);
+    ro.observe(node);
+    return () => {
+      node.removeEventListener('scroll', updateHint);
+      ro.disconnect();
+    };
+  }, [hasMore, movements.length, loading, loadingMore, scrollRef]);
 
   const sorted = useMemo(
     () => sortMovements(movements, sortKey, sortDir),
@@ -264,9 +312,6 @@ export function MovementsPage() {
             <div className="page-intro" style={{ marginBottom: 0 }}>
               <p>Trazabilidad de entradas y salidas de la sucursal activa</p>
             </div>
-            <Link className="btn secondary mov-inv-btn" to="/inventario">
-              Ir a inventario
-            </Link>
           </div>
 
           <div className="inv-stats mov-stats" aria-label="Resumen de movimientos">
@@ -348,7 +393,8 @@ export function MovementsPage() {
 
           {error && <p className="error">{error}</p>}
 
-          <div className="ing-list-scroll" ref={scrollRef}>
+          <div className="mov-scroll-host">
+            <div className="ing-list-scroll" ref={scrollRef}>
             {loading && (
               <div className="ing-skel" aria-busy="true" aria-label="Cargando movimientos">
                 <div className="ing-skel-row" />
@@ -358,11 +404,9 @@ export function MovementsPage() {
             )}
 
             {!loading && !movements.length && (
-              <div className="mov-empty">
+              <div className="sales-empty">
                 <h3>Sin movimientos</h3>
-                <p className="muted">
-                  Cuando recibas mercadería, vendas o ajustes stock, la trazabilidad aparece acá.
-                </p>
+                <p className="muted">Ventas, ingresos y ajustes dejan la trazabilidad acá.</p>
                 <Link to="/inventario" className="btn secondary" style={{ marginTop: '0.75rem' }}>
                   Ir a inventario
                 </Link>
@@ -375,22 +419,16 @@ export function MovementsPage() {
                   {sorted.length} movimiento{sorted.length === 1 ? '' : 's'}
                 </p>
 
-                <div className="list-cards mobile-only">
+                <div className="list-cards mobile-only mov-cards">
                   {sorted.map((m) => (
                     <article key={m.id} className="list-card mov-card">
-                      <div className="row">
-                        <div className="mov-card-head">
-                          <span className={typeBadgeClass(m.movement_type)}>{m.type_label}</span>
-                          <span className="mov-card-when muted">{fmtDate(m.created_at)}</span>
-                        </div>
-                        <strong className={deltaClass(m.quantity_delta)}>
-                          {m.quantity_delta > 0 ? `+${m.quantity_delta}` : m.quantity_delta}
-                        </strong>
+                      <div className="mov-card-head">
+                        <span className={typeBadgeClass(m.movement_type)}>{m.type_label}</span>
+                        <span className="mov-card-when muted">{fmtDate(m.created_at)}</span>
                       </div>
                       <strong className="mov-card-product">{m.product_name}</strong>
                       <div className="meta">
                         {m.internal_code}
-                        <span className="muted"> · queda {m.quantity_after}</span>
                         {m.created_by_name ? (
                           <span className="muted"> · {m.created_by_name}</span>
                         ) : null}
@@ -398,19 +436,32 @@ export function MovementsPage() {
                       <p className="mov-reason" title={m.reason_label}>
                         {m.reason_label}
                       </p>
-                      {m.web_path && (
-                        <div className="mov-card-foot">
+                      <div className="mov-card-foot">
+                        <strong className={deltaClass(m.quantity_delta)}>
+                          {m.quantity_delta > 0 ? `+${m.quantity_delta}` : m.quantity_delta}
+                        </strong>
+                        <span className="mov-card-stock muted">queda {m.quantity_after}</span>
+                        {m.web_path ? (
                           <Link className="mov-origin-link" to={m.web_path}>
                             {m.link_label || 'Ver origen'} →
                           </Link>
-                        </div>
-                      )}
+                        ) : null}
+                      </div>
                     </article>
                   ))}
                 </div>
 
                 <div className="table-wrap desktop-only mov-table-wrap">
                   <table className="table mov-table">
+                    <colgroup>
+                      <col className="mov-col-date" />
+                      <col className="mov-col-type" />
+                      <col className="mov-col-product" />
+                      <col className="mov-col-reason" />
+                      <col className="mov-col-num" />
+                      <col className="mov-col-num" />
+                      <col className="mov-col-user" />
+                    </colgroup>
                     <thead>
                       <tr>
                         <SortableTh
@@ -439,7 +490,7 @@ export function MovementsPage() {
                         />
                         <th className="mov-col-reason">Motivo</th>
                         <SortableTh
-                          label="Δ"
+                          label="Cambio"
                           column="delta"
                           sortKey={sortKey}
                           sortDir={sortDir}
@@ -455,7 +506,7 @@ export function MovementsPage() {
                           className="mov-col-num"
                         />
                         <SortableTh
-                          label="Usuaria"
+                          label="Usuario"
                           column="user"
                           sortKey={sortKey}
                           sortDir={sortDir}
@@ -470,27 +521,33 @@ export function MovementsPage() {
                         return (
                           <tr key={m.id}>
                             <td className="mov-col-date" title={when.full}>
-                              <span className="mov-date-day">{when.day}</span>
-                              <span className="mov-date-time muted">{when.time}</span>
+                              <div className="mov-date-stack">
+                                <span className="mov-date-day">{when.day}</span>
+                                <span className="mov-date-time muted">{when.time}</span>
+                              </div>
                             </td>
                             <td className="mov-col-type">
                               <span className={typeBadgeClass(m.movement_type)}>{m.type_label}</span>
                             </td>
                             <td className="mov-col-product">
-                              <span className="mov-product-name" title={m.product_name}>
-                                {m.product_name}
-                              </span>
-                              <span className="mov-product-code muted">{m.internal_code}</span>
+                              <div className="mov-product-stack">
+                                <span className="mov-product-name" title={m.product_name}>
+                                  {m.product_name}
+                                </span>
+                                <span className="mov-product-code muted">{m.internal_code}</span>
+                              </div>
                             </td>
                             <td className="mov-col-reason">
-                              <span className="mov-reason-text" title={m.reason_label}>
-                                {m.reason_label}
-                              </span>
-                              {m.web_path ? (
-                                <Link className="mov-origin-link" to={m.web_path}>
-                                  {shortLinkLabel(m.link_label)} →
-                                </Link>
-                              ) : null}
+                              <div className="mov-reason-stack">
+                                <span className="mov-reason-text" title={m.reason_label}>
+                                  {m.reason_label}
+                                </span>
+                                {m.web_path ? (
+                                  <Link className="mov-origin-link" to={m.web_path}>
+                                    {shortLinkLabel(m.link_label)} →
+                                  </Link>
+                                ) : null}
+                              </div>
                             </td>
                             <td className={`${deltaClass(m.quantity_delta)} mov-col-num`}>
                               {m.quantity_delta > 0 ? `+${m.quantity_delta}` : m.quantity_delta}
@@ -513,12 +570,17 @@ export function MovementsPage() {
                 />
               </>
             )}
+            </div>
+            {showMoreHint ? (
+              <div className="mov-scroll-hint" aria-hidden="true">
+                <span className="mov-scroll-hint-fade" />
+                <span className="mov-scroll-hint-chevron">
+                  <IconChevronDown size={20} />
+                </span>
+              </div>
+            ) : null}
           </div>
         </div>
-
-        <aside className="ing-list-figure mov-list-figure" aria-hidden="true">
-          <img className="ing-list-figure-img" src="/brand/movimientos-modelo.png" alt="" />
-        </aside>
       </div>
 
       {drawerOpen && (

@@ -1,7 +1,8 @@
 import { createElement, useCallback, useEffect, useRef, useState } from 'react';
 import { PrintReminderModal } from '../components/PrintReminderModal';
-import { tryQzPrint, wrapReceiptHtml } from './qzTray';
+import { wrapReceiptHtml } from './qzTray';
 import type { SalePrintJob } from './salePrint';
+import { printReceiptJob } from '../services/printing';
 import { toast } from './toast';
 
 function waitFrames(n = 2) {
@@ -18,8 +19,8 @@ function waitFrames(n = 2) {
 }
 
 /**
- * Comprobante térmico: intenta QZ Tray; si no, modal + window.print().
- * Papel QZ / CSS: 80 mm.
+ * Comprobante térmico: Agent → QZ (fallback) → modal + window.print().
+ * Papel / CSS: 80 mm. Nunca falla en silencio: toast + recordatorio.
  */
 export function useSalePrint() {
   const [printJob, setPrintJobState] = useState<SalePrintJob | null>(null);
@@ -51,7 +52,6 @@ export function useSalePrint() {
       }
       qzAttempted.current = false;
       setPrintJobState(job);
-      // Primero montamos el DOM; el effect intenta QZ o abre el recordatorio.
     },
     [clearJob],
   );
@@ -63,27 +63,36 @@ export function useSalePrint() {
 
     void (async () => {
       await waitFrames(3);
-      // Dar tiempo a JsBarcode en vouchers
       await new Promise((r) => window.setTimeout(r, 120));
       if (cancelled) return;
 
       const root = document.querySelector('.sale-print-root');
-      if (root) {
-        const html = wrapReceiptHtml(root.innerHTML);
-        const result = await tryQzPrint('receipts', html);
-        if (cancelled) return;
-        if (result.ok) {
-          toast.success(`Comprobante enviado a ${result.printer}`);
-          clearJob();
-          return;
-        }
-        if (
-          result.reason &&
-          !result.reason.includes('deshabilitado') &&
-          !result.reason.includes('Preferencia')
-        ) {
-          toast.warn(`${result.reason} · Se abrirá el diálogo del navegador`);
-        }
+      if (!root) {
+        toast.error('No se pudo armar el comprobante para imprimir');
+        if (!cancelled) setReminderOpen(true);
+        return;
+      }
+
+      const html = wrapReceiptHtml(root.innerHTML);
+      const result = await printReceiptJob(html);
+      if (cancelled) return;
+
+      if (result.ok) {
+        toast.success(`Comprobante enviado a ${result.printer}`);
+        clearJob();
+        return;
+      }
+
+      const reason = (result.reason || 'No se pudo imprimir el comprobante').trim();
+      const preferBrowser = /Preferencia|diálogo del navegador/i.test(reason);
+      const missingPrinter = /Falta impresora|Sin impresora|No hay impresora/i.test(reason);
+
+      if (missingPrinter) {
+        toast.error(reason);
+      } else if (preferBrowser) {
+        toast.warn('Se abrirá el diálogo del navegador para imprimir el comprobante');
+      } else {
+        toast.warn(`${reason} · Se abrirá el diálogo del navegador`);
       }
 
       if (!cancelled) setReminderOpen(true);

@@ -166,3 +166,11 @@ export function IconCamera({ size = 18 }: IconProps) {
     </svg>
   );
 }
+
+export function IconCheck({ size = 16 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...base} aria-hidden="true">
+      <path d="M5 12.5 9.5 17 19 7" />
+    </svg>
+  );
+}

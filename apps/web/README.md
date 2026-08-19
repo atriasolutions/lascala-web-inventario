@@ -1,32 +1,33 @@
-# React + TypeScript + Vite
+# L'Scala Web — Boutique L'Scala
 
-This template provides a minimal setup to get React working in Vite with HMR and some Oxlint rules.
+SPA Vite + React. Stack: ver `docs/stack.md`. Plan offline POS: `docs/pwa-offline-pos.md`.
 
-Currently, two official plugins are available:
+## Desarrollo
 
-- [@vitejs/plugin-react](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react) uses [Oxc](https://oxc.rs)
-- [@vitejs/plugin-react-swc](https://github.com/vitejs/vite-plugin-react/blob/main/packages/plugin-react-swc) uses [SWC](https://swc.rs/)
-
-## React Compiler
-
-The React Compiler is not enabled on this template because of its impact on dev & build performances. To add it, see [this documentation](https://react.dev/learn/react-compiler/installation).
-
-## Expanding the Oxlint configuration
-
-If you are developing a production application, we recommend enabling type-aware lint rules by installing `oxlint-tsgolint` and editing `.oxlintrc.json`:
-
-```json
-{
-  "$schema": "./node_modules/oxlint/configuration_schema.json",
-  "plugins": ["react", "typescript", "oxc"],
-  "options": {
-    "typeAware": true
-  },
-  "rules": {
-    "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
-  }
-}
+```bash
+# desde la raíz del monorepo
+npm run dev:web
+# o
+npm run -w @lscala/web dev
 ```
 
-See the [Oxlint rules documentation](https://oxc.rs/docs/guide/usage/linter/rules) for the full list of rules and categories.
+Build de producción (incluye Service Worker / manifest PWA):
+
+```bash
+npm run -w @lscala/web build
+npm run -w @lscala/web preview   # sirve dist/ con HTTPS local de Vite
+```
+
+## PWA (Fase A + B + C)
+
+La build genera una Progressive Web App instalable (**L'Scala Caja**).
+
+- Manifest + iconos de marca en `public/brand/pwa-*.png`
+- Service Worker: precache de **assets** de la app
+- Banner “Sin conexión” + hint de instalación
+- **Fase B:** catálogo POS en IndexedDB; Caja lee offline; otros módulos bloqueados sin red
+- **Fase C:** cola de ventas offline + sync FIFO a `POST /api/sales/offline-sync`
+
+**Antes de probar sync:** desde la raíz del monorepo, `npm run db:migrate` (migración `019_sales_client_sale_id.sql`).
+
+Guía de instalación: [`docs/pwa-install.md`](../../docs/pwa-install.md). Plan: [`docs/pwa-offline-pos.md`](../../docs/pwa-offline-pos.md).

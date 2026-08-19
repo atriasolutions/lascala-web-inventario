@@ -1,36 +1,88 @@
-import { type FormEvent, useEffect, useState } from 'react';
+import { type FormEvent, useCallback, useEffect, useMemo, useState } from 'react';
 import {
   DEFAULT_PRINT_PREFS,
-  QZ_TRAY_ENABLED,
   loadPrintPrefs,
   savePrintPrefs,
   type PrintPrefs,
 } from '../lib/printPrefs';
 import {
-  getQzTrustMode,
-  isQzConnected,
-  listQzPrinters,
-  probeQzSigningAssets,
-  probeQzStatus,
-  type QzStatus,
-} from '../lib/qzTray';
+  fetchAgentHealth,
+  findCanonicalPrinterName,
+  printService,
+  resolvePrinterName,
+  type AgentHealth,
+  type Printer,
+} from '../services/printing';
 import { toast } from '../lib/toast';
 
-/** Formulario de preferencias locales + detección QZ Tray. */
+type AgentUiStatus = 'idle' | 'connecting' | 'connected' | 'unavailable';
+
+function canonicalizePrefs(prefs: PrintPrefs, agentNames: string[]): PrintPrefs {
+  if (!agentNames.length) return prefs;
+  return {
+    ...prefs,
+    labels: {
+      ...prefs.labels,
+      printerName: resolvePrinterName(prefs.labels.printerName, agentNames),
+    },
+    receipts: {
+      ...prefs.receipts,
+      printerName: resolvePrinterName(prefs.receipts.printerName, agentNames),
+    },
+  };
+}
+
+function printerSelect(
+  id: string,
+  value: string,
+  printers: Printer[],
+  agentNames: string[],
+  onChange: (v: string) => void,
+  disabled: boolean,
+) {
+  const selected = resolvePrinterName(value, agentNames);
+  const orphan =
+    value.trim() && !findCanonicalPrinterName(value, agentNames) ? value.trim() : null;
+
+  return (
+    <select
+      id={id}
+      value={selected}
+      disabled={disabled}
+      onChange={(e) => onChange(e.target.value)}
+    >
+      <option value="">— Elegir —</option>
+      {printers.map((p) => (
+        <option key={`${id}-${p.name}`} value={p.name}>
+          {p.name}
+          {p.isDefault ? ' (predeterminada)' : ''}
+          {p.status === 'offline' || p.status === 'error' ? ` · ${p.status}` : ''}
+        </option>
+      ))}
+      {orphan ? <option value={orphan}>{orphan} (guardada)</option> : null}
+    </select>
+  );
+}
+
+/** Preferencias locales de impresión — Atria Print Agent en este computador. */
 export function PrinterPrefsCard() {
   const [prefs, setPrefs] = useState<PrintPrefs>(() => loadPrintPrefs());
-  const [qzStatus, setQzStatus] = useState<QzStatus>('idle');
-  const [printers, setPrinters] = useState<string[]>([]);
+  const [agentStatus, setAgentStatus] = useState<AgentUiStatus>('connecting');
+  const [health, setHealth] = useState<AgentHealth | null>(null);
+  const [printers, setPrinters] = useState<Printer[]>([]);
   const [detectBusy, setDetectBusy] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
-  const [signing, setSigning] = useState<{ hasCert: boolean; hasKey: boolean }>({
-    hasCert: false,
-    hasKey: false,
-  });
+
+  const agentNames = useMemo(() => printers.map((p) => p.name), [printers]);
+  const connected = agentStatus === 'connected';
+  const labelsName = prefs.labels.printerName.trim();
+  const receiptsName = prefs.receipts.printerName.trim();
+  const samePrinter = Boolean(labelsName && receiptsName && labelsName === receiptsName);
+  const canChoose = connected && printers.length > 0;
 
   useEffect(() => {
     function sync() {
-      setPrefs(loadPrintPrefs());
+      setPrefs(canonicalizePrefs(loadPrintPrefs(), agentNames));
     }
     window.addEventListener('lscala:print-prefs', sync);
     window.addEventListener('storage', sync);
@@ -38,57 +90,65 @@ export function PrinterPrefsCard() {
       window.removeEventListener('lscala:print-prefs', sync);
       window.removeEventListener('storage', sync);
     };
+  }, [agentNames]);
+
+  const refreshAgent = useCallback(async () => {
+    setAgentStatus('connecting');
+    const h = await fetchAgentHealth();
+    if (!h?.ok) {
+      setHealth(null);
+      setPrinters([]);
+      setAgentStatus('unavailable');
+      return { ok: false as const, list: [] as Printer[] };
+    }
+    setHealth(h);
+    const list = await printService.getPrinters();
+    setPrinters(list);
+    setAgentStatus('connected');
+
+    const names = list.map((p) => p.name);
+    setPrefs((prev) => {
+      const next = canonicalizePrefs(prev, names);
+      const changed =
+        next.labels.printerName !== prev.labels.printerName ||
+        next.receipts.printerName !== prev.receipts.printerName;
+      if (changed) savePrintPrefs(next);
+      return next;
+    });
+
+    return { ok: true as const, list };
   }, []);
 
   useEffect(() => {
-    if (!QZ_TRAY_ENABLED) return;
     let cancelled = false;
     void (async () => {
-      const assets = await probeQzSigningAssets();
-      if (!cancelled) setSigning(assets);
-      setQzStatus('connecting');
-      const status = await probeQzStatus();
-      if (!cancelled) {
-        setQzStatus(status);
-        if (status === 'connected' && isQzConnected()) {
-          try {
-            const list = await listQzPrinters();
-            if (!cancelled) setPrinters(list);
-          } catch {
-            /* lista opcional al cargar */
-          }
-        }
-      }
+      const result = await refreshAgent();
+      if (cancelled) return;
+      if (!result.ok) setAgentStatus('unavailable');
     })();
     return () => {
       cancelled = true;
     };
-  }, []);
+  }, [refreshAgent]);
 
   async function detectPrinters() {
     setDetectBusy(true);
-    setQzStatus('connecting');
     try {
-      const assets = await probeQzSigningAssets();
-      setSigning(assets);
-      const list = await listQzPrinters();
-      setPrinters(list);
-      setQzStatus('connected');
-      if (!list.length) {
-        toast.warn('QZ está conectado, pero no apareció ninguna impresora');
-      } else if (!assets.hasCert || !assets.hasKey) {
-        toast.success(
-          `${list.length} impresora${list.length === 1 ? '' : 's'} · QZ listo (Allow si aparece)`,
-        );
+      const result = await refreshAgent();
+      if (!result.ok) {
+        toast.error('No encontramos Atria Print Agent. Ábrelo en la barra de menú e intenta de nuevo.');
+        setHelpOpen(true);
+        return;
+      }
+      if (!result.list.length) {
+        toast.warn('Agent conectado, pero no apareció ninguna impresora');
       } else {
         toast.success(
-          `${list.length} impresora${list.length === 1 ? '' : 's'} detectada${list.length === 1 ? '' : 's'}`,
+          `${result.list.length} impresora${result.list.length === 1 ? '' : 's'} detectada${
+            result.list.length === 1 ? '' : 's'
+          }`,
         );
       }
-    } catch (err) {
-      setQzStatus('unavailable');
-      setPrinters([]);
-      toast.error(err instanceof Error ? err.message : 'No se pudo detectar impresoras');
     } finally {
       setDetectBusy(false);
     }
@@ -96,20 +156,24 @@ export function PrinterPrefsCard() {
 
   function onSubmit(e: FormEvent) {
     e.preventDefault();
+    if (samePrinter) {
+      toast.warn('Etiquetas y comprobantes no deberían usar la misma impresora');
+    }
+    const resolved = canonicalizePrefs(prefs, agentNames);
     const next: PrintPrefs = {
-      ...prefs,
+      ...resolved,
       labels: {
-        printerName: prefs.labels.printerName.trim(),
-        note: prefs.labels.note.trim() || DEFAULT_PRINT_PREFS.labels.note,
+        printerName: resolved.labels.printerName.trim(),
+        note: resolved.labels.note.trim() || DEFAULT_PRINT_PREFS.labels.note,
       },
       receipts: {
-        printerName: prefs.receipts.printerName.trim(),
-        note: prefs.receipts.note.trim() || DEFAULT_PRINT_PREFS.receipts.note,
+        printerName: resolved.receipts.printerName.trim(),
+        note: resolved.receipts.note.trim() || DEFAULT_PRINT_PREFS.receipts.note,
       },
     };
     savePrintPrefs(next);
     setPrefs(next);
-    toast.success('Preferencias de impresoras guardadas en este equipo');
+    toast.success('Preferencias guardadas en este equipo');
   }
 
   function resetDefaults() {
@@ -120,236 +184,174 @@ export function PrinterPrefsCard() {
     };
     savePrintPrefs(next);
     setPrefs(next);
-    toast.success('Se restauraron los valores sugeridos');
+    toast.success('Valores sugeridos restaurados');
   }
 
   const statusLabel =
-    qzStatus === 'connected'
+    agentStatus === 'connected'
       ? 'Conectado'
-      : qzStatus === 'connecting'
-        ? 'Conectando…'
-        : qzStatus === 'unavailable'
-          ? 'No detectado'
-          : 'Sin probar';
+      : agentStatus === 'connecting'
+        ? 'Buscando Atria Print Agent…'
+        : 'No encontrado';
+
+  const statusHint =
+    agentStatus === 'connected'
+      ? printers.length
+        ? `${printers.length} impresora${printers.length === 1 ? '' : 's'} en este computador${
+            health?.version ? ` · v${health.version}` : ''
+          }`
+        : 'Conectado, sin impresoras. Revisa el cable o pulsa Detectar.'
+      : agentStatus === 'connecting'
+        ? 'Revisamos si está abierto en este computador.'
+        : 'Ábrelo en la barra de menú (arriba a la derecha) y pulsa Detectar.';
 
   const statusClass =
-    qzStatus === 'connected'
-      ? 'is-ok'
-      : qzStatus === 'unavailable'
-        ? 'is-bad'
-        : 'is-idle';
-
-  const trustOk = signing.hasCert && signing.hasKey;
-  const trustLabel = trustOk
-    ? 'Firmado (cert demo / producción)'
-    : getQzTrustMode() === 'anonymous' || !trustOk
-      ? 'Anonymous / sin cert — ver ayuda'
-      : 'Revisando confianza…';
+    agentStatus === 'connected' ? 'is-ok' : agentStatus === 'unavailable' ? 'is-bad' : 'is-idle';
 
   return (
-    <form className="card print-prefs-card" onSubmit={onSubmit}>
-      <div className="page-intro" style={{ marginBottom: '0.75rem' }}>
-        <h2 style={{ margin: 0, fontSize: '1.15rem' }}>Impresoras</h2>
-        <p style={{ margin: '0.35rem 0 0' }}>
-          Etiquetas van por TSPL raw a la Xprinter (50×25). Comprobantes por QZ a la térmica 80 mm.
-          Si QZ no está, se usa el diálogo del navegador.
-        </p>
-      </div>
-
-      <div className="print-qz-bar" role="status">
-        <div className="print-qz-status">
-          <span className={`print-qz-dot ${statusClass}`} aria-hidden />
-          <div>
-            <strong>QZ Tray: {statusLabel}</strong>
-            <p className="muted" style={{ margin: '0.15rem 0 0', fontSize: '0.8rem' }}>
-              Confianza: {trustLabel}
-            </p>
-          </div>
+    <form className="print-prefs" onSubmit={onSubmit}>
+      <div className={`print-status print-status--${statusClass}`} role="status">
+        <span className={`print-status-dot ${statusClass}`} aria-hidden />
+        <div className="print-status-copy">
+          <span className="print-status-label">{statusLabel}</span>
+          <span className="print-status-hint">{statusHint}</span>
         </div>
-        <div className="btn-row" style={{ margin: 0, flexWrap: 'wrap' }}>
-          <button type="button" className="btn ghost" onClick={() => setHelpOpen((v) => !v)}>
-            Cómo autorizar QZ
-          </button>
+        <div className="print-status-actions">
           <button
             type="button"
-            className="btn secondary"
+            className="btn secondary print-status-btn"
             onClick={() => void detectPrinters()}
-            disabled={detectBusy}
+            disabled={detectBusy || agentStatus === 'connecting'}
           >
-            {detectBusy ? 'Detectando…' : 'Detectar impresoras'}
+            {detectBusy || agentStatus === 'connecting' ? 'Buscando…' : 'Detectar'}
           </button>
+          {agentStatus === 'unavailable' ? (
+            <button
+              type="button"
+              className="btn print-status-btn"
+              onClick={() => setHelpOpen(true)}
+            >
+              Cómo instalar
+            </button>
+          ) : (
+            <button
+              type="button"
+              className="btn ghost print-status-btn"
+              onClick={() => setHelpOpen((v) => !v)}
+            >
+              {helpOpen ? 'Ocultar ayuda' : 'Ayuda'}
+            </button>
+          )}
         </div>
       </div>
 
-      {helpOpen && (
-        <div className="print-qz-help" role="region" aria-label="Cómo autorizar QZ Tray">
+      {agentStatus === 'unavailable' || helpOpen ? (
+        <div className="print-agent-missing" role="region" aria-label="Cómo abrir Atria Print Agent">
           <p>
-            La firma es <strong>opcional</strong>: sin cert igual puedes imprimir por QZ (pulsa{' '}
-            <strong>Allow</strong> cuando aparezca). Si el diálogo dice “anonymous / Untrusted” y al
-            marcar Remember se oculta Allow: no marques Remember, o instala el cert demo:
+            <strong>Atria Print Agent</strong> conecta L&apos;Scala con las impresoras de este
+            computador. Debe quedar abierto: en Mac, un ícono Atria en la barra de menú; en
+            Windows, junto al reloj.
           </p>
-          <ol>
-            <li>
-              QZ Tray (menú) → <strong>Advanced → Site Manager</strong> → “+” → Create New.
-            </li>
-            <li>Acepta crear e instalar claves (override.crt).</li>
-            <li>
-              Copia desde el escritorio <em>QZ Tray Demo Cert</em> a{' '}
-              <code>apps/web/public/qz-signing/</code>:
-              <br />
-              <code>digital-certificate.txt</code> y <code>private-key.pem</code>
-            </li>
-            <li>Recarga esta página → Detectar impresoras. Debe decir “Firmado”.</li>
-            <li>
-              Alternativa sin cert: Site Manager → agrega <code>http://localhost:5173</code> como
-              sitio permitido (Allow permanente).
-            </li>
+          <ol className="print-agent-steps">
+            <li>Ábrelo desde Aplicaciones (Mac) o el menú Inicio (Windows).</li>
+            <li>Pulsa <strong>Detectar</strong> en esta pantalla.</li>
+            <li>Elige una impresora para etiquetas y otra para comprobantes, y guarda.</li>
           </ol>
-          <p className="muted" style={{ marginBottom: 0 }}>
-            Cert actual: {signing.hasCert ? 'sí' : 'no'} · Clave: {signing.hasKey ? 'sí' : 'no'}
-          </p>
+          {agentStatus === 'unavailable' ? (
+            <p className="muted" style={{ marginBottom: 0 }}>
+              Si aún no lo tienes, instálalo en este computador (Atria te entrega el instalador) y
+              vuelve a Detectar.
+            </p>
+          ) : (
+            <p className="muted" style={{ marginBottom: 0 }}>
+              Etiquetas: rollo 50 × 25 mm. Comprobantes: ticket térmico 80 mm. No uses la misma
+              para ambos.
+            </p>
+          )}
         </div>
-      )}
+      ) : null}
 
-      <div className="print-prefs-grid">
-        <fieldset className="print-prefs-block">
-          <legend>Impresora de etiquetas</legend>
-          <p className="muted print-prefs-note">TSPL · Rollo 50 × 25 mm · Xprinter XP-420B</p>
+      <div className="print-prefs-stack">
+        <div className="print-prefs-block">
+          <p className="print-prefs-kicker">Rollo 50 × 25 mm</p>
+          <h3 className="print-prefs-heading">Etiquetas</h3>
+          <p className="muted print-prefs-note">Códigos de barras para vitrina</p>
           <div className="field">
             <label htmlFor="print-labels-select">Impresora</label>
-            {printers.length > 0 ? (
-              <select
-                id="print-labels-select"
-                value={prefs.labels.printerName}
-                onChange={(e) =>
+            {canChoose ? (
+              printerSelect(
+                'print-labels-select',
+                prefs.labels.printerName,
+                printers,
+                agentNames,
+                (v) =>
                   setPrefs((p) => ({
                     ...p,
-                    labels: { ...p.labels, printerName: e.target.value },
-                  }))
-                }
-              >
-                <option value="">— Elegir —</option>
-                {printers.map((name) => (
-                  <option key={name} value={name}>
-                    {name}
-                  </option>
-                ))}
-                {prefs.labels.printerName && !printers.includes(prefs.labels.printerName) && (
-                  <option value={prefs.labels.printerName}>
-                    {prefs.labels.printerName} (guardada)
-                  </option>
-                )}
-              </select>
+                    labels: { ...p.labels, printerName: resolvePrinterName(v, agentNames) || v },
+                  })),
+                false,
+              )
             ) : (
-              <input
-                id="print-labels-select"
-                value={prefs.labels.printerName}
-                onChange={(e) =>
-                  setPrefs((p) => ({
-                    ...p,
-                    labels: { ...p.labels, printerName: e.target.value },
-                  }))
-                }
-                placeholder="Detecta impresoras o escribe el nombre exacto"
-                autoComplete="off"
-              />
+              <p className="print-prefs-pending">
+                {labelsName || 'Abre el Agent y pulsa Detectar para elegir'}
+              </p>
             )}
           </div>
-          <div className="field">
-            <label htmlFor="print-labels-note">Nota</label>
-            <input
-              id="print-labels-note"
-              value={prefs.labels.note}
-              onChange={(e) =>
-                setPrefs((p) => ({
-                  ...p,
-                  labels: { ...p.labels, note: e.target.value },
-                }))
-              }
-            />
-          </div>
-        </fieldset>
+        </div>
 
-        <fieldset className="print-prefs-block">
-          <legend>Impresora de comprobantes</legend>
-          <p className="muted print-prefs-note">Térmico 80 mm · Brother u otra de boletas</p>
+        <div className="print-prefs-block">
+          <p className="print-prefs-kicker">Ticket 80 mm</p>
+          <h3 className="print-prefs-heading">Comprobantes</h3>
+          <p className="muted print-prefs-note">Ventas, cambios y tickets de piso</p>
           <div className="field">
             <label htmlFor="print-receipts-select">Impresora</label>
-            {printers.length > 0 ? (
-              <select
-                id="print-receipts-select"
-                value={prefs.receipts.printerName}
-                onChange={(e) =>
+            {canChoose ? (
+              printerSelect(
+                'print-receipts-select',
+                prefs.receipts.printerName,
+                printers,
+                agentNames,
+                (v) =>
                   setPrefs((p) => ({
                     ...p,
-                    receipts: { ...p.receipts, printerName: e.target.value },
-                  }))
-                }
-              >
-                <option value="">— Elegir —</option>
-                {printers.map((name) => (
-                  <option key={`r-${name}`} value={name}>
-                    {name}
-                  </option>
-                ))}
-                {prefs.receipts.printerName && !printers.includes(prefs.receipts.printerName) && (
-                  <option value={prefs.receipts.printerName}>
-                    {prefs.receipts.printerName} (guardada)
-                  </option>
-                )}
-              </select>
+                    receipts: {
+                      ...p.receipts,
+                      printerName: resolvePrinterName(v, agentNames) || v,
+                    },
+                  })),
+                false,
+              )
             ) : (
-              <input
-                id="print-receipts-select"
-                value={prefs.receipts.printerName}
-                onChange={(e) =>
-                  setPrefs((p) => ({
-                    ...p,
-                    receipts: { ...p.receipts, printerName: e.target.value },
-                  }))
-                }
-                placeholder="Detecta impresoras o escribe el nombre exacto"
-                autoComplete="off"
-              />
+              <p className="print-prefs-pending">
+                {receiptsName || 'Abre el Agent y pulsa Detectar para elegir'}
+              </p>
             )}
           </div>
-          <div className="field">
-            <label htmlFor="print-receipts-note">Nota</label>
-            <input
-              id="print-receipts-note"
-              value={prefs.receipts.note}
-              onChange={(e) =>
-                setPrefs((p) => ({
-                  ...p,
-                  receipts: { ...p.receipts, note: e.target.value },
-                }))
-              }
-            />
-          </div>
-        </fieldset>
+        </div>
       </div>
+
+      {samePrinter ? (
+        <p className="print-same-warn" role="status">
+          Elegiste la misma impresora para etiquetas y comprobantes. Usa dos distintas: el rollo
+          50 × 25 no sirve para el ticket de 80 mm.
+        </p>
+      ) : null}
 
       <label className="print-prefs-check">
         <input
           type="checkbox"
           checked={prefs.preferQzWhenAvailable}
-          onChange={(e) =>
-            setPrefs((p) => ({ ...p, preferQzWhenAvailable: e.target.checked }))
-          }
+          onChange={(e) => setPrefs((p) => ({ ...p, preferQzWhenAvailable: e.target.checked }))}
         />
-        <span>Preferir QZ Tray (si falla, usar diálogo del navegador)</span>
+        <span>Imprimir directo en este computador. Si falla, se abre el diálogo del navegador.</span>
       </label>
 
-      <p className="muted print-prefs-foot">
-        Se guarda solo en este navegador/equipo. Cada caja puede tener impresoras distintas.
-      </p>
-
-      <div className="btn-row" style={{ marginTop: '0.75rem' }}>
-        <button type="button" className="btn secondary" onClick={resetDefaults}>
-          Restaurar sugeridos
-        </button>
-        <button type="submit" className="btn">
+      <div className="print-prefs-actions">
+        <button type="submit" className="btn" disabled={!connected && !labelsName && !receiptsName}>
           Guardar
+        </button>
+        <button type="button" className="btn ghost" onClick={resetDefaults}>
+          Restaurar sugeridos
         </button>
       </div>
     </form>

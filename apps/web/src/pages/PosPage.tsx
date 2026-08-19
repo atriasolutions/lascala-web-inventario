@@ -15,6 +15,9 @@ import { ColorSwatch } from '../components/ColorSwatch';
 import { ProductPhotoPlaceholder } from '../components/ProductPhotoPlaceholder';
 import { api, mediaUrl, money } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { useNetworkStatus } from '../lib/networkStatus';
+import { usePosCatalog } from '../hooks/usePosCatalog';
+import { useOfflineSalesQueue } from '../hooks/useOfflineSalesQueue';
 import {
   buildChangeTickets,
   type SalePrintItem,
@@ -23,6 +26,7 @@ import {
 } from '../lib/salePrint';
 import { toast } from '../lib/toast';
 import { useSalePrint } from '../lib/useSalePrint';
+import type { PosCatalogProduct } from '../lib/posCatalogCache';
 
 type Product = {
   id: string;
@@ -36,7 +40,25 @@ type Product = {
   color?: string | null;
   allows_exchange?: boolean;
   allows_return?: boolean;
+  barcode?: string | null;
 };
+
+function fromCatalog(p: PosCatalogProduct): Product {
+  return {
+    id: p.id,
+    name: p.name,
+    internal_code: p.internal_code,
+    sale_price: p.sale_price,
+    stock: p.stock,
+    photo_url: p.photo_url,
+    category_name: p.category_name,
+    size_label: p.size_label,
+    color: p.color,
+    allows_exchange: p.allows_exchange,
+    allows_return: p.allows_return,
+    barcode: p.barcode,
+  };
+}
 
 type CartLine = { product: Product; quantity: number };
 
@@ -67,16 +89,27 @@ function ProductThumb({
   decorative?: boolean;
 }) {
   const url = mediaUrl(product.photo_url);
-  if (url) {
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setFailed(false);
+  }, [url]);
+
+  if (url && !failed) {
     return (
       <div className={className}>
-        <img src={url} alt={decorative ? '' : product.name} />
+        <img
+          key={url}
+          src={url}
+          alt={decorative ? '' : product.name}
+          onError={() => setFailed(true)}
+        />
       </div>
     );
   }
   return (
     <div className={`${className} is-empty`} aria-hidden={decorative || undefined}>
-      <ProductPhotoPlaceholder />
+      <ProductPhotoPlaceholder showLabel={!url} />
     </div>
   );
 }
@@ -84,6 +117,12 @@ function ProductThumb({
 /** Stage: fondo blur cover + imagen completa contain centrada. */
 function StagePhoto({ product }: { product: Product }) {
   const url = mediaUrl(product.photo_url);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setFailed(false);
+  }, [url]);
+
   if (!url) {
     return (
       <div className="pos-stage-photo is-empty is-no-photo" aria-hidden>
@@ -91,16 +130,40 @@ function StagePhoto({ product }: { product: Product }) {
       </div>
     );
   }
+  if (failed) {
+    return (
+      <div className="pos-stage-photo is-empty is-no-photo" aria-hidden>
+        <ProductPhotoPlaceholder showLabel={false} />
+        <span className="product-no-photo-label">No se pudo cargar la foto</span>
+      </div>
+    );
+  }
   return (
     <div className="pos-stage-photo">
-      <img className="pos-stage-photo-bg" src={url} alt="" aria-hidden />
-      <img className="pos-stage-photo-fg" src={url} alt="" />
+      <img className="pos-stage-photo-bg" src={url} alt="" aria-hidden onError={() => setFailed(true)} />
+      <img className="pos-stage-photo-fg" src={url} alt="" onError={() => setFailed(true)} />
     </div>
   );
 }
 
 export function PosPage() {
-  const { posId } = useAuth();
+  const { posId, branchId } = useAuth();
+  const { online } = useNetworkStatus();
+  const catalog = usePosCatalog(branchId);
+  const offlineQueue = useOfflineSalesQueue(branchId);
+  const {
+    search: searchCatalog,
+    findByCode,
+    ready: catalogReady,
+    syncing: catalogSyncing,
+    loading: catalogLoading,
+    stale: catalogStale,
+    error: catalogError,
+    meta: catalogMeta,
+    products: catalogProducts,
+    applyLocalSale,
+    rememberProduct,
+  } = catalog;
   const { printJob, setPrintJob, reminder: printReminder } = useSalePrint();
   const [code, setCode] = useState('');
   const [cart, setCart] = useState<CartLine[]>([]);
@@ -186,6 +249,7 @@ export function PosPage() {
     setStagePulse(true);
     setLiveMsg(`${product.name} agregado`);
     setCode('');
+    if (barcodeRef.current) barcodeRef.current.value = '';
     focusBarcode();
   }
 
@@ -197,14 +261,42 @@ export function PosPage() {
 
   async function addByCode(e?: FormEvent) {
     e?.preventDefault();
-    if (!code.trim()) return;
+    // Pistola: Enter llega antes de que React flushee onChange → leer el DOM.
+    const raw = (barcodeRef.current?.value ?? code).trim();
+    if (!raw) return;
+
+    // Offline: solo catálogo local.
+    if (!online) {
+      const cached = findByCode(raw);
+      if (cached) {
+        addProduct(fromCatalog(cached));
+        return;
+      }
+      toast.error('Producto no encontrado en el catálogo de este equipo');
+      setCode('');
+      if (barcodeRef.current) barcodeRef.current.value = '';
+      focusBarcode();
+      return;
+    }
+
+    // Online: siempre /by-code (stock + foto de la sucursal activa), no el IndexedDB viejo.
     try {
-      const data = await api<{ product: Product }>(
-        `/api/products/by-code/${encodeURIComponent(code.trim())}`,
+      const data = await api<{ product: Product & Record<string, unknown> }>(
+        `/api/products/by-code/${encodeURIComponent(raw)}`,
       );
+      await rememberProduct(data.product as unknown as Record<string, unknown>);
       addProduct(data.product);
     } catch (err) {
+      const cached = findByCode(raw);
+      if (cached) {
+        addProduct(fromCatalog(cached));
+        toast.warn(
+          'No se pudo consultar el servidor · se usó el catálogo local (el stock puede estar desactualizado)',
+        );
+        return;
+      }
       toast.error(err instanceof Error ? err.message : 'Producto no encontrado');
+      focusBarcode();
     }
   }
 
@@ -236,7 +328,11 @@ export function PosPage() {
       return;
     }
     if (cart.some(lineLacksStock)) {
-      toast.error('No hay stock suficiente');
+      toast.error('No hay unidades suficientes en esta sucursal');
+      return;
+    }
+    if (!online && !catalogReady) {
+      toast.error('Sin catálogo guardado. Conéctate una vez para poder vender offline.');
       return;
     }
     setIncludeChangeTickets(eligibleVoucherUnits > 0);
@@ -250,15 +346,44 @@ export function PosPage() {
   }
 
   async function confirmFinalize() {
-    if (!posId || !cart.length) return;
+    if (!posId || !cart.length || !branchId) return;
     if (cart.some(lineLacksStock)) {
-      toast.error('No hay stock suficiente');
+      toast.error('No hay unidades suficientes en esta sucursal');
       setConfirmOpen(false);
       return;
     }
     const wantTickets = includeChangeTickets && canIncludeTickets;
     setBusy(true);
     try {
+      if (!online) {
+        const clientSaleId = crypto.randomUUID();
+        const items = cart.map((c) => ({
+          productId: c.product.id,
+          quantity: c.quantity,
+          unitPrice: Number(c.product.sale_price) || 0,
+        }));
+        const { pendingCount: pendingAfter } = await offlineQueue.enqueue({
+          clientSaleId,
+          branchId,
+          posId,
+          soldAt: new Date().toISOString(),
+          items,
+          notes: 'Venta offline',
+        });
+        await applyLocalSale(items);
+        toast.success(
+          pendingAfter > 1
+            ? `Venta guardada en este equipo · ${pendingAfter} pendientes de sincronizar`
+            : 'Venta guardada en este equipo · se enviará al volver la red',
+        );
+        setConfirmOpen(false);
+        setCart([]);
+        setStage(null);
+        setLiveMsg('Venta guardada offline');
+        focusBarcode();
+        return;
+      }
+
       const data = await api<{ sale: { id: string; receipt_number: string }; vouchers: unknown[] }>(
         '/api/sales',
         {
@@ -282,7 +407,11 @@ export function PosPage() {
         items: detail.items,
         changeTickets: tickets,
       });
-      const parts = [`Venta ${data.sale.receipt_number} registrada · Imprimiendo comprobante`];
+      // Mantener cache local alineado tras venta online.
+      await applyLocalSale(
+        cart.map((c) => ({ productId: c.product.id, quantity: c.quantity })),
+      );
+      const parts = [`Venta ${data.sale.receipt_number} registrada`];
       if (wantTickets && tickets.length) {
         parts.push(`${tickets.length} ticket${tickets.length === 1 ? '' : 's'} de cambio`);
       }
@@ -313,16 +442,74 @@ export function PosPage() {
     focusBarcode();
   }
 
-  function pickFromSearch(product: Product) {
-    addProduct(product);
+  async function pickFromSearch(product: Product) {
     setSearchOpen(false);
     setSearchQ('');
     setSearchResults([]);
+    if (online) {
+      const key = (product.barcode || product.internal_code || '').trim();
+      if (key) {
+        try {
+          const data = await api<{ product: Product & Record<string, unknown> }>(
+            `/api/products/by-code/${encodeURIComponent(key)}`,
+          );
+          await rememberProduct(data.product as unknown as Record<string, unknown>);
+          addProduct(data.product);
+          return;
+        } catch {
+          /* caer a la fila de búsqueda */
+        }
+      }
+    }
+    addProduct(product);
   }
+
+  // Tras sync del snapshot: alinear stock/foto del carrito y del stage.
+  useEffect(() => {
+    if (!catalogProducts.length) return;
+    const byId = new Map(catalogProducts.map((p) => [p.id, p]));
+    setCart((prev) => {
+      let changed = false;
+      const next = prev.map((line) => {
+        const fresh = byId.get(line.product.id);
+        if (!fresh) return line;
+        const stock = fresh.stock;
+        const photo = fresh.photo_url ?? null;
+        if (Number(line.product.stock) === stock && (line.product.photo_url || null) === photo) {
+          return line;
+        }
+        changed = true;
+        return {
+          ...line,
+          product: {
+            ...line.product,
+            stock,
+            photo_url: photo,
+            name: fresh.name || line.product.name,
+            sale_price: fresh.sale_price || line.product.sale_price,
+          },
+        };
+      });
+      return changed ? next : prev;
+    });
+    setStage((prev) => {
+      if (!prev) return prev;
+      const fresh = byId.get(prev.id);
+      if (!fresh) return prev;
+      const stock = fresh.stock;
+      const photo = fresh.photo_url ?? null;
+      if (Number(prev.stock) === stock && (prev.photo_url || null) === photo) return prev;
+      return { ...prev, stock, photo_url: photo };
+    });
+  }, [catalogProducts]);
 
   useEffect(() => {
     barcodeRef.current?.focus();
   }, []);
+
+  // El resync online lo hace usePosCatalog (montar / online / foco stale / intervalo).
+  // No llamar refreshCatalog aquí: una identidad inestable de refresh provocaba loop
+  // "Actualizando stock y fotos…".
 
   useEffect(() => {
     if (!searchOpen) return;
@@ -334,26 +521,38 @@ export function PosPage() {
     }
     let cancelled = false;
     setSearchLoading(true);
-    const timer = window.setTimeout(async () => {
-      try {
-        const data = await api<{ products: Product[] }>(
-          `/api/products?q=${encodeURIComponent(q)}&limit=30`,
-        );
-        if (!cancelled) setSearchResults(data.products || []);
-      } catch (err) {
-        if (!cancelled) {
-          setSearchResults([]);
-          toast.error(err instanceof Error ? err.message : 'Error al buscar');
-        }
-      } finally {
-        if (!cancelled) setSearchLoading(false);
+    const timer = window.setTimeout(() => {
+      if (online) {
+        void (async () => {
+          try {
+            const data = await api<{ products: Product[] }>(
+              `/api/products?q=${encodeURIComponent(q)}&limit=30`,
+            );
+            if (!cancelled) {
+              setSearchResults(data.products || []);
+              setSearchLoading(false);
+            }
+          } catch {
+            const local = searchCatalog(q, 30).map(fromCatalog);
+            if (!cancelled) {
+              setSearchResults(local);
+              setSearchLoading(false);
+            }
+          }
+        })();
+        return;
       }
-    }, 280);
+      const local = searchCatalog(q, 30).map(fromCatalog);
+      if (!cancelled) {
+        setSearchResults(local);
+        setSearchLoading(false);
+      }
+    }, 180);
     return () => {
       cancelled = true;
       window.clearTimeout(timer);
     };
-  }, [searchOpen, searchQ]);
+  }, [searchOpen, searchQ, searchCatalog, online]);
 
   useEffect(() => {
     if (!searchOpen) return;
@@ -425,13 +624,13 @@ export function PosPage() {
             ref={barcodeRef}
             value={code}
             onChange={(e) => setCode(e.target.value)}
-            placeholder="Código"
+            placeholder="Código de barras o interno (LS-…)"
             autoComplete="off"
             inputMode="text"
             autoFocus
             readOnly={modalBlocksScan}
             tabIndex={modalBlocksScan ? -1 : 0}
-            aria-label="Código"
+            aria-label="Código de barras o código interno"
           />
           <button className="btn" type="submit" disabled={!code.trim() || modalBlocksScan}>
             Sumar
@@ -445,6 +644,23 @@ export function PosPage() {
         >
           Buscar
         </button>
+        <p className="pos-catalog-meta muted" aria-live="polite">
+          {catalogLoading
+            ? 'Cargando catálogo…'
+            : catalogSyncing
+              ? 'Actualizando stock y fotos desde el servidor…'
+              : catalogReady
+                ? `${catalogMeta?.count ?? 0} prendas en este equipo${
+                    !online ? ' · sin conexión' : catalogStale ? ' · stock local (puede estar viejo)' : ''
+                  }${
+                    offlineQueue.pendingCount
+                      ? ` · ${offlineQueue.pendingCount} venta${
+                          offlineQueue.pendingCount === 1 ? '' : 's'
+                        } pendiente${offlineQueue.pendingCount === 1 ? '' : 's'}`
+                      : ''
+                  }${offlineQueue.syncing ? ' · enviando…' : ''}`
+                : catalogError || 'Sin catálogo guardado'}
+        </p>
         <div className="sr-only" aria-live="polite" aria-atomic="true">
           {liveMsg}
         </div>
@@ -542,9 +758,15 @@ export function PosPage() {
                         ) : null}
                       </div>
                     )}
-                    <div className="meta">{c.product.internal_code}</div>
+                    <div className="meta">
+                      {c.product.barcode &&
+                      c.product.internal_code &&
+                      c.product.barcode !== c.product.internal_code
+                        ? `${c.product.barcode} · ${c.product.internal_code}`
+                        : c.product.barcode || c.product.internal_code}
+                    </div>
                     {short ? (
-                      <span className="badge stock-short">Stock insuficiente</span>
+                      <span className="badge stock-short">Unidades insuficientes</span>
                     ) : null}
                     <div className="pos-cart-line-meta">
                       <span className="muted">{money(c.product.sale_price)} c/u</span>
@@ -676,7 +898,7 @@ export function PosPage() {
                         <strong>{money(p.sale_price)}</strong>
                         {s !== null ? (
                           <span className={`badge ${s <= 0 ? 'warning' : 'brand'}`}>
-                            {s <= 0 ? 'Sin stock' : `Stock ${s}`}
+                            {s <= 0 ? 'Sin unidades en sucursal' : `${s} un.`}
                           </span>
                         ) : (
                           <span className="muted" style={{ fontSize: '0.75rem' }}>
@@ -709,7 +931,7 @@ export function PosPage() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="pos-modal-head">
-              <h3 id={confirmTitleId}>Finalizar venta</h3>
+              <h3 id={confirmTitleId}>{online ? 'Finalizar venta' : 'Guardar venta offline'}</h3>
               <button
                 type="button"
                 className="btn ghost"
@@ -726,38 +948,56 @@ export function PosPage() {
                 Total <strong>{money(total)}</strong>
               </p>
               <ul className="pos-finalize-list">
-                <li>Se rebajará del stock de la sucursal activa.</li>
-                <li>Se imprimirá el comprobante de venta.</li>
+                {online ? (
+                  <>
+                    <li>Se rebajará del stock de la sucursal activa.</li>
+                    <li>Se imprimirá el comprobante de venta.</li>
+                  </>
+                ) : (
+                  <>
+                    <li>Se guarda en este equipo y se envía al volver la red.</li>
+                    <li>El stock local baja ahora; el servidor confirma al sincronizar.</li>
+                    <li>La impresión queda para cuando haya conexión.</li>
+                  </>
+                )}
               </ul>
 
-              <label
-                className={`sales-hist-check pos-finalize-check${canIncludeTickets ? '' : ' is-disabled'}`}
-                title={
-                  canIncludeTickets
-                    ? undefined
-                    : 'Ninguna prenda de esta venta admite cambio o devolución'
-                }
-              >
-                <input
-                  type="checkbox"
-                  checked={includeChangeTickets && canIncludeTickets}
-                  disabled={!canIncludeTickets || busy}
-                  onChange={(e) => setIncludeChangeTickets(e.target.checked)}
-                />
-                <span>
-                  Incluir tickets de cambio/devolución
-                  {canIncludeTickets
-                    ? ` (${eligibleVoucherUnits})`
-                    : ' — sin prendas elegibles'}
-                </span>
-              </label>
-              {canIncludeTickets ? (
-                <p className="muted pos-finalize-hint">
-                  Puedes desmarcar si no necesitas tickets desprendibles.
-                </p>
+              {online ? (
+                <>
+                  <label
+                    className={`sales-hist-check pos-finalize-check${canIncludeTickets ? '' : ' is-disabled'}`}
+                    title={
+                      canIncludeTickets
+                        ? undefined
+                        : 'Ninguna prenda de esta venta admite cambio o devolución'
+                    }
+                  >
+                    <input
+                      type="checkbox"
+                      checked={includeChangeTickets && canIncludeTickets}
+                      disabled={!canIncludeTickets || busy}
+                      onChange={(e) => setIncludeChangeTickets(e.target.checked)}
+                    />
+                    <span>
+                      Incluir tickets de cambio/devolución
+                      {canIncludeTickets
+                        ? ` (${eligibleVoucherUnits})`
+                        : ' — sin prendas elegibles'}
+                    </span>
+                  </label>
+                  {canIncludeTickets ? (
+                    <p className="muted pos-finalize-hint">
+                      Puedes desmarcar si no necesitas tickets desprendibles.
+                    </p>
+                  ) : (
+                    <p className="muted pos-finalize-hint">
+                      No hay prendas habilitadas para cambio o devolución en esta venta.
+                    </p>
+                  )}
+                </>
               ) : (
                 <p className="muted pos-finalize-hint">
-                  No hay prendas habilitadas para cambio o devolución en esta venta.
+                  Los tickets de cambio se podrán emitir después del sync, desde el historial.
                 </p>
               )}
             </div>
@@ -778,7 +1018,7 @@ export function PosPage() {
                 onClick={() => void confirmFinalize()}
                 disabled={busy}
               >
-                {busy ? 'Procesando…' : 'Confirmar e imprimir'}
+                {busy ? 'Procesando…' : online ? 'Confirmar e imprimir' : 'Guardar en este equipo'}
               </button>
             </div>
           </div>

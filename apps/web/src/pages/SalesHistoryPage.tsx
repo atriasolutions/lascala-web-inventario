@@ -5,6 +5,8 @@ import { SaleThermalPrint } from '../components/SaleThermalPrint';
 import { SortableTh } from '../components/SortableTh';
 import { useInfiniteList } from '../hooks/useInfiniteList';
 import { api, money } from '../lib/api';
+import { useAuth } from '../lib/auth';
+import { loadListFilters, saveListFilters } from '../lib/listFiltersPersist';
 import { withPagination } from '../lib/pagination';
 import {
   CHANGE_TICKET_DAYS,
@@ -77,6 +79,8 @@ type AppliedFilters = {
   pos: string;
   notes: string;
 };
+
+type ListFilters = AppliedFilters & { branchId: string };
 
 const DEFAULT_FILTERS: AppliedFilters = {
   period: 'today',
@@ -164,11 +168,15 @@ const SORT_OPTIONS: { key: SaleSortKey; label: string }[] = [
 ];
 
 export function SalesHistoryPage() {
+  const { branchId } = useAuth();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [filters, setFilters] = useState<AppliedFilters>(DEFAULT_FILTERS);
+  const [filters, setFilters] = useState<AppliedFilters>(() =>
+    loadListFilters('ventas', branchId, DEFAULT_FILTERS),
+  );
 
   const [sortKey, setSortKey] = useState<SaleSortKey>('date');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
+  const [periodSummary, setPeriodSummary] = useState({ count: 0, totalAmount: 0 });
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [draftDateFrom, setDraftDateFrom] = useState('');
@@ -190,12 +198,32 @@ export function SalesHistoryPage() {
   const detailPanelRef = useRef<HTMLDivElement>(null);
   const deepLinkHandled = useRef<string | null>(null);
 
-  const fetchPage = useCallback(async (f: AppliedFilters, offset: number, limit: number) => {
+  const listFilters: ListFilters = useMemo(
+    () => ({ ...filters, branchId: branchId || '' }),
+    [filters, branchId],
+  );
+
+  useEffect(() => {
+    setFilters(loadListFilters('ventas', branchId, DEFAULT_FILTERS));
+  }, [branchId]);
+
+  useEffect(() => {
+    saveListFilters('ventas', branchId, filters);
+  }, [branchId, filters]);
+
+  const fetchPage = useCallback(async (f: ListFilters, offset: number, limit: number) => {
     const data = await api<{
       sales: Sale[];
       hasMore: boolean;
       nextOffset?: number;
+      summary?: { count: number; totalAmount: number };
     }>(buildQuery(f, offset, limit));
+    if (offset === 0 && data.summary) {
+      setPeriodSummary({
+        count: Number(data.summary.count) || 0,
+        totalAmount: Number(data.summary.totalAmount) || 0,
+      });
+    }
     return {
       items: data.sales,
       hasMore: data.hasMore,
@@ -211,7 +239,7 @@ export function SalesHistoryPage() {
     error,
     scrollRef,
     sentinelRef,
-  } = useInfiniteList({ filters, fetchPage });
+  } = useInfiniteList({ filters: listFilters, fetchPage });
 
   useEffect(() => {
     if (error) toast.error(error);
@@ -241,8 +269,8 @@ export function SalesHistoryPage() {
     return chips;
   }, [filters]);
 
-  const kpiTotal = sales.reduce((sum, s) => sum + Number(s.total || 0), 0);
-  const kpiCount = sales.length;
+  const kpiTotal = periodSummary.totalAmount;
+  const kpiCount = periodSummary.count;
   const kpiTicket = kpiCount ? kpiTotal / kpiCount : 0;
 
   function toggleSort(column: SaleSortKey) {

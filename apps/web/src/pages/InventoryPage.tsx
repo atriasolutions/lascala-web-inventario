@@ -8,12 +8,14 @@ import {
   useState,
 } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { InfiniteListFooter } from '../components/InfiniteListFooter';
 import { ProductPhotoPlaceholder } from '../components/ProductPhotoPlaceholder';
 import { SortableTh } from '../components/SortableTh';
 import { useInfiniteList } from '../hooks/useInfiniteList';
 import { api, mediaUrl, money } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { loadListFilters, saveListFilters } from '../lib/listFiltersPersist';
 import {
   nextInventorySort,
   sortBalances,
@@ -22,6 +24,45 @@ import {
 } from '../lib/inventoryListSort';
 import { withPagination } from '../lib/pagination';
 import { toast } from '../lib/toast';
+
+/** Thumb con fallback a placeholder si la URL 404 / falla. */
+function InvProductMedia({
+  photoUrl,
+  className,
+  placeholderClassName,
+}: {
+  photoUrl: string | null;
+  className?: string;
+  placeholderClassName?: string;
+}) {
+  const resolved = mediaUrl(photoUrl);
+  const [failed, setFailed] = useState(false);
+
+  useEffect(() => {
+    setFailed(false);
+  }, [resolved]);
+
+  if (!resolved || failed) {
+    return (
+      <ProductPhotoPlaceholder
+        className={placeholderClassName}
+        showLabel={false}
+      />
+    );
+  }
+
+  return (
+    <img
+      key={resolved}
+      className={className}
+      src={resolved}
+      alt=""
+      loading="lazy"
+      decoding="async"
+      onError={() => setFailed(true)}
+    />
+  );
+}
 
 type Balance = {
   id: string;
@@ -113,7 +154,15 @@ export function InventoryPage() {
   const [categories, setCategories] = useState<Category[]>([]);
   const [q, setQ] = useState(() => searchParams.get('q') || '');
   const [qDebounced, setQDebounced] = useState(q);
-  const [filters, setFilters] = useState<Filters>(DEFAULT_FILTERS);
+  const [filters, setFilters] = useState<Filters>(() => {
+    const stored = loadListFilters('inventario', branchId, DEFAULT_FILTERS);
+    const onlyLow =
+      searchParams.get('onlyLow') === '1' || searchParams.get('onlyLow') === 'true';
+    return {
+      ...stored,
+      onlyLow: onlyLow || stored.onlyLow,
+    };
+  });
   const [sortKey, setSortKey] = useState<InventorySortKey>('name');
   const [sortDir, setSortDir] = useState<SortDir>('asc');
   const [summary, setSummary] = useState<InvSummary>({
@@ -134,6 +183,10 @@ export function InventoryPage() {
   const [reason, setReason] = useState('');
   const [adjustBusy, setAdjustBusy] = useState(false);
   const [adjustError, setAdjustError] = useState('');
+  const [confirmAdjustOpen, setConfirmAdjustOpen] = useState(false);
+  const [pendingAdjustBody, setPendingAdjustBody] = useState<Record<string, unknown> | null>(
+    null,
+  );
 
   const modalTitleId = useId();
   const qtyRef = useRef<HTMLInputElement>(null);
@@ -143,6 +196,16 @@ export function InventoryPage() {
     const t = window.setTimeout(() => setQDebounced(q), 320);
     return () => window.clearTimeout(t);
   }, [q]);
+
+  useEffect(() => {
+    saveListFilters('inventario', branchId, filters);
+  }, [branchId, filters]);
+
+  useEffect(() => {
+    const onlyLow =
+      searchParams.get('onlyLow') === '1' || searchParams.get('onlyLow') === 'true';
+    setFilters((prev) => (prev.onlyLow === onlyLow ? prev : { ...prev, onlyLow }));
+  }, [searchParams]);
 
   const listFilters = useMemo(
     () => ({ ...filters, q: qDebounced, branchId: branchId || '' }),
@@ -353,23 +416,33 @@ export function InventoryPage() {
       body.delta = d;
     }
 
+    setAdjustError('');
+    setPendingAdjustBody(body);
+    setConfirmAdjustOpen(true);
+  }
+
+  async function confirmAdjust() {
+    if (!adjusting || !pendingAdjustBody) return;
+    setConfirmAdjustOpen(false);
     setAdjustBusy(true);
     setAdjustError('');
     try {
       const res = await api<{
         adjustment: { quantityAfter: number; quantityDelta: number; productName: string };
-      }>('/api/inventory/adjust', { method: 'POST', body });
+      }>('/api/inventory/adjust', { method: 'POST', body: pendingAdjustBody });
       const delta = res.adjustment.quantityDelta;
       const sign = delta > 0 ? '+' : '';
       toast.success(
         `Stock ajustado · ${res.adjustment.productName}: ${sign}${delta} → ${res.adjustment.quantityAfter} un.`,
       );
+      setPendingAdjustBody(null);
       closeAdjust();
       reload();
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'No se pudo ajustar';
+      const msg = err instanceof Error ? err.message : 'No se pudo ajustar el stock';
       setAdjustError(msg);
       toast.error(msg);
+    } finally {
       setAdjustBusy(false);
     }
   }
@@ -578,29 +651,33 @@ export function InventoryPage() {
 
           <div className="ing-list-scroll" ref={scrollRef}>
             {loading && (
-              <div className="inv-skel" aria-busy="true" aria-label="Cargando inventario">
-                {Array.from({ length: 6 }, (_, i) => (
-                  <div key={i} className="inv-skel-row" aria-hidden />
-                ))}
+              <div className="ing-skel" aria-busy="true" aria-label="Cargando inventario">
+                <div className="ing-skel-row" />
+                <div className="ing-skel-row" />
+                <div className="ing-skel-row" />
               </div>
             )}
 
             {!loading && !balances.length && !filtersActive && (
-              <div className="inv-empty">
-                <div className="inv-empty-visual" aria-hidden />
+              <div className="sales-empty">
                 <h3>Sin stock en esta sucursal</h3>
-                <p>Cuando recibas mercadería en Ingresos, el stock aparece acá.</p>
-                <Link to="/ingresos" className="btn secondary">
+                <p className="muted">Recibe mercadería para ver saldos acá.</p>
+                <Link to="/ingresos" className="btn secondary" style={{ marginTop: '0.75rem' }}>
                   Ir a Ingresos
                 </Link>
               </div>
             )}
 
             {!loading && !balances.length && filtersActive && (
-              <div className="inv-empty inv-empty-filter">
-                <h3>Ninguna prenda coincide</h3>
-                <p>Prueba otra búsqueda o ajusta los filtros.</p>
-                <button type="button" className="btn secondary" onClick={clearFilters}>
+              <div className="sales-empty">
+                <h3>Ningún ítem coincide</h3>
+                <p className="muted">Quita filtros o cambia la búsqueda.</p>
+                <button
+                  type="button"
+                  className="btn secondary"
+                  style={{ marginTop: '0.75rem' }}
+                  onClick={clearFilters}
+                >
                   Limpiar filtros
                 </button>
               </div>
@@ -618,44 +695,51 @@ export function InventoryPage() {
                   {sorted.map((b) => {
                     const low = isLow(b);
                     const qty = qtyOf(b);
+                    const negative = qty < 0;
                     const out = qty === 0;
-                    const src = mediaUrl(b.photo_url);
                     const lineValue = qty * Number(b.sale_price || 0);
                     return (
-                      <article key={b.id} className={`list-card inv-card${low ? ' is-low' : ''}`}>
+                      <article
+                        key={b.id}
+                        className={`list-card inv-card${low || negative ? ' is-low' : ''}`}
+                      >
                         <div className="inv-card-media" aria-hidden>
-                          {src ? (
-                            <img src={src} alt="" />
-                          ) : (
-                            <ProductPhotoPlaceholder className="inv-card-ph" />
-                          )}
+                          <InvProductMedia
+                            photoUrl={b.photo_url}
+                            placeholderClassName="inv-card-ph"
+                          />
                         </div>
                         <div className="inv-card-body">
-                          <div className="row">
-                            <strong>{b.name}</strong>
-                            <span className={`badge ${out ? 'danger' : low ? 'warning' : 'success'}`}>
-                              {out ? 'Sin stock' : `${qty} un.`}
-                            </span>
-                          </div>
+                          <strong className="inv-card-name">{b.name}</strong>
                           <div className="meta">
                             {b.internal_code}
                             {b.category_name ? ` · ${b.category_name}` : ''}
                             {b.brand ? ` · ${b.brand}` : ''}
                             {b.size_label ? ` · ${b.size_label}` : ''}
                           </div>
-                          <div className="inv-card-foot">
-                            <span>{money(b.sale_price)}</span>
-                            <span className="muted">{money(lineValue)} en sala</span>
-                          </div>
-                          <div className="inv-card-actions">
-                            <button
-                              type="button"
-                              className="btn secondary inv-adjust-btn"
-                              onClick={(e) => openAdjust(b, e.currentTarget)}
+                          <div className="inv-card-metrics">
+                            <span
+                              className={`badge ${
+                                negative || out ? 'danger' : low ? 'warning' : 'success'
+                              }`}
+                              title={
+                                negative
+                                  ? 'Stock negativo (p. ej. venta offline sincronizada)'
+                                  : undefined
+                              }
                             >
-                              Ajustar
-                            </button>
+                              {negative ? `${qty} un.` : out ? 'Sin stock' : `${qty} un.`}
+                            </span>
+                            <span className="inv-card-price">{money(b.sale_price)}</span>
                           </div>
+                          <p className="inv-card-room muted">{money(lineValue)} en sala</p>
+                          <button
+                            type="button"
+                            className="btn secondary inv-adjust-btn"
+                            onClick={(e) => openAdjust(b, e.currentTarget)}
+                          >
+                            Ajustar
+                          </button>
                         </div>
                       </article>
                     );
@@ -711,19 +795,18 @@ export function InventoryPage() {
                       {sorted.map((b) => {
                         const low = isLow(b);
                         const qty = qtyOf(b);
+                        const negative = qty < 0;
                         const out = qty === 0;
-                        const src = mediaUrl(b.photo_url);
                         const lineValue = qty * Number(b.sale_price || 0);
                         return (
-                          <tr key={b.id} className={low ? 'inv-row-low' : undefined}>
+                          <tr
+                            key={b.id}
+                            className={low || negative ? 'inv-row-low' : undefined}
+                          >
                             <td>
                               <div className="inv-row-product">
                                 <div className="inv-row-thumb" aria-hidden>
-                                  {src ? (
-                                    <img src={src} alt="" />
-                                  ) : (
-                                    <ProductPhotoPlaceholder />
-                                  )}
+                                  <InvProductMedia photoUrl={b.photo_url} />
                                 </div>
                                 <div>
                                   <strong>{b.name}</strong>
@@ -738,9 +821,16 @@ export function InventoryPage() {
                             <td className="inv-code">{b.internal_code}</td>
                             <td>
                               <span
-                                className={`badge ${out ? 'danger' : low ? 'warning' : 'success'}`}
+                                className={`badge ${
+                                  negative || out ? 'danger' : low ? 'warning' : 'success'
+                                }`}
+                                title={
+                                  negative
+                                    ? 'Stock negativo (p. ej. venta offline sincronizada)'
+                                    : undefined
+                                }
                               >
-                                {out ? '0 un.' : `${qty} un.`}
+                                {`${qty} un.`}
                               </span>
                             </td>
                             <td className="inv-num">{money(b.sale_price)}</td>
@@ -771,7 +861,7 @@ export function InventoryPage() {
           </div>
         </div>
 
-        <aside className="ing-list-figure" aria-hidden="true">
+        <aside className="ing-list-figure inv-list-figure" aria-hidden="true">
           <img
             className="ing-list-figure-img"
             src="/brand/inventario-modelo.png"
@@ -1070,12 +1160,29 @@ export function InventoryPage() {
                 Cancelar
               </button>
               <button type="submit" className="btn" disabled={adjustBusy}>
-                {adjustBusy ? 'Guardando…' : 'Confirmar ajuste'}
+                {adjustBusy ? 'Guardando…' : 'Continuar'}
               </button>
             </div>
           </form>
         </div>
       )}
+
+      <ConfirmDialog
+        open={confirmAdjustOpen}
+        title="Confirmar ajuste de stock"
+        message={
+          adjusting && previewAfter != null
+            ? `${adjusting.name}: de ${qtyOf(adjusting)} a ${previewAfter} un. ¿Confirmas el ajuste?`
+            : '¿Confirmas el ajuste de stock?'
+        }
+        cancelLabel="Volver"
+        confirmLabel="Ajustar stock"
+        onCancel={() => {
+          setConfirmAdjustOpen(false);
+          setPendingAdjustBody(null);
+        }}
+        onConfirm={() => void confirmAdjust()}
+      />
     </div>
   );
 }

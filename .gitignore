@@ -10,3 +10,8 @@ apps/web/dist/
 apps/web/public/qz-signing/private-key.pem
 apps/web/public/qz-signing/digital-certificate.txt
 .tools/
+test-results/
+playwright-report/
+blob-report/
+.playwright/
+playwright/.cache/

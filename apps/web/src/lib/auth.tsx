@@ -1,12 +1,14 @@
 import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
 import { api, type User } from './api';
 
+type PosTerminal = { id: string; code: string; name: string; status: string };
+
 type BranchCtx = {
   id: string;
   name: string;
   code: string;
   role?: string;
-  pos_terminals?: { id: string; code: string; name: string; status: string }[];
+  pos_terminals?: PosTerminal[];
 };
 
 type AuthState = {
@@ -21,9 +23,25 @@ type AuthState = {
   setBranchId: (id: string) => void;
   setPosId: (id: string) => void;
   refreshBranches: () => Promise<void>;
+  refreshUser: () => Promise<void>;
 };
 
 const AuthContext = createContext<AuthState | null>(null);
+
+function activePosList(branch?: BranchCtx | null) {
+  return (branch?.pos_terminals || []).filter((p) => p.status === 'active');
+}
+
+function pickPosId(branch: BranchCtx | undefined, preferred: string | null) {
+  const list = activePosList(branch);
+  if (preferred && list.some((p) => p.id === preferred)) return preferred;
+  return list[0]?.id ?? null;
+}
+
+function persistPos(id: string | null) {
+  if (id) localStorage.setItem('lscala_pos', id);
+  else localStorage.removeItem('lscala_pos');
+}
 
 export function AuthProvider({ children }: { children: ReactNode }) {
   const [user, setUser] = useState<User | null>(null);
@@ -33,18 +51,30 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [posId, setPosIdState] = useState<string | null>(localStorage.getItem('lscala_pos'));
   const [loading, setLoading] = useState(true);
 
+  const applyWorkplace = (list: BranchCtx[], preferredBranch: string | null, preferredPos: string | null) => {
+    const nextBranch =
+      (preferredBranch && list.some((b) => b.id === preferredBranch) ? preferredBranch : null) ||
+      list[0]?.id ||
+      null;
+    const branch = list.find((b) => b.id === nextBranch);
+    const nextPos = pickPosId(branch, preferredPos);
+    setBranchIdState(nextBranch);
+    setPosIdState(nextPos);
+    if (nextBranch) localStorage.setItem('lscala_branch', nextBranch);
+    else localStorage.removeItem('lscala_branch');
+    persistPos(nextPos);
+    return { nextBranch, nextPos };
+  };
+
+  const refreshUser = async () => {
+    const me = await api<{ user: User }>('/api/auth/me');
+    setUser(me.user);
+  };
+
   const refreshBranches = async () => {
     const data = await api<{ branches: BranchCtx[] }>('/api/auth/context/branches');
     setBranches(data.branches);
-    if (!branchId && data.branches[0]) {
-      setBranchIdState(data.branches[0].id);
-      localStorage.setItem('lscala_branch', data.branches[0].id);
-      const firstPos = data.branches[0].pos_terminals?.find((p) => p.status === 'active');
-      if (firstPos) {
-        setPosIdState(firstPos.id);
-        localStorage.setItem('lscala_pos', firstPos.id);
-      }
-    }
+    applyWorkplace(data.branches, branchId, posId);
   };
 
   useEffect(() => {
@@ -97,20 +127,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         setPosIdState(null);
       },
       setBranchId(id: string) {
+        const b = branches.find((x) => x.id === id);
+        if (!b) return;
         localStorage.setItem('lscala_branch', id);
         setBranchIdState(id);
-        const b = branches.find((x) => x.id === id);
-        const firstPos = b?.pos_terminals?.find((p) => p.status === 'active');
-        if (firstPos) {
-          localStorage.setItem('lscala_pos', firstPos.id);
-          setPosIdState(firstPos.id);
-        }
+        const nextPos = pickPosId(b, posId);
+        setPosIdState(nextPos);
+        persistPos(nextPos);
       },
       setPosId(id: string) {
-        localStorage.setItem('lscala_pos', id);
+        const b = branches.find((x) => x.id === branchId);
+        if (!activePosList(b).some((p) => p.id === id)) return;
+        persistPos(id);
         setPosIdState(id);
       },
       refreshBranches,
+      refreshUser,
     }),
     [user, token, branches, branchId, posId, loading],
   );
@@ -123,3 +155,4 @@ export function useAuth() {
   if (!ctx) throw new Error('useAuth outside provider');
   return ctx;
 }
+

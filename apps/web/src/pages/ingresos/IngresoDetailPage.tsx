@@ -7,14 +7,15 @@ import {
   useRef,
   useState,
 } from 'react';
-import { Link, useParams } from 'react-router-dom';
-import { PrintReminderModal } from '../../components/PrintReminderModal';
+import { Link, useNavigate, useParams } from 'react-router-dom';
 import { NoBarcodeModal } from '../../components/NoBarcodeModal';
+import { PrintReminderModal } from '../../components/PrintReminderModal';
 import { ProductPhotoPlaceholder } from '../../components/ProductPhotoPlaceholder';
+import { useShellTitle } from '../../components/shellTitle';
 import { ThermalBarcode } from '../../components/ThermalBarcode';
 import { api, mediaUrl, money } from '../../lib/api';
-import { tryQzPrintLabel } from '../../lib/qzTray';
 import { useToast } from '../../lib/toast';
+import { printLabelJob } from '../../services/printing';
 import {
   lineFloorSalePrice,
   purchaseRef,
@@ -104,7 +105,9 @@ function LineThumb({
 
 export function IngresoDetailPage() {
   const { id } = useParams<{ id: string }>();
+  const navigate = useNavigate();
   const toast = useToast();
+  const setShellTitle = useShellTitle();
   const scanRef = useRef<HTMLInputElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
   const createTitleId = useId();
@@ -123,7 +126,7 @@ export function IngresoDetailPage() {
   const [stage, setStage] = useState<StageItem | null>(null);
   const [stagePulse, setStagePulse] = useState(false);
   const [noBarcodeOpen, setNoBarcodeOpen] = useState(false);
-  const [suggestedBarcode, setSuggestedBarcode] = useState('BC000001');
+  const [suggestedBarcode, setSuggestedBarcode] = useState('LS-000001');
   const [noBarcodeBusy, setNoBarcodeBusy] = useState(false);
   const [printLabel, setPrintLabel] = useState<{ name: string; code: string; copies: number } | null>(
     null,
@@ -168,6 +171,15 @@ export function IngresoDetailPage() {
       })),
     );
   }, [id]);
+
+  useEffect(() => {
+    if (!purchase) {
+      setShellTitle(null);
+      return;
+    }
+    setShellTitle(purchaseRef(purchase));
+    return () => setShellTitle(null);
+  }, [purchase, setShellTitle]);
 
   useEffect(() => {
     let cancelled = false;
@@ -225,7 +237,7 @@ export function IngresoDetailPage() {
     const label = { name, code, copies: n };
     setPrintBusy(true);
     try {
-      const result = await tryQzPrintLabel(name, code, n);
+      const result = await printLabelJob(name, code, n);
       if (result.ok) {
         toast.success(
           n === 1
@@ -413,7 +425,7 @@ export function IngresoDetailPage() {
 
   async function onScan(e?: FormEvent) {
     e?.preventDefault();
-    const raw = code.trim();
+    const raw = (scanRef.current?.value ?? code).trim();
     if (!raw) return;
     setError('');
     setSuccess('');
@@ -502,6 +514,8 @@ export function IngresoDetailPage() {
     sizeLabel: string | null;
     color: string | null;
     productType: string | null;
+    season: string | null;
+    description: string | null;
     quantityReceived: number;
     labelCopies: number;
   }) {
@@ -526,6 +540,8 @@ export function IngresoDetailPage() {
               sizeLabel: payload.sizeLabel,
               color: payload.color,
               productType: payload.productType,
+              season: payload.season,
+              description: payload.description,
             },
           },
         ],
@@ -539,12 +555,15 @@ export function IngresoDetailPage() {
       qty: nextQty,
       ordered: Number(line.quantity_ordered),
     });
-    toast.success(`Prenda creada · recibidas ${nextQty}/${line.quantity_ordered}`);
+    toast.success(
+      `Prenda creada y recibida (${add} ud. · ${nextQty}/${line.quantity_ordered})`,
+    );
     setLiveMsg(`Prenda creada · ${nextQty}/${line.quantity_ordered}`);
     setSuccess('Stock actualizado. La foto se agrega después en Productos.');
     closeNoBarcode();
-    await requestLabelPrint(payload.name, payload.barcode, payload.labelCopies);
     await load();
+    // Impresión no bloquea: respeta N etiquetas en segundo plano
+    void requestLabelPrint(payload.name, payload.barcode, payload.labelCopies);
   }
 
   async function linkExistingFromNoBarcode(payload: {
@@ -553,25 +572,17 @@ export function IngresoDetailPage() {
       id: string;
       name: string;
       barcode: string | null;
+      internal_code: string;
       photo_url?: string | null;
       size_label?: string | null;
       color?: string | null;
     };
     quantityReceived: number;
     labelCopies: number;
-    barcode?: string;
   }) {
     if (!id) return;
     const line = lines.find((l) => l.id === payload.purchaseItemId);
     if (!line) throw new Error('Línea no encontrada');
-    let printCode = payload.product.barcode || '';
-    if (payload.barcode) {
-      await api(`/api/products/${payload.product.id}`, {
-        method: 'PATCH',
-        body: { barcode: payload.barcode },
-      });
-      printCode = payload.barcode;
-    }
     await api(`/api/purchases/${id}/items/${line.id}`, {
       method: 'PATCH',
       body: { productId: payload.product.id },
@@ -602,29 +613,15 @@ export function IngresoDetailPage() {
       qty: nextQty,
       ordered: Number(line.quantity_ordered),
     });
-    toast.success(`Vinculada · recibidas ${nextQty}/${line.quantity_ordered}`);
+    toast.success(
+      `Prenda vinculada (${add} ud. en borrador) · confirma recepción para sumar al stock`,
+    );
+    setLiveMsg(`Vinculada · confirma recepción · ${nextQty}/${line.quantity_ordered}`);
     closeNoBarcode();
-    if (printCode) {
-      await requestLabelPrint(payload.product.name, printCode, payload.labelCopies);
+    const code = payload.product.barcode || payload.product.internal_code;
+    if (code) {
+      void requestLabelPrint(payload.product.name, code, payload.labelCopies);
     }
-  }
-
-  async function assignBarcodeAndPrint(
-    product: {
-      id: string;
-      name: string;
-      barcode: string | null;
-    },
-    barcode: string,
-    labelCopies: number,
-  ) {
-    await api(`/api/products/${product.id}`, {
-      method: 'PATCH',
-      body: { barcode },
-    });
-    toast.success(`Código ${barcode} asignado`);
-    await requestLabelPrint(product.name, barcode, labelCopies);
-    closeNoBarcode();
   }
 
   async function confirmReceive() {
@@ -653,11 +650,8 @@ export function IngresoDetailPage() {
         method: 'POST',
         body: { items: payload },
       });
-      setSuccess('Stock actualizado. La foto se agrega después en Productos.');
       toast.success('Recepción confirmada');
-      setLiveMsg('Recepción confirmada');
-      await load();
-      focusScan();
+      navigate('/ingresos');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Error al recepcionar');
     } finally {
@@ -674,17 +668,12 @@ export function IngresoDetailPage() {
     }
     const pending = Math.max(0, Number(line.quantity_ordered) - line.draftReceived);
     const qty = Math.floor(Number(receiveQty));
-    const copies = Math.floor(Number(labelCopies));
     if (!Number.isFinite(qty) || qty < 1) {
       setModalError('Indica la cantidad recibida');
       return;
     }
     if (qty > pending) {
       setModalError(`Solo quedan ${pending} pendiente${pending === 1 ? '' : 's'}`);
-      return;
-    }
-    if (!Number.isFinite(copies) || copies < 1) {
-      setModalError('Indica cuántas etiquetas imprimir');
       return;
     }
     const nextQty = line.draftReceived + qty;
@@ -714,16 +703,14 @@ export function IngresoDetailPage() {
         qty: nextQty,
         ordered: Number(line.quantity_ordered),
       });
-      toast.success(`Prenda creada · recibidas ${nextQty}/${line.quantity_ordered}`);
+      toast.success(`Prenda creada y recibida (${qty} ud. · ${nextQty}/${line.quantity_ordered})`);
       setLiveMsg(`Prenda creada · ${nextQty}/${line.quantity_ordered}`);
       setSuccess('Stock actualizado. La foto se agrega después en Productos.');
+      const printName = newName.trim() || line.description;
+      const copies = Math.max(1, Math.floor(Number(labelCopies) || 1));
       closeModal();
-      await requestLabelPrint(
-        newName.trim() || line.description,
-        modal.barcode,
-        copies,
-      );
       await load();
+      void requestLabelPrint(printName, modal.barcode, copies);
     } catch (err) {
       setModalError(err instanceof Error ? err.message : 'Error al crear');
     } finally {
@@ -740,17 +727,12 @@ export function IngresoDetailPage() {
     }
     const pending = Math.max(0, Number(line.quantity_ordered) - line.draftReceived);
     const qty = Math.floor(Number(receiveQty));
-    const copies = Math.floor(Number(labelCopies));
     if (!Number.isFinite(qty) || qty < 1) {
       setModalError('Indica la cantidad recibida');
       return;
     }
     if (qty > pending) {
       setModalError(`Solo quedan ${pending} pendiente${pending === 1 ? '' : 's'}`);
-      return;
-    }
-    if (!Number.isFinite(copies) || copies < 1) {
-      setModalError('Indica cuántas etiquetas imprimir');
       return;
     }
     setBusy(true);
@@ -784,13 +766,11 @@ export function IngresoDetailPage() {
         qty: nextQty,
         ordered: Number(line.quantity_ordered),
       });
-      toast.success(`Vinculada · recibidas ${nextQty}/${line.quantity_ordered}`);
-      setLiveMsg(`Vinculada · ${nextQty}/${line.quantity_ordered}`);
+      toast.success(
+        `Prenda vinculada (${qty} ud. en borrador) · confirma recepción para sumar al stock`,
+      );
+      setLiveMsg(`Vinculada · confirma recepción · ${nextQty}/${line.quantity_ordered}`);
       closeModal();
-      const code = modal.product.barcode || modal.barcode;
-      if (code) {
-        await requestLabelPrint(modal.product.name, code, copies);
-      }
       focusScan();
     } catch (err) {
       setModalError(err instanceof Error ? err.message : 'Error al vincular');
@@ -841,7 +821,9 @@ export function IngresoDetailPage() {
 
       <div className="section-title no-print">
         <div className="page-intro" style={{ marginBottom: 0 }}>
-          <h2>{purchaseRef(purchase)}</h2>
+          <p className="ing-doc-ref" aria-label="Documento">
+            {purchaseRef(purchase)}
+          </p>
           <p>
             <span className={statusBadgeClass(purchase.status)}>{statusLabel(purchase.status)}</span>
             {' · '}
@@ -1040,7 +1022,6 @@ export function IngresoDetailPage() {
         onCreateAndReceive={createFromNoBarcode}
         onLinkExisting={linkExistingFromNoBarcode}
         onPrintLabel={(labelName, code, copies) => requestLabelPrint(labelName, code, copies)}
-        onAssignBarcodeAndPrint={assignBarcodeAndPrint}
       />
 
       {modal && (
@@ -1068,7 +1049,7 @@ export function IngresoDetailPage() {
             </div>
 
             <p className="ing-barcode-fixed">Código: {modal.barcode}</p>
-            <p className="ing-hint">Elige la línea de este ingreso</p>
+            <p className="ing-hint">Es el código de la etiqueta y de la pistola. Elige la línea de este ingreso.</p>
 
             <div className="ing-line-picks" role="radiogroup" aria-label="Líneas pendientes">
               {unlinkedPending.map((l) => (

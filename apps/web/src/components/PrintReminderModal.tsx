@@ -130,7 +130,7 @@ export function PrintReminderModal({ open, profile, onConfirm, onCancel }: Props
           )}
 
           <p className="print-reminder-hint muted">
-            Tip: si QZ Tray está abierto y la impresora está asignada en Ajustes, el envío es
+            Tip: con Atria Print Agent abierto y la impresora asignada en Ajustes, el envío es
             directo. Aquí usamos el diálogo del navegador como respaldo. En Chrome/Edge desmarca
             “Encabezados y pies de página” si aparecen fecha o URL.
           </p>

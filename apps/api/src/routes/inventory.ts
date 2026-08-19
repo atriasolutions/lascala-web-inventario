@@ -164,7 +164,8 @@ inventoryRouter.get(
     const { limit, offset } = parsePagination(req.query);
 
     const params: unknown[] = [req.activeBranchId];
-    let where = 'WHERE ib.branch_id = $1';
+    let where =
+      "WHERE ib.branch_id = $1 AND p.status NOT IN ('archived', 'merma', 'returned_to_supplier')";
 
     if (categoryId) {
       params.push(categoryId);

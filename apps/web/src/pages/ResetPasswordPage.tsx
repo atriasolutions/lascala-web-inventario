@@ -1,6 +1,6 @@
 import { type FormEvent, useMemo, useState } from 'react';
 import { Link, Navigate, useNavigate, useSearchParams } from 'react-router-dom';
-import { api } from '../lib/api';
+import { api, userFacingError } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { toast } from '../lib/toast';
 
@@ -44,7 +44,7 @@ export function ResetPasswordPage() {
       toast.success(data.message || 'Contraseña actualizada.');
       window.setTimeout(() => navigate('/login', { replace: true }), 1600);
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'No se pudo actualizar la contraseña';
+      const msg = userFacingError(err, 'No se pudo actualizar la contraseña');
       setError(msg);
       toast.error(msg);
     } finally {

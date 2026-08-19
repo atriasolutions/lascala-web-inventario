@@ -116,7 +116,7 @@ export function isQzConnected() {
 
 export async function connectQz(): Promise<void> {
   if (!QZ_TRAY_ENABLED) {
-    throw new Error('QZ Tray no está habilitado en esta versión');
+    throw new Error('La impresión directa no está disponible en esta versión');
   }
   ensureSecurity();
   if (isQzConnected()) return;
@@ -139,8 +139,8 @@ export async function connectQz(): Promise<void> {
       const msg = err instanceof Error ? err.message : String(err);
       throw new Error(
         msg.toLowerCase().includes('connect') || msg.toLowerCase().includes('unable')
-          ? 'QZ Tray no está corriendo o no respondió. Ábrelo en este computador e intenta de nuevo.'
-          : msg || 'No se pudo conectar a QZ Tray',
+          ? 'Atria Print Agent no está corriendo o no respondió. Ábrelo en este computador e intenta de nuevo.'
+          : msg || 'No se pudo conectar con la impresión de este computador',
       );
     });
 
@@ -180,10 +180,10 @@ export async function probeQzSigningAssets(): Promise<{ hasCert: boolean; hasKey
 
 /** Mensajes claros (Chile); no exponer “Failed to sign” al usuario. */
 function humanizeQzError(err: unknown): string {
-  const raw = err instanceof Error ? err.message : String(err || 'Error QZ');
+  const raw = err instanceof Error ? err.message : String(err || 'Error de impresión');
   const lower = raw.toLowerCase();
   if (lower.includes('sign') || lower.includes('certificate') || lower.includes('firma')) {
-    return 'QZ no autorizó la solicitud. Revisa que QZ Tray esté abierto y pulsa Allow si aparece el diálogo';
+    return 'No se autorizó la impresión. Revisa que Atria Print Agent esté abierto';
   }
   if (
     lower.includes('websocket') ||
@@ -191,10 +191,10 @@ function humanizeQzError(err: unknown): string {
     lower.includes('unable to establish') ||
     lower.includes('connection')
   ) {
-    return 'QZ Tray no está abierto o no responde. Ábrelo e inténtalo de nuevo';
+    return 'Atria Print Agent no está abierto o no responde. Ábrelo e inténtalo de nuevo';
   }
   if (lower.includes('printer') || lower.includes('impresora')) {
-    return raw.includes('asignada') ? raw : 'No se encontró la impresora en QZ Tray';
+    return raw.includes('asignada') ? raw : 'No se encontró esa impresora en este computador';
   }
   return raw;
 }
@@ -220,24 +220,30 @@ function toTsplSafe(s: string) {
     .trim();
 }
 
-/** 50×25 mm @ ~203 dpi */
-const LABEL_W_DOTS = 400;
-const LABEL_MARGIN = 16;
-/** Font "2" 1×1 ≈ 12 dots de ancho por carácter */
-const FONT2_CHAR_W = 12;
-const FONT1_CHAR_W = 8;
+/** 50×25 mm @ 203 dpi → dots. Márgenes laterales ~2.5 mm. */
+const LABEL_DPI = 203;
+const LABEL_W_DOTS = Math.round((50 / 25.4) * LABEL_DPI); // ≈ 400
+const LABEL_H_DOTS = Math.round((25 / 25.4) * LABEL_DPI); // ≈ 200
+const LABEL_MARGIN = Math.round((2.5 / 25.4) * LABEL_DPI); // ≈ 20
+const LABEL_USABLE = LABEL_W_DOTS - LABEL_MARGIN * 2;
 
-function centerTextX(text: string, charW: number) {
-  const w = text.length * charW;
-  return Math.max(LABEL_MARGIN, Math.floor((LABEL_W_DOTS - w) / 2));
+/** Font "2" 1×1 ≈ 12–14 dots/char (holgura para no correr texto a la derecha). */
+const FONT2_CHAR_W = 14;
+/** Font "1" 1×1 ≈ 8–10 dots/char */
+const FONT1_CHAR_W = 10;
+const FONT1_CHAR_H = 14;
+
+function centerX(contentWidthDots: number) {
+  const w = Math.min(Math.max(0, contentWidthDots), LABEL_W_DOTS);
+  return Math.max(0, Math.floor((LABEL_W_DOTS - w) / 2));
 }
 
 /**
- * Parte el nombre en hasta 2 líneas por ancho útil (dots).
- * Si no cabe todo, la última línea termina en "…".
+ * Parte el nombre en hasta 2 líneas por ancho útil.
+ * Si no cabe, la última línea termina en "...".
  */
 function splitNameLines(name: string, maxLines = 2): string[] {
-  const maxChars = Math.floor((LABEL_W_DOTS - LABEL_MARGIN * 2) / FONT2_CHAR_W);
+  const maxChars = Math.floor(LABEL_USABLE / FONT2_CHAR_W);
   const words = name.split(/\s+/).filter(Boolean);
   if (!words.length) return ["Boutique L'Scala"];
 
@@ -273,16 +279,22 @@ function splitNameLines(name: string, maxLines = 2): string[] {
   return lines.slice(0, maxLines);
 }
 
-/** Ancho aproximado Code128 (narrow=2) en dots. */
-function estimateCode128Width(code: string, narrow = 2) {
-  // start + data + check + stop ≈ (len+3)*11 modules * narrow + quiet
-  return (code.length + 3) * 11 * narrow + 24;
+/**
+ * Ancho dibujado Code128 en dots (TSPL BARCODE "128").
+ * Módulos: Start(11) + data*11 + Check(11) + Stop(13).
+ * Sin quiet zone: el firmware las deja fuera del trazo; incluirlas
+ * sobrestimaba el ancho y corría el barcode a la izquierda.
+ */
+function estimateCode128Width(code: string, narrow: number) {
+  const modules = 11 * (code.length + 2) + 13;
+  return modules * narrow;
 }
 
 /**
- * Comandos TSPL/TSPL2 para Xprinter XP-420B (y compatibles TSC).
- * Un solo job: CLS + contenido + PRINT n,1 (n copias en una sola llamada qz.print).
- * Texto y barcode centrados en 50×25 mm.
+ * Comandos TSPL/TSPL2 para Xprinter XP-420B.
+ * Centrado H: x = (labelW - contentW) / 2
+ * Centrado V: bloque nombre+barcode+código centrado en ~200 dots.
+ * Un solo job: PRINT n,1.
  */
 export function buildLabelTspl(name: string, code: string, copies = 1): string {
   const safeName = toTsplSafe(name.trim() || "Boutique L'Scala");
@@ -290,25 +302,38 @@ export function buildLabelTspl(name: string, code: string, copies = 1): string {
   const lines = splitNameLines(safeName, 2);
   const n = Math.max(1, Math.min(999, Math.floor(Number(copies) || 1)));
 
-  const nameLineH = 24;
-  const nameTop = 8;
-  const textCmds = lines.map((line, i) => {
-    const x = centerTextX(line, FONT2_CHAR_W);
-    const y = nameTop + i * nameLineH;
+  const lineH = 22;
+  const nameH = lines.length * lineH;
+  const gapNameBar = 6;
+  const gapBarCode = 4;
+
+  let narrow = 2;
+  let wide = 4;
+  let barW = estimateCode128Width(safeCode, narrow);
+  const maxBarW = LABEL_W_DOTS - LABEL_MARGIN * 2;
+  if (barW > maxBarW) {
+    narrow = 1;
+    wide = 2;
+    barW = estimateCode128Width(safeCode, narrow);
+  }
+  barW = Math.min(barW, maxBarW);
+
+  const barcodeH = lines.length > 1 ? 68 : 82;
+  const codeH = FONT1_CHAR_H;
+  const totalH = nameH + gapNameBar + barcodeH + gapBarCode + codeH;
+  const startY = Math.max(6, Math.floor((LABEL_H_DOTS - totalH) / 2));
+
+  const nameCmds = lines.map((line, i) => {
+    const textW = line.length * FONT2_CHAR_W;
+    const x = centerX(textW);
+    const y = startY + i * lineH;
     return `TEXT ${x},${y},"2",0,1,1,"${line}"`;
   });
 
-  const afterNameY = nameTop + lines.length * nameLineH + 4;
-  const barcodeH = lines.length > 1 ? 78 : 96;
-  const narrow = 2;
-  const wide = 4;
-  const barW = estimateCode128Width(safeCode, narrow);
-  const barX = Math.max(LABEL_MARGIN, Math.floor((LABEL_W_DOTS - barW) / 2));
-  // human=0: el código debajo lo centraremos con TEXT
-  const barcodeY = Math.min(afterNameY, LABEL_W_DOTS > 0 ? afterNameY : 48);
-
-  const codeY = Math.min(barcodeY + barcodeH + 4, 178);
-  const codeX = centerTextX(safeCode, FONT1_CHAR_W);
+  const barX = centerX(barW);
+  const barcodeY = startY + nameH + gapNameBar;
+  const codeX = centerX(safeCode.length * FONT1_CHAR_W);
+  const codeY = barcodeY + barcodeH + gapBarCode;
 
   const cmds = [
     'SIZE 50 mm,25 mm',
@@ -317,7 +342,7 @@ export function buildLabelTspl(name: string, code: string, copies = 1): string {
     'REFERENCE 0,0',
     'SET TEAR ON',
     'CLS',
-    ...textCmds,
+    ...nameCmds,
     `BARCODE ${barX},${barcodeY},"128",${barcodeH},0,0,${narrow},${wide},"${safeCode}"`,
     `TEXT ${codeX},${codeY},"1",0,1,1,"${safeCode}"`,
     `PRINT ${n},1`,
@@ -495,7 +520,7 @@ export async function tryQzPrintLabel(
   copies = 1,
 ): Promise<{ ok: true; printer: string; copies: number } | { ok: false; reason: string }> {
   if (!QZ_TRAY_ENABLED) {
-    return { ok: false, reason: 'QZ deshabilitado' };
+    return { ok: false, reason: 'Impresión directa no disponible' };
   }
   const prefs = loadPrintPrefs();
   if (!prefs.preferQzWhenAvailable) {
@@ -523,7 +548,7 @@ export async function tryQzPrint(
     return { ok: false, reason: 'Usa tryQzPrintLabel para etiquetas' };
   }
   if (!QZ_TRAY_ENABLED) {
-    return { ok: false, reason: 'QZ deshabilitado' };
+    return { ok: false, reason: 'Impresión directa no disponible' };
   }
   const prefs = loadPrintPrefs();
   if (!prefs.preferQzWhenAvailable) {

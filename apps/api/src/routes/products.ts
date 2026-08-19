@@ -1,25 +1,26 @@
 import { Router } from 'express';
 import { z } from 'zod';
-import { query, pool } from '../db/pool.js';
+import { query } from '../db/pool.js';
 import { requireAuth, requireBranch, requireRoles } from '../middleware/auth.js';
 import {
-  allocateNextBarcodeWithClient,
   assertBarcodeAvailable,
+  expandProductCodeVariants,
   getSettingNumber,
   isBarcodeAvailable,
-  nextBarcode,
   nextInternalCode,
-  noteBarcodeUsed,
   normalizeBarcode,
 } from '../services/inventory.js';
 import { asyncHandler, HttpError } from '../utils/errors.js';
 
+/** http(s), archivos subidos o assets estáticos de marca en public/brand */
 const photoUrlSchema = z
   .string()
   .min(1)
-  .refine((v) => /^https?:\/\//i.test(v) || v.startsWith('/uploads/'), {
-    message: 'URL de foto inválida',
-  })
+  .refine(
+    (v) =>
+      /^https?:\/\//i.test(v) || v.startsWith('/uploads/') || v.startsWith('/brand/'),
+    { message: 'URL de foto inválida (http(s), /uploads/ o /brand/)' },
+  )
   .optional()
   .nullable();
 
@@ -82,7 +83,8 @@ productsRouter.get(
       FROM products p
       LEFT JOIN categories c ON c.id = p.category_id
       ${stockJoin}
-      WHERE p.organization_id = $1`;
+      WHERE p.organization_id = $1
+        AND p.status <> 'archived'`;
 
     if (categoryId) {
       params.push(categoryId);
@@ -131,7 +133,7 @@ productsRouter.get(
 productsRouter.get(
   '/next-barcode',
   asyncHandler(async (req, res) => {
-    const code = await nextBarcode(req.user!.organizationId);
+    const code = await nextInternalCode(req.user!.organizationId);
     res.json({ nextBarcode: code });
   }),
 );
@@ -159,8 +161,10 @@ productsRouter.get(
   '/by-code/:code',
   requireBranch,
   asyncHandler(async (req, res) => {
-    const code =
-      normalizeBarcode(String(req.params.code || '')) || String(req.params.code || '').trim();
+    const raw = String(req.params.code || '');
+    const variants = expandProductCodeVariants(raw);
+    if (!variants.length) throw new HttpError(400, 'Código vacío');
+
     const result = await query(
       `SELECT p.*,
          c.name AS category_name,
@@ -170,9 +174,13 @@ productsRouter.get(
        LEFT JOIN categories c ON c.id = p.category_id
        LEFT JOIN inventory_balances ib ON ib.product_id = p.id AND ib.branch_id = $2
        WHERE p.organization_id = $1
-         AND (p.internal_code = $3 OR UPPER(COALESCE(p.barcode, '')) = UPPER($3))
+         AND p.status NOT IN ('archived', 'merma', 'returned_to_supplier')
+         AND (
+           p.internal_code = ANY($3::text[])
+           OR UPPER(COALESCE(p.barcode, '')) = ANY($3::text[])
+         )
        LIMIT 1`,
-      [req.user!.organizationId, req.activeBranchId, code],
+      [req.user!.organizationId, req.activeBranchId, variants],
     );
     if (!result.rows[0]) throw new HttpError(404, 'Producto no encontrado');
     res.json({ product: result.rows[0] });
@@ -221,25 +229,13 @@ productsRouter.post(
       allowsReturn = allowsReturn ?? def;
     }
 
-    let barcode = normalizeBarcode(body.barcode);
-    let allocated = false;
-    if (!barcode) {
-      const client = await pool.connect();
-      try {
-        barcode = await allocateNextBarcodeWithClient(client, req.user!.organizationId);
-        allocated = true;
-      } finally {
-        client.release();
-      }
-    }
-    await assertBarcodeAvailable(req.user!.organizationId, barcode);
-    if (!allocated) {
-      await noteBarcodeUsed(req.user!.organizationId, barcode);
-    }
-
     const costPrice = body.costPrice ?? 0;
     const salePrice = body.salePrice;
-    const internalCode = await nextInternalCode(req.user!.organizationId);
+    const requestedCode = normalizeBarcode(body.barcode);
+    if (requestedCode) {
+      await assertBarcodeAvailable(req.user!.organizationId, requestedCode);
+    }
+    const internalCode = requestedCode ?? (await nextInternalCode(req.user!.organizationId));
     const lowDefault = await getSettingNumber(req.user!.organizationId, 'low_stock_threshold', 1);
     const lowStockThreshold = body.lowStockThreshold ?? lowDefault;
     const tracksStock = body.tracksStock ?? true;
@@ -250,13 +246,12 @@ productsRouter.post(
          product_type, season, cost_price, sale_price, status, allows_exchange, allows_return,
          tracks_stock, low_stock_threshold, no_movement_alert_days,
          notes, exclusive_notes, created_by
-       ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'draft',$14,$15,$16,$17,$18,$19,$20,$21)
+       ) VALUES ($1,$2,$3,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'draft',$13,$14,$15,$16,$17,$18,$19,$20)
        RETURNING *`,
       [
         req.user!.organizationId,
         body.categoryId ?? null,
         internalCode,
-        barcode,
         body.name,
         body.description ?? null,
         body.brand ?? null,
@@ -308,6 +303,7 @@ productsRouter.patch(
         /** Solo sync legado; no es dato maestro editable desde catálogo. */
         costPrice: z.number().nonnegative().optional(),
         barcode: z.string().optional().nullable(),
+        internalCode: z.string().optional().nullable(),
         status: z.string().optional(),
         allowsExchange: z.boolean().optional(),
         allowsReturn: z.boolean().optional(),
@@ -327,13 +323,21 @@ productsRouter.patch(
       })
       .parse(req.body);
 
-    const barcode =
-      body.barcode !== undefined ? normalizeBarcode(body.barcode) : undefined;
     const productId = String(req.params.id);
-    if (barcode !== undefined) {
-      await assertBarcodeAvailable(req.user!.organizationId, barcode, {
-        excludeProductId: productId,
-      });
+
+    const current = await query<{ internal_code: string; barcode: string | null }>(
+      `SELECT internal_code, barcode FROM products WHERE id = $1 AND organization_id = $2`,
+      [productId, req.user!.organizationId],
+    );
+    const currentRow = current.rows[0];
+    if (!currentRow) throw new HttpError(404, 'Producto no encontrado');
+    const lockedCode = normalizeBarcode(currentRow.internal_code);
+    for (const attempted of [body.barcode, body.internalCode]) {
+      if (attempted === undefined) continue;
+      const next = normalizeBarcode(attempted);
+      if (!lockedCode || next !== lockedCode) {
+        throw new HttpError(400, 'El código de la prenda no se puede modificar.');
+      }
     }
 
     const result = await query(
@@ -341,31 +345,29 @@ productsRouter.patch(
          name = COALESCE($1, name),
          sale_price = COALESCE($2, sale_price),
          cost_price = COALESCE($3, cost_price),
-         barcode = CASE WHEN $4::boolean THEN $5 ELSE barcode END,
-         status = COALESCE($6::product_status, status),
-         allows_exchange = COALESCE($7, allows_exchange),
-         allows_return = COALESCE($8, allows_return),
-         notes = CASE WHEN $9::boolean THEN $10 ELSE notes END,
-         category_id = CASE WHEN $11::boolean THEN $12 ELSE category_id END,
-         brand = CASE WHEN $13::boolean THEN $14 ELSE brand END,
-         size_label = CASE WHEN $15::boolean THEN $16 ELSE size_label END,
-         color = CASE WHEN $17::boolean THEN $18 ELSE color END,
-         tracks_stock = COALESCE($19, tracks_stock),
-         low_stock_threshold = COALESCE($20, low_stock_threshold),
-         no_movement_alert_days = CASE WHEN $21::boolean THEN $22 ELSE no_movement_alert_days END,
-         description = CASE WHEN $23::boolean THEN $24 ELSE description END,
-         product_type = CASE WHEN $25::boolean THEN $26 ELSE product_type END,
-         season = CASE WHEN $27::boolean THEN $28 ELSE season END,
-         exclusive_notes = CASE WHEN $29::boolean THEN $30 ELSE exclusive_notes END,
+         barcode = internal_code,
+         status = COALESCE($4::product_status, status),
+         allows_exchange = COALESCE($5, allows_exchange),
+         allows_return = COALESCE($6, allows_return),
+         notes = CASE WHEN $7::boolean THEN $8 ELSE notes END,
+         category_id = CASE WHEN $9::boolean THEN $10 ELSE category_id END,
+         brand = CASE WHEN $11::boolean THEN $12 ELSE brand END,
+         size_label = CASE WHEN $13::boolean THEN $14 ELSE size_label END,
+         color = CASE WHEN $15::boolean THEN $16 ELSE color END,
+         tracks_stock = COALESCE($17, tracks_stock),
+         low_stock_threshold = COALESCE($18, low_stock_threshold),
+         no_movement_alert_days = CASE WHEN $19::boolean THEN $20 ELSE no_movement_alert_days END,
+         description = CASE WHEN $21::boolean THEN $22 ELSE description END,
+         product_type = CASE WHEN $23::boolean THEN $24 ELSE product_type END,
+         season = CASE WHEN $25::boolean THEN $26 ELSE season END,
+         exclusive_notes = CASE WHEN $27::boolean THEN $28 ELSE exclusive_notes END,
          updated_at = now()
-       WHERE id = $31 AND organization_id = $32
+       WHERE id = $29 AND organization_id = $30
        RETURNING *`,
       [
         body.name ?? null,
         body.salePrice ?? null,
         body.costPrice ?? null,
-        barcode !== undefined,
-        barcode ?? null,
         body.status ?? null,
         body.allowsExchange ?? null,
         body.allowsReturn ?? null,
@@ -396,10 +398,6 @@ productsRouter.patch(
       ],
     );
     if (!result.rows[0]) throw new HttpError(404, 'Producto no encontrado');
-
-    if (barcode) {
-      await noteBarcodeUsed(req.user!.organizationId, barcode);
-    }
 
     if (body.lowStockThreshold !== undefined && req.activeBranchId) {
       await query(

@@ -1,9 +1,8 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
-import { ColorSelect } from './ColorSelect';
 import { ColorSwatch } from './ColorSwatch';
+import { ProductFichaFields } from './ProductFichaFields';
 import { ProductPhotoPlaceholder } from './ProductPhotoPlaceholder';
 import { api, mediaUrl, money } from '../lib/api';
-import { COLOR_PRESETS } from '../lib/colorSwatch';
 import { lineFloorSalePrice, type PurchaseItem } from '../lib/purchasesStatus';
 
 export type NoBarcodeLine = PurchaseItem & { draftReceived: number };
@@ -41,6 +40,8 @@ type Props = {
     sizeLabel: string | null;
     color: string | null;
     productType: string | null;
+    season: string | null;
+    description: string | null;
     quantityReceived: number;
     labelCopies: number;
   }) => Promise<void>;
@@ -49,14 +50,8 @@ type Props = {
     product: ProductSearchHit;
     quantityReceived: number;
     labelCopies: number;
-    barcode?: string;
   }) => Promise<void>;
   onPrintLabel: (name: string, code: string, copies: number) => void | Promise<void>;
-  onAssignBarcodeAndPrint: (
-    product: ProductSearchHit,
-    barcode: string,
-    labelCopies: number,
-  ) => Promise<void>;
 };
 
 function linePending(line: NoBarcodeLine) {
@@ -73,7 +68,6 @@ export function NoBarcodeModal({
   onCreateAndReceive,
   onLinkExisting,
   onPrintLabel,
-  onAssignBarcodeAndPrint,
 }: Props) {
   const panelRef = useRef<HTMLDivElement>(null);
   const searchId = useId();
@@ -90,6 +84,8 @@ export function NoBarcodeModal({
   const [categoryId, setCategoryId] = useState('');
   const [brand, setBrand] = useState('');
   const [productType, setProductType] = useState('');
+  const [season, setSeason] = useState('');
+  const [description, setDescription] = useState('');
   const [receiveQty, setReceiveQty] = useState(1);
   const [labelCopies, setLabelCopies] = useState(1);
 
@@ -97,7 +93,6 @@ export function NoBarcodeModal({
   const [searchHits, setSearchHits] = useState<ProductSearchHit[]>([]);
   const [searchBusy, setSearchBusy] = useState(false);
   const [selected, setSelected] = useState<ProductSearchHit | null>(null);
-  const [existingBarcode, setExistingBarcode] = useState('');
 
   const selectedLine = useMemo(
     () => lines.find((l) => l.id === pickLineId) ?? null,
@@ -112,11 +107,11 @@ export function NoBarcodeModal({
     setMode('new');
     setError('');
     setBusy(false);
+    setPrintBusy(false);
     setBarcode(suggestedBarcode);
     setSearchQ('');
     setSearchHits([]);
     setSelected(null);
-    setExistingBarcode('');
     const first = lines[0];
     const pend = first ? linePending(first) : 1;
     setPickLineId(first?.id || '');
@@ -126,6 +121,8 @@ export function NoBarcodeModal({
     setCategoryId('');
     setBrand('');
     setProductType('');
+    setSeason('');
+    setDescription(first?.description || '');
     setReceiveQty(Math.max(1, pend));
     setLabelCopies(Math.max(1, pend));
     requestAnimationFrame(() => {
@@ -190,44 +187,16 @@ export function NoBarcodeModal({
     return data;
   }
 
-  async function handleCreate() {
-    setError('');
-    if (!lines.length) {
-      setError('No hay líneas sin vincular en este ingreso');
-      return;
-    }
-    if (!pickLineId || !selectedLine) {
-      setError('Elige la línea del ingreso');
-      return;
-    }
+  async function executeCreate() {
+    if (!pickLineId || !selectedLine) return;
     const code = barcode.trim().toUpperCase().replace(/\s+/g, '');
-    if (!code) {
-      setError('Ingresa un código de barras');
-      return;
-    }
-    if (!name.trim()) {
-      setError('Ingresa el nombre de la prenda');
-      return;
-    }
     const qty = Math.floor(Number(receiveQty));
-    const copies = Math.floor(Number(labelCopies));
-    if (!Number.isFinite(qty) || qty < 1) {
-      setError('Indica la cantidad recibida (mínimo 1)');
-      return;
-    }
-    if (qty > pendingOnLine) {
-      setError(`Solo quedan ${pendingOnLine} pendiente${pendingOnLine === 1 ? '' : 's'} en esta línea`);
-      return;
-    }
-    if (!Number.isFinite(copies) || copies < 1) {
-      setError('Indica cuántas etiquetas imprimir');
-      return;
-    }
     setBusy(true);
+    setError('');
     try {
       const check = await checkBarcodeUnique(code);
       if (!check.available) {
-        setError('Ese código de barras ya existe');
+        setError('Ese código ya existe');
         return;
       }
       await onCreateAndReceive({
@@ -239,14 +208,47 @@ export function NoBarcodeModal({
         sizeLabel: sizeLabel.trim() || null,
         color: color.trim() || null,
         productType: productType.trim() || null,
+        season: season.trim() || null,
+        description: description.trim() || null,
         quantityReceived: qty,
-        labelCopies: copies,
+        labelCopies: Math.max(1, Math.floor(Number(labelCopies) || 1)),
       });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo crear la prenda');
     } finally {
       setBusy(false);
     }
+  }
+
+  function handleCreate() {
+    setError('');
+    if (!lines.length) {
+      setError('No hay líneas sin vincular en este ingreso');
+      return;
+    }
+    if (!pickLineId || !selectedLine) {
+      setError('Elige la línea del ingreso');
+      return;
+    }
+    const code = barcode.trim().toUpperCase().replace(/\s+/g, '');
+    if (!code) {
+      setError('Ingresa el código de la prenda');
+      return;
+    }
+    if (!name.trim()) {
+      setError('Ingresa el nombre de la prenda');
+      return;
+    }
+    const qty = Math.floor(Number(receiveQty));
+    if (!Number.isFinite(qty) || qty < 1) {
+      setError('Indica la cantidad recibida (mínimo 1)');
+      return;
+    }
+    if (qty > pendingOnLine) {
+      setError(`Solo quedan ${pendingOnLine} pendiente${pendingOnLine === 1 ? '' : 's'} en esta línea`);
+      return;
+    }
+    void executeCreate();
   }
 
   async function handleReprintOnly() {
@@ -261,25 +263,15 @@ export function NoBarcodeModal({
       setError('Indica cuántas etiquetas imprimir');
       return;
     }
+    const code = (selected.barcode || selected.internal_code || '').trim();
+    if (!code) {
+      setError('Esta prenda no tiene código. No se puede imprimir.');
+      return;
+    }
     setBusy(true);
     setPrintBusy(true);
     try {
-      let code = (selected.barcode || existingBarcode || '').trim().toUpperCase();
-      if (!code) {
-        const next = await api<{ nextBarcode: string }>('/api/products/next-barcode');
-        code = next.nextBarcode;
-        setExistingBarcode(code);
-      }
-      const check = await checkBarcodeUnique(code, selected.id);
-      if (!selected.barcode && !check.available) {
-        setError('Ese código de barras ya existe');
-        return;
-      }
-      if (!selected.barcode) {
-        await onAssignBarcodeAndPrint(selected, check.barcode || code, copies);
-      } else {
-        await onPrintLabel(selected.name, selected.barcode, copies);
-      }
+      await onPrintLabel(selected.name, code, copies);
     } catch (err) {
       setError(err instanceof Error ? err.message : 'No se pudo imprimir');
     } finally {
@@ -288,7 +280,27 @@ export function NoBarcodeModal({
     }
   }
 
-  async function handleLinkExisting() {
+  async function executeLinkExisting() {
+    if (!selected || !pickLineId || !selectedLine) return;
+    const qty = Math.floor(Number(receiveQty));
+    const copies = Math.max(1, Math.floor(Number(labelCopies) || 1));
+    setBusy(true);
+    setError('');
+    try {
+      await onLinkExisting({
+        purchaseItemId: pickLineId,
+        product: selected,
+        quantityReceived: qty,
+        labelCopies: copies,
+      });
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo vincular');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  function handleLinkExisting() {
     if (!selected) {
       setError('Selecciona una prenda');
       return;
@@ -298,7 +310,6 @@ export function NoBarcodeModal({
       return;
     }
     const qty = Math.floor(Number(receiveQty));
-    const copies = Math.floor(Number(labelCopies));
     if (!Number.isFinite(qty) || qty < 1) {
       setError('Indica la cantidad recibida (mínimo 1)');
       return;
@@ -307,40 +318,7 @@ export function NoBarcodeModal({
       setError(`Solo quedan ${pendingOnLine} pendiente${pendingOnLine === 1 ? '' : 's'} en esta línea`);
       return;
     }
-    if (!Number.isFinite(copies) || copies < 1) {
-      setError('Indica cuántas etiquetas imprimir');
-      return;
-    }
-    setError('');
-    setBusy(true);
-    try {
-      let assignBarcode: string | undefined;
-      if (!selected.barcode) {
-        let code = existingBarcode.trim().toUpperCase();
-        if (!code) {
-          const next = await api<{ nextBarcode: string }>('/api/products/next-barcode');
-          code = next.nextBarcode;
-          setExistingBarcode(code);
-        }
-        const check = await checkBarcodeUnique(code, selected.id);
-        if (!check.available) {
-          setError('Ese código de barras ya existe');
-          return;
-        }
-        assignBarcode = check.barcode || code;
-      }
-      await onLinkExisting({
-        purchaseItemId: pickLineId,
-        product: selected,
-        quantityReceived: qty,
-        labelCopies: copies,
-        barcode: assignBarcode,
-      });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo vincular');
-    } finally {
-      setBusy(false);
-    }
+    void executeLinkExisting();
   }
 
   return (
@@ -400,7 +378,10 @@ export function NoBarcodeModal({
               </p>
             ) : (
               <>
-                <p className="ing-hint">Elige la línea y completa la ficha. El código no lleva guión (ej. BC000003).</p>
+                <p className="ing-hint">
+                  Elige la línea y completa la ficha. El código (LS-…) es el de la etiqueta y de la
+                  pistola.
+                </p>
 
                 <div className="ing-line-picks" role="radiogroup" aria-label="Líneas pendientes">
                   {lines.map((l) => (
@@ -424,103 +405,43 @@ export function NoBarcodeModal({
                   ))}
                 </div>
 
+                <ProductFichaFields
+                  idPrefix="ing-nb"
+                  values={{
+                    name,
+                    categoryId,
+                    brand,
+                    productType,
+                    sizeLabel,
+                    color,
+                    season,
+                    description,
+                  }}
+                  onChange={(partial) => {
+                    if (partial.name !== undefined) setName(partial.name);
+                    if (partial.categoryId !== undefined) setCategoryId(partial.categoryId);
+                    if (partial.brand !== undefined) setBrand(partial.brand);
+                    if (partial.productType !== undefined) setProductType(partial.productType);
+                    if (partial.sizeLabel !== undefined) setSizeLabel(partial.sizeLabel);
+                    if (partial.color !== undefined) setColor(partial.color);
+                    if (partial.season !== undefined) setSeason(partial.season);
+                    if (partial.description !== undefined) setDescription(partial.description);
+                  }}
+                  categories={categories}
+                  disabled={busy}
+                  code={{
+                    locked: false,
+                    value: barcode,
+                    onChange: setBarcode,
+                    helper: `Es el código de la etiqueta y de la pistola. Sugerido: ${suggestedBarcode}`,
+                  }}
+                  salePrice={{
+                    mode: 'locked',
+                    display: displaySale > 0 ? money(displaySale) : '—',
+                    hint: 'Fijado en la compra · no editable en recepción',
+                  }}
+                />
                 <div className="ing-nb-grid">
-                  <div className="field">
-                    <label htmlFor="ing-nb-code">Código de barras</label>
-                    <input
-                      id="ing-nb-code"
-                      value={barcode}
-                      onChange={(e) => setBarcode(e.target.value.toUpperCase())}
-                      autoComplete="off"
-                      spellCheck={false}
-                    />
-                    <span className="ing-hint">Sugerido: {suggestedBarcode}</span>
-                  </div>
-                  <div className="field">
-                    <label htmlFor="ing-nb-name">Nombre</label>
-                    <input
-                      id="ing-nb-name"
-                      value={name}
-                      onChange={(e) => setName(e.target.value)}
-                      autoComplete="off"
-                    />
-                  </div>
-                  <div className="field">
-                    <label htmlFor="ing-nb-color">Color</label>
-                    <ColorSelect
-                      id="ing-nb-color"
-                      value={color}
-                      onChange={setColor}
-                      disabled={busy}
-                    />
-                    <input
-                      className="ing-nb-color-custom"
-                      aria-label="Color personalizado"
-                      placeholder="Otro color…"
-                      value={
-                        color && !(COLOR_PRESETS as readonly string[]).includes(color)
-                          ? color
-                          : ''
-                      }
-                      onChange={(e) => setColor(e.target.value)}
-                      autoComplete="off"
-                      disabled={busy}
-                    />
-                  </div>
-                  <div className="field">
-                    <label htmlFor="ing-nb-size">Talla</label>
-                    <input
-                      id="ing-nb-size"
-                      value={sizeLabel}
-                      onChange={(e) => setSizeLabel(e.target.value)}
-                      autoComplete="off"
-                    />
-                  </div>
-                  <div className="field">
-                    <label htmlFor="ing-nb-cat">Categoría</label>
-                    <select
-                      id="ing-nb-cat"
-                      value={categoryId}
-                      onChange={(e) => setCategoryId(e.target.value)}
-                    >
-                      <option value="">Sin categoría</option>
-                      {categories.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.name}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <div className="field">
-                    <label htmlFor="ing-nb-brand">Marca</label>
-                    <input
-                      id="ing-nb-brand"
-                      value={brand}
-                      onChange={(e) => setBrand(e.target.value)}
-                      autoComplete="off"
-                    />
-                  </div>
-                  <div className="field">
-                    <label htmlFor="ing-nb-type">Tipología</label>
-                    <input
-                      id="ing-nb-type"
-                      value={productType}
-                      onChange={(e) => setProductType(e.target.value)}
-                      placeholder="Ej. vestido, jeans"
-                      autoComplete="off"
-                    />
-                  </div>
-                  <div className="field">
-                    <label htmlFor="ing-nb-sale">Precio de venta</label>
-                    <input
-                      id="ing-nb-sale"
-                      value={displaySale > 0 ? money(displaySale) : '—'}
-                      disabled
-                      readOnly
-                      aria-readonly="true"
-                    />
-                    <span className="ing-hint">Fijado en la compra · no editable en recepción</span>
-                  </div>
                   <div className="field">
                     <label htmlFor="ing-nb-qty">Cantidad recibida</label>
                     <input
@@ -564,12 +485,18 @@ export function NoBarcodeModal({
                 onClick={() => {
                   void (async () => {
                     if (printBusy) return;
+                    const copies = Math.max(1, Math.floor(Number(labelCopies) || 1));
+                    if (!barcode.trim()) {
+                      setError('Ingresa el código de la prenda');
+                      return;
+                    }
                     setPrintBusy(true);
+                    setError('');
                     try {
                       await onPrintLabel(
                         name.trim() || "Boutique L'Scala",
                         barcode.trim(),
-                        Math.max(1, Math.floor(Number(labelCopies) || 1)),
+                        copies,
                       );
                     } finally {
                       setPrintBusy(false);
@@ -589,7 +516,7 @@ export function NoBarcodeModal({
                 disabled={busy || printBusy || !lines.length}
                 onClick={() => void handleCreate()}
               >
-                {busy ? 'Guardando…' : 'Usar y crear'}
+                {busy ? 'Guardando…' : 'Crear y recibir'}
               </button>
             </div>
           </div>
@@ -626,7 +553,6 @@ export function NoBarcodeModal({
                       className={`ing-nb-search-hit${selected?.id === p.id ? ' is-selected' : ''}`}
                       onClick={() => {
                         setSelected(p);
-                        setExistingBarcode(p.barcode || '');
                         setError('');
                       }}
                     >
@@ -644,7 +570,7 @@ export function NoBarcodeModal({
                           {meta || 'Sin detalle'}
                         </span>
                         <span className="meta">
-                          {p.barcode ? `Barcode ${p.barcode}` : 'Sin barcode'}
+                          Código {p.barcode || p.internal_code}
                         </span>
                       </span>
                     </button>
@@ -670,20 +596,6 @@ export function NoBarcodeModal({
                     </span>
                   </button>
                 ))}
-              </div>
-            ) : null}
-
-            {selected && !selected.barcode ? (
-              <div className="field">
-                <label htmlFor="ing-nb-assign-code">Asignar código</label>
-                <input
-                  id="ing-nb-assign-code"
-                  value={existingBarcode}
-                  onChange={(e) => setExistingBarcode(e.target.value.toUpperCase())}
-                  autoComplete="off"
-                  spellCheck={false}
-                  placeholder="Se sugiere el correlativo si falta"
-                />
               </div>
             ) : null}
 
@@ -743,10 +655,15 @@ export function NoBarcodeModal({
                   disabled={busy || !selected || !pickLineId}
                   onClick={() => void handleLinkExisting()}
                 >
-                  {busy ? 'Vinculando…' : 'Vincular y recibir'}
+                  {busy ? 'Vinculando…' : 'Vincular'}
                 </button>
               ) : null}
             </div>
+            {lines.length > 0 ? (
+              <p className="ing-hint" style={{ marginTop: '0.5rem' }}>
+                Vincular deja la cantidad en borrador: usa «Confirmar recepción» para sumar al stock.
+              </p>
+            ) : null}
           </div>
         )}
       </div>

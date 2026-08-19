@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react';
 import { Link, useParams } from 'react-router-dom';
 import { api } from '../../lib/api';
 import {
+  purchaseRef,
   type Purchase,
   type PurchaseItem,
 } from '../../lib/purchasesStatus';
@@ -29,6 +30,7 @@ function toFormValues(purchase: Purchase, items: PurchaseItem[]): PurchaseFormVa
     supplierName: purchase.supplier_name || '',
     purchasedAt: dateInputValue(purchase.purchased_at),
     notes: purchase.notes || '',
+    destinationBranchId: purchase.destination_branch_id || '',
     lines: items.map((item) => ({
       key: item.id,
       description: item.description,
@@ -48,7 +50,6 @@ export function CompraDetailPage() {
   const [items, setItems] = useState<PurchaseItem[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
-  const [savedFlash, setSavedFlash] = useState('');
 
   const load = useCallback(async () => {
     if (!id) return;
@@ -82,7 +83,8 @@ export function CompraDetailPage() {
       setShellTitle(null);
       return;
     }
-    setShellTitle(editable ? 'Editar compra' : 'Compra');
+    const ref = purchaseRef(purchase);
+    setShellTitle(editable ? `Editar · ${ref}` : ref);
     return () => setShellTitle(null);
   }, [purchase, editable, setShellTitle]);
 
@@ -97,9 +99,6 @@ export function CompraDetailPage() {
       method: 'PATCH',
       body: payload,
     });
-    setSavedFlash('Compra actualizada');
-    await load();
-    window.setTimeout(() => setSavedFlash(''), 2500);
   }
 
   if (loading) {
@@ -126,10 +125,6 @@ export function CompraDetailPage() {
         Ir a recepción
       </Link>
     </div>
-  ) : savedFlash ? (
-    <p className="compras-saved-flash" role="status">
-      {savedFlash}
-    </p>
   ) : null;
 
   return (
@@ -140,6 +135,7 @@ export function CompraDetailPage() {
       backTo="/compras"
       backLabel="← Volver a compras"
       submitLabel="Guardar cambios"
+      successToast="Compra actualizada"
       banner={banner}
       moodTitle={editable ? 'Edita antes de recibir' : 'Documento cerrado a edición'}
       moodCopy={

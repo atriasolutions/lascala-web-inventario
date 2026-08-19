@@ -34,12 +34,22 @@ type ExpenseRow = {
   incurred_on: string;
 };
 
+type LowRotationRow = {
+  id: string;
+  name: string;
+  internal_code: string;
+  last_movement_at: string | null;
+  days_without_movement: number;
+  /** Alias temporal del API (= days_without_movement). No usar como “vendidos”. */
+  qty_sold?: number;
+};
+
 type Summary = {
   salesDay: { total: string; count: string };
   salesMonth: { total: string; count: string };
   salesLast30: { total: string; count: string; units: string };
   topProducts: { id: string; name: string; internal_code: string; qty_sold: number; revenue: string }[];
-  lowRotation: { id: string; name: string; internal_code: string; qty_sold: number }[];
+  lowRotation: LowRotationRow[];
   categorySales: { name: string; qty: number; revenue: string }[];
   salesTrend: { day: string; total: string; count: string }[];
   expensesMonth: { total: string };
@@ -106,6 +116,17 @@ function formatShortDate(iso: string) {
   return d.toLocaleDateString('es-CL', { day: '2-digit', month: 'short' });
 }
 
+function daysWithoutMovementLabel(row: {
+  last_movement_at: string | null;
+  days_without_movement: number;
+}) {
+  if (row.last_movement_at == null) return 'Sin movimientos aún';
+  const n = Number(row.days_without_movement);
+  if (!Number.isFinite(n) || n < 0) return 'Sin movimientos aún';
+  if (n === 1) return '1 día';
+  return `${n} días`;
+}
+
 export function DashboardPage() {
   const { user, branches, branchId } = useAuth();
   const [data, setData] = useState<Summary | null>(null);
@@ -124,15 +145,21 @@ export function DashboardPage() {
   );
 
   useEffect(() => {
+    let cancelled = false;
+    setData(null);
+    setError('');
     (async () => {
       try {
         const summary = await api<Summary>('/api/dashboard/summary');
-        setData(summary);
+        if (!cancelled) setData(summary);
       } catch (e) {
-        setError(e instanceof Error ? e.message : 'Error');
+        if (!cancelled) setError(e instanceof Error ? e.message : 'Error');
       }
     })();
-  }, []);
+    return () => {
+      cancelled = true;
+    };
+  }, [branchId]);
 
   if (error) return <p className="error">{error}</p>;
   if (!data) {
@@ -172,7 +199,7 @@ export function DashboardPage() {
 
   const attention = [
     {
-      to: '/inventario',
+      to: '/inventario?onlyLow=1',
       label: 'Stock bajo',
       value: data.alertsCount.lowStock,
       icon: IconAlertTriangle,
@@ -184,6 +211,13 @@ export function DashboardPage() {
       value: data.alertsCount.noMovement,
       icon: IconSwap,
       tone: data.alertsCount.noMovement > 0 ? 'warn' : 'ok',
+    },
+    {
+      to: '/mermas',
+      label: 'Vouchers por vencer',
+      value: data.alertsCount.vouchersExpiring,
+      icon: IconReceipt,
+      tone: data.alertsCount.vouchersExpiring > 0 ? 'warn' : 'ok',
     },
     {
       to: '/ingresos',
@@ -210,18 +244,20 @@ export function DashboardPage() {
             <span className="mobile-only">Hola, {firstName}</span>
             <span className="desktop-only">Salón de ventas</span>
           </h2>
-          <p className="dash-hero-sub">{todayLabel}</p>
+          <p className="dash-hero-sub">
+            {todayLabel} · Toda la sucursal
+          </p>
         </div>
         <div className="dash-hero-metrics">
           <div>
             <span>Ventas del día</span>
             <strong>{money(data.salesDay.total)}</strong>
-            <em>{ticketLabel(data.salesDay.count)}</em>
+            <em>{ticketLabel(data.salesDay.count)} · sucursal</em>
           </div>
           <div>
             <span>Ventas del mes</span>
             <strong>{money(data.salesMonth.total)}</strong>
-            <em>{ticketLabel(data.salesMonth.count)}</em>
+            <em>{ticketLabel(data.salesMonth.count)} · sucursal</em>
           </div>
         </div>
       </section>
@@ -338,6 +374,7 @@ export function DashboardPage() {
           <div>
             <p className="dash-kicker">Resumen</p>
             <h3>Números de la sucursal</h3>
+            <p className="dash-section-note">Incluye todas las cajas de {branchName}</p>
           </div>
         </header>
 
@@ -350,7 +387,9 @@ export function DashboardPage() {
               </span>
             </div>
             <strong>{money(avgTicket)}</strong>
-            <p>{unitLabel(data.salesLast30.units, 'prenda vendida', 'prendas vendidas')}</p>
+            <p>
+              {unitLabel(data.salesLast30.units, 'prenda vendida', 'prendas vendidas')} · sucursal
+            </p>
           </article>
           <article className="dash-kpi">
             <div className="dash-kpi-top">
@@ -516,7 +555,7 @@ export function DashboardPage() {
         <header className="dash-section-head">
           <div>
             <p className="dash-kicker">Inventario</p>
-            <h3>Productos más y menos vendidos</h3>
+            <h3>Más vendidos y sin movimiento</h3>
           </div>
           <Link className="dash-text-link" to="/reportes">
             Ver reportes →
@@ -529,10 +568,11 @@ export function DashboardPage() {
               <h4>Más vendidos</h4>
               <span className="badge brand">Top</span>
             </div>
+            <p className="dash-panel-note">Prendas con más salida en la sucursal</p>
             {!data.topProducts.length ? (
               <p className="dash-empty-line">Aún no hay ventas en este período.</p>
             ) : (
-              <ol className="dash-rank">
+              <ol className="dash-rank dash-rank-scroll">
                 {data.topProducts.map((p, i) => (
                   <li key={p.id}>
                     <span className="dash-rank-n">{i + 1}</span>
@@ -551,14 +591,14 @@ export function DashboardPage() {
 
           <article className="dash-panel">
             <div className="dash-panel-head">
-              <h4>Menos vendidos</h4>
+              <h4>Sin movimiento</h4>
               <span className="badge warning">Revisar</span>
             </div>
-            <p className="dash-panel-note">Prendas con poca salida en los últimos 30 días</p>
+            <p className="dash-panel-note">Prendas sin salida reciente en la sucursal</p>
             {!data.lowRotation.length ? (
-              <p className="dash-empty-line">No hay datos de baja venta todavía.</p>
+              <p className="dash-empty-line">No hay prendas pendientes de revisar por ahora.</p>
             ) : (
-              <ol className="dash-rank soft">
+              <ol className="dash-rank soft dash-rank-scroll">
                 {data.lowRotation.map((p, i) => (
                   <li key={p.id}>
                     <span className="dash-rank-n">{i + 1}</span>
@@ -566,7 +606,7 @@ export function DashboardPage() {
                       <strong>{p.name}</strong>
                       <span>{p.internal_code}</span>
                     </div>
-                    <em>{p.qty_sold} en 30 días</em>
+                    <em>{daysWithoutMovementLabel(p)}</em>
                   </li>
                 ))}
               </ol>

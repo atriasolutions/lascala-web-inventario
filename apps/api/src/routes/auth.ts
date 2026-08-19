@@ -4,7 +4,7 @@ import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { env } from '../config.js';
 import { query } from '../db/pool.js';
-import { loadUser, requireAuth, signToken } from '../middleware/auth.js';
+import { loadUser, requireAuth, signToken, isOrgOwner } from '../middleware/auth.js';
 import { asyncHandler, HttpError } from '../utils/errors.js';
 
 export const authRouter = Router();
@@ -140,25 +140,82 @@ authRouter.get(
   }),
 );
 
+authRouter.patch(
+  '/me',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const body = z
+      .object({
+        fullName: z.string().trim().min(1).max(120).optional(),
+        password: z.string().min(6).optional(),
+      })
+      .parse(req.body);
+    if (body.fullName === undefined && body.password === undefined) {
+      throw new HttpError(400, 'No hay cambios para aplicar');
+    }
+    if (body.password) {
+      const hash = await bcrypt.hash(body.password, 10);
+      await query(`UPDATE users SET password_hash = $1, updated_at = now() WHERE id = $2`, [
+        hash,
+        req.user!.id,
+      ]);
+    }
+    if (body.fullName !== undefined) {
+      await query(`UPDATE users SET full_name = $1, updated_at = now() WHERE id = $2`, [
+        body.fullName,
+        req.user!.id,
+      ]);
+    }
+    const user = await loadUser(req.user!.id);
+    if (!user) throw new HttpError(401, 'Usuario inválido');
+    res.json({ user });
+  }),
+);
+
 authRouter.get(
   '/context/branches',
   requireAuth,
   asyncHandler(async (req, res) => {
-    const ids = req.user!.branches.map((b) => b.branchId);
-    if (!ids.length) return res.json({ branches: [] });
-    const result = await query(
-      `SELECT b.*, json_agg(json_build_object('id', p.id, 'code', p.code, 'name', p.name, 'status', p.status))
-         FILTER (WHERE p.id IS NOT NULL) AS pos_terminals
-       FROM branches b
-       LEFT JOIN pos_terminals p ON p.branch_id = b.id
-       WHERE b.id = ANY($1::uuid[])
-       GROUP BY b.id
-       ORDER BY b.name`,
-      [ids],
-    );
+    const owner = isOrgOwner(req.user!);
+    if (!owner && !req.user!.branches.length) return res.json({ branches: [] });
+
+    const result = owner
+      ? await query(
+          `SELECT b.*, json_agg(json_build_object('id', p.id, 'code', p.code, 'name', p.name, 'status', p.status)
+             ORDER BY p.name)
+             FILTER (WHERE p.id IS NOT NULL) AS pos_terminals
+           FROM branches b
+           LEFT JOIN pos_terminals p ON p.branch_id = b.id AND p.status = 'active'
+           WHERE b.organization_id = $1 AND b.is_active = true
+           GROUP BY b.id
+           ORDER BY b.name`,
+          [req.user!.organizationId],
+        )
+      : await query(
+          `SELECT b.*, json_agg(json_build_object('id', p.id, 'code', p.code, 'name', p.name, 'status', p.status)
+             ORDER BY p.name)
+             FILTER (WHERE p.id IS NOT NULL) AS pos_terminals
+           FROM branches b
+           JOIN user_branches ub ON ub.branch_id = b.id AND ub.user_id = $2
+           LEFT JOIN pos_terminals p
+             ON p.branch_id = b.id AND p.status = 'active'
+            AND EXISTS (SELECT 1 FROM user_pos up WHERE up.user_id = $2 AND up.pos_id = p.id)
+           WHERE b.organization_id = $1 AND b.is_active = true
+             AND b.id = ANY($3::uuid[])
+           GROUP BY b.id
+           ORDER BY b.name`,
+          [
+            req.user!.organizationId,
+            req.user!.id,
+            req.user!.branches.map((b) => b.branchId),
+          ],
+        );
+
     const branches = result.rows.map((b) => ({
       ...b,
-      role: req.user!.branches.find((x) => x.branchId === b.id)?.role,
+      role: owner
+        ? 'owner'
+        : req.user!.branches.find((x) => x.branchId === b.id)?.role,
     }));
     res.json({ branches });
   }),

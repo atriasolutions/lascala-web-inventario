@@ -11,11 +11,24 @@
     "dev": "npm run dev --workspace=@lscala/api & npm run dev --workspace=@lscala/web",
     "dev:api": "npm run dev --workspace=@lscala/api",
     "dev:web": "npm run dev --workspace=@lscala/web",
+    "dev:print-agent": "npm run dev --prefix atria-print-agent",
     "build": "npm run build --workspace=@lscala/api && npm run build --workspace=@lscala/web",
     "db:migrate": "bash db/migrate.sh",
-    "db:seed": "bash db/migrate.sh seed"
+    "db:seed": "bash db/migrate.sh seed",
+    "db:seed:demo": "bash db/seed-demo.sh",
+    "test:e2e": "playwright test",
+    "test:e2e:ui": "playwright test --ui",
+    "test:e2e:mobile": "playwright test --project=mobile-360 --project=mobile-390 --project=mobile-430",
+    "test:e2e:responsive": "playwright test responsive.spec.ts",
+    "test:e2e:flows": "playwright test flows.spec.ts --project=mobile-390",
+    "test:e2e:install": "playwright install chromium",
+    "test:e2e:findings": "node tests/e2e/report.mjs",
+    "test:e2e:report": "playwright show-report"
   },
   "engines": {
     "node": ">=20"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.62.1"
   }
 }

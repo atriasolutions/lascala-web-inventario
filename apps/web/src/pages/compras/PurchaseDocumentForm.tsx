@@ -1,6 +1,5 @@
 import {
   type FormEvent,
-  type MouseEvent,
   type ReactNode,
   useCallback,
   useEffect,
@@ -9,12 +8,15 @@ import {
   useRef,
   useState,
 } from 'react';
-import { Link, useNavigate } from 'react-router-dom';
+import { Link, useBlocker, useNavigate } from 'react-router-dom';
 import { BoutiqueMood } from '../../components/BoutiqueMood';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { IconClose } from '../../components/icons';
 import { ProductPhotoPlaceholder } from '../../components/ProductPhotoPlaceholder';
 import { SupplierLookup } from '../../components/SupplierLookup';
 import { api, mediaUrl, money } from '../../lib/api';
+import { useAuth } from '../../lib/auth';
+import { toast } from '../../lib/toast';
 import {
   blankEditor,
   DOC_TYPES,
@@ -37,6 +39,8 @@ type Props = {
   backTo?: string;
   backLabel?: string;
   submitLabel?: string;
+  /** Toast tras guardar con éxito (antes de ir a la lista). */
+  successToast?: string;
   banner?: ReactNode;
   moodTitle?: string;
   moodCopy?: string;
@@ -49,6 +53,7 @@ const EMPTY: PurchaseFormValues = {
   supplierId: '',
   purchasedAt: '',
   notes: '',
+  destinationBranchId: '',
   lines: [],
 };
 
@@ -58,6 +63,7 @@ function snapshotOf(v: {
   supplierId: string;
   purchasedAt: string;
   notes: string;
+  destinationBranchId: string;
   lines: LineDraft[];
 }) {
   return JSON.stringify({
@@ -66,6 +72,7 @@ function snapshotOf(v: {
     supplierId: v.supplierId,
     purchasedAt: v.purchasedAt,
     notes: v.notes.trim(),
+    destinationBranchId: v.destinationBranchId,
     lines: v.lines.map((l) => ({
       key: l.key,
       description: l.description,
@@ -83,6 +90,7 @@ export function PurchaseDocumentForm({
   backTo = '/compras',
   backLabel = '← Volver a compras',
   submitLabel = 'Guardar compra',
+  successToast = 'Compra guardada',
   banner,
   moodTitle = 'Documento de compra',
   moodCopy = 'Registra factura o boleta y las prendas. La recepción a stock se hace después en Ingresos.',
@@ -90,9 +98,12 @@ export function PurchaseDocumentForm({
 }: Props) {
   const readOnly = mode === 'view';
   const navigate = useNavigate();
+  const { branches, branchId } = useAuth();
   const modalTitleId = useId();
   const modalRef = useRef<HTMLDivElement>(null);
   const descRef = useRef<HTMLInputElement>(null);
+  /** Permite navegar tras guardar sin disparar el blocker (dirty aún no re-renderizó). */
+  const allowLeaveRef = useRef(false);
 
   const seed = initial || EMPTY;
   const [docType, setDocType] = useState<DocType>(seed.docType);
@@ -100,11 +111,13 @@ export function PurchaseDocumentForm({
   const [supplierId, setSupplierId] = useState(seed.supplierId);
   const [purchasedAt, setPurchasedAt] = useState(seed.purchasedAt);
   const [notes, setNotes] = useState(seed.notes);
+  const [destinationBranchId, setDestinationBranchId] = useState(
+    () => seed.destinationBranchId || branchId || branches[0]?.id || '',
+  );
   const [lines, setLines] = useState<LineDraft[]>(seed.lines);
   const [suppliers, setSuppliers] = useState<Supplier[]>([]);
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
-  const [leaveOpen, setLeaveOpen] = useState(false);
   const [baseline, setBaseline] = useState(() =>
     snapshotOf({
       docType: seed.docType,
@@ -112,6 +125,7 @@ export function PurchaseDocumentForm({
       supplierId: seed.supplierId,
       purchasedAt: seed.purchasedAt,
       notes: seed.notes,
+      destinationBranchId: seed.destinationBranchId || branchId || branches[0]?.id || '',
       lines: seed.lines,
     }),
   );
@@ -128,6 +142,7 @@ export function PurchaseDocumentForm({
     setSupplierId(initial.supplierId);
     setPurchasedAt(initial.purchasedAt);
     setNotes(initial.notes);
+    setDestinationBranchId(initial.destinationBranchId || branchId || branches[0]?.id || '');
     setLines(initial.lines);
     setBaseline(
       snapshotOf({
@@ -136,11 +151,12 @@ export function PurchaseDocumentForm({
         supplierId: initial.supplierId,
         purchasedAt: initial.purchasedAt,
         notes: initial.notes,
+        destinationBranchId: initial.destinationBranchId || branchId || branches[0]?.id || '',
         lines: initial.lines,
       }),
     );
     setListNudge('idle');
-  }, [initial]);
+  }, [initial, branchId, branches]);
 
   useEffect(() => {
     api<{ suppliers: Supplier[] }>('/api/catalog/suppliers')
@@ -179,9 +195,18 @@ export function PurchaseDocumentForm({
   const dirty = useMemo(() => {
     if (readOnly) return false;
     return (
-      snapshotOf({ docType, invoice, supplierId, purchasedAt, notes, lines }) !== baseline
+      snapshotOf({ docType, invoice, supplierId, purchasedAt, notes, destinationBranchId, lines }) !==
+      baseline
     );
-  }, [readOnly, docType, invoice, supplierId, purchasedAt, notes, lines, baseline]);
+  }, [readOnly, docType, invoice, supplierId, purchasedAt, notes, destinationBranchId, lines, baseline]);
+
+  const blocker = useBlocker(
+    ({ currentLocation, nextLocation }) =>
+      dirty &&
+      !allowLeaveRef.current &&
+      currentLocation.pathname !== nextLocation.pathname,
+  );
+  const leaveOpen = blocker.state === 'blocked';
 
   useEffect(() => {
     if (!dirty) return;
@@ -199,18 +224,13 @@ export function PurchaseDocumentForm({
     return () => window.clearTimeout(t);
   }, [listNudge]);
 
-  const cancelLeave = useCallback(() => setLeaveOpen(false), []);
+  const cancelLeave = useCallback(() => {
+    if (blocker.state === 'blocked') blocker.reset();
+  }, [blocker]);
 
   const confirmLeave = useCallback(() => {
-    setLeaveOpen(false);
-    navigate(backTo);
-  }, [navigate, backTo]);
-
-  function onBackClick(e: MouseEvent) {
-    if (!dirty) return;
-    e.preventDefault();
-    setLeaveOpen(true);
-  }
+    if (blocker.state === 'blocked') blocker.proceed();
+  }, [blocker]);
 
   function openCreate() {
     if (readOnly) return;
@@ -309,6 +329,10 @@ export function PurchaseDocumentForm({
       setError('Ingresa el número del documento');
       return;
     }
+    if (!destinationBranchId) {
+      setError('Elige la sucursal destino de la mercadería');
+      return;
+    }
     if (!lines.length) {
       setError('Agrega al menos una prenda');
       return;
@@ -317,11 +341,32 @@ export function PurchaseDocumentForm({
     setBusy(true);
     try {
       await onSubmit(
-        toApiPayload({ docType, invoice, supplierId, purchasedAt, notes, lines }),
+        toApiPayload({
+          docType,
+          invoice,
+          supplierId,
+          purchasedAt,
+          notes,
+          destinationBranchId,
+          lines,
+        }),
       );
-      setBaseline(snapshotOf({ docType, invoice, supplierId, purchasedAt, notes, lines }));
+      const snap = snapshotOf({
+        docType,
+        invoice,
+        supplierId,
+        purchasedAt,
+        notes,
+        destinationBranchId,
+        lines,
+      });
+      setBaseline(snap);
       setListNudge('idle');
+      allowLeaveRef.current = true;
+      toast.success(successToast);
+      navigate(backTo);
     } catch (err) {
+      allowLeaveRef.current = false;
       setError(err instanceof Error ? err.message : 'No se pudo guardar');
     } finally {
       setBusy(false);
@@ -339,7 +384,7 @@ export function PurchaseDocumentForm({
       onSubmit={handleSubmit}
     >
       <div className="ing-new-top">
-        <Link to={backTo} className="btn ghost" onClick={onBackClick}>
+        <Link to={backTo} className="btn ghost">
           {backLabel}
         </Link>
       </div>
@@ -423,6 +468,46 @@ export function PurchaseDocumentForm({
           </div>
 
           <div className="field">
+            <label htmlFor="compra-dest-branch">Sucursal destino</label>
+            {readOnly || mode === 'edit' ? (
+              <input
+                id="compra-dest-branch"
+                value={
+                  branches.find((b) => b.id === destinationBranchId)?.name ||
+                  destinationBranchId ||
+                  '—'
+                }
+                readOnly
+                disabled
+              />
+            ) : branches.length <= 1 ? (
+              <input
+                id="compra-dest-branch"
+                readOnly
+                value={branches[0] ? `${branches[0].name} (${branches[0].code})` : '—'}
+              />
+            ) : (
+              <select
+                id="compra-dest-branch"
+                required
+                value={destinationBranchId}
+                onChange={(e) => setDestinationBranchId(e.target.value)}
+              >
+                <option value="">Elegir sucursal…</option>
+                {branches.map((b) => (
+                  <option key={b.id} value={b.id}>
+                    {b.name} ({b.code})
+                    {b.id === branchId ? ' · activa' : ''}
+                  </option>
+                ))}
+              </select>
+            )}
+            <span className="muted" style={{ display: 'block', marginTop: '0.35rem', fontSize: '0.8rem' }}>
+              Ahí se recibirá la mercadería a stock (puede ser distinta a la sucursal de la barra).
+            </span>
+          </div>
+
+          <div className="field">
             <label htmlFor="compra-notes">Notas</label>
             <textarea
               id="compra-notes"
@@ -450,16 +535,6 @@ export function PurchaseDocumentForm({
                     : 'Agrega prendas; después guarda abajo'}
               </p>
             </div>
-            {!readOnly && lines.length > 0 && (
-              <button
-                type="button"
-                className="btn secondary"
-                onClick={openCreate}
-                disabled={Boolean(editor)}
-              >
-                + Agregar prenda
-              </button>
-            )}
           </div>
 
           {!lines.length && !editor && !readOnly && (
@@ -468,8 +543,8 @@ export function PurchaseDocumentForm({
               <p className="muted">
                 Cada prenda se suma aquí. La compra se registra con el botón de abajo.
               </p>
-              <button type="button" className="btn" onClick={openCreate}>
-                Agregar primera prenda
+              <button type="button" className="btn ing-add-prenda" onClick={openCreate}>
+                + Agregar primera prenda
               </button>
             </div>
           )}
@@ -492,7 +567,7 @@ export function PurchaseDocumentForm({
                         <span className="ing-compact-body">
                           <strong>{line.description}</strong>
                           <span className="meta">
-                            {line.quantity} ud · Costo {money(line.unitCost)} · Venta{' '}
+                            {line.quantity} ud · Precio costo {money(line.unitCost)} · Venta{' '}
                             {money(line.salePrice)}
                           </span>
                         </span>
@@ -518,7 +593,7 @@ export function PurchaseDocumentForm({
                           <span className="ing-compact-body">
                             <strong>{line.description}</strong>
                             <span className="meta">
-                              {line.quantity} ud · Costo {money(line.unitCost)} · Venta{' '}
+                              {line.quantity} ud · Precio costo {money(line.unitCost)} · Venta{' '}
                               {money(line.salePrice)}
                             </span>
                           </span>
@@ -540,6 +615,17 @@ export function PurchaseDocumentForm({
                 );
               })}
             </ul>
+          )}
+
+          {!readOnly && lines.length > 0 && (
+            <button
+              type="button"
+              className="btn ing-add-prenda ing-add-line-cta"
+              onClick={openCreate}
+              disabled={Boolean(editor)}
+            >
+              + Agregar prenda
+            </button>
           )}
         </section>
 
@@ -597,141 +683,141 @@ export function PurchaseDocumentForm({
       )}
 
       {editor && !readOnly && (
-        <div
-          className="pos-modal open"
-          role="presentation"
-          onClick={(e) => {
-            if (e.target === e.currentTarget) closeEditor();
-          }}
-        >
-          <div
-            className="pos-modal-panel ing-line-modal"
-            role="dialog"
-            aria-modal="true"
-            aria-labelledby={modalTitleId}
-            ref={modalRef}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="pos-modal-head">
-              <h3 id={modalTitleId}>
-                {editorMode === 'create' ? 'Nueva prenda' : 'Editar prenda'}
-              </h3>
-              <button type="button" className="btn ghost" onClick={closeEditor} aria-label="Cerrar">
-                Cerrar
-              </button>
-            </div>
+        <div className="pos-modal open" role="presentation">
+          <div className="ing-line-modal-shell">
+            <button
+              type="button"
+              className="ing-line-modal-close"
+              onClick={closeEditor}
+              aria-label="Cerrar"
+            >
+              <IconClose size={18} />
+            </button>
+            <div
+              className="pos-modal-panel ing-line-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby={modalTitleId}
+              ref={modalRef}
+            >
+              <div className="pos-modal-head">
+                <h3 id={modalTitleId}>
+                  {editorMode === 'create' ? 'Nueva prenda' : 'Editar prenda'}
+                </h3>
+              </div>
 
-            <p className="ing-line-modal-note">
-              Suma a la lista; después guarda la compra abajo.
-            </p>
+              <p className="ing-line-modal-note">
+                Suma a la lista; después guarda la compra abajo.
+              </p>
 
-            <div className="ing-line-modal-body">
-              <div className="ing-line-photo">
-                {editor.photoUrl ? (
-                  <img src={mediaUrl(editor.photoUrl)} alt="" />
-                ) : (
-                  <ProductPhotoPlaceholder className="ing-line-photo-empty" />
-                )}
-                <div className="ing-line-photo-actions">
-                  <label className="ing-photo-btn">
-                    <input
-                      type="file"
-                      accept="image/*"
-                      capture="environment"
-                      hidden
-                      onChange={(e) => void onPhoto(e.target.files?.[0] ?? null)}
-                    />
-                    {editor.photoBusy
-                      ? 'Subiendo…'
-                      : editor.photoUrl
-                        ? 'Cambiar foto'
-                        : 'Agregar foto'}
-                  </label>
+              <div className="ing-line-modal-body">
+                <div className="ing-line-photo">
                   {editor.photoUrl ? (
-                    <button
-                      type="button"
-                      className="btn ghost"
-                      onClick={() => patchEditor({ photoUrl: null })}
-                    >
-                      Quitar
-                    </button>
-                  ) : null}
+                    <img src={mediaUrl(editor.photoUrl)} alt="" />
+                  ) : (
+                    <ProductPhotoPlaceholder className="ing-line-photo-empty" />
+                  )}
+                  <div className="ing-line-photo-actions">
+                    <label className="ing-photo-btn">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        hidden
+                        onChange={(e) => void onPhoto(e.target.files?.[0] ?? null)}
+                      />
+                      {editor.photoBusy
+                        ? 'Subiendo…'
+                        : editor.photoUrl
+                          ? 'Cambiar foto'
+                          : 'Agregar foto'}
+                    </label>
+                    {editor.photoUrl ? (
+                      <button
+                        type="button"
+                        className="btn ghost"
+                        onClick={() => patchEditor({ photoUrl: null })}
+                      >
+                        Quitar
+                      </button>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="ing-line-fields">
+                  <div className="field">
+                    <label htmlFor="compra-modal-desc">Descripción</label>
+                    <input
+                      id="compra-modal-desc"
+                      ref={descRef}
+                      value={editor.description}
+                      onChange={(e) => patchEditor({ description: e.target.value })}
+                      autoComplete="off"
+                      placeholder="Ej. Polera básica negra"
+                    />
+                  </div>
+                  <div className="ing-line-grid-3">
+                    <div className="field">
+                      <label htmlFor="compra-modal-qty">Cant.</label>
+                      <input
+                        id="compra-modal-qty"
+                        type="number"
+                        min={1}
+                        step={1}
+                        inputMode="numeric"
+                        value={editor.quantity}
+                        onChange={(e) => patchEditor({ quantity: e.target.value })}
+                      />
+                    </div>
+                    <div className="field">
+                      <label htmlFor="compra-modal-cost">Precio costo</label>
+                      <input
+                        id="compra-modal-cost"
+                        type="number"
+                        min={0}
+                        step={1}
+                        inputMode="numeric"
+                        value={editor.unitCost}
+                        onChange={(e) => setEditorCost(e.target.value)}
+                        placeholder="0"
+                      />
+                    </div>
+                    <div className="field">
+                      <label htmlFor="compra-modal-sale">Venta</label>
+                      <input
+                        id="compra-modal-sale"
+                        type="number"
+                        min={1}
+                        step={1}
+                        inputMode="numeric"
+                        value={editor.salePrice}
+                        onChange={(e) =>
+                          patchEditor({ salePrice: e.target.value, saleTouched: true })
+                        }
+                      />
+                    </div>
+                  </div>
+                  <p className="ing-hint">
+                    La venta parte en el doble del costo; puedes cambiarla.
+                  </p>
                 </div>
               </div>
 
-              <div className="ing-line-fields">
-                <div className="field">
-                  <label htmlFor="compra-modal-desc">Descripción</label>
-                  <input
-                    id="compra-modal-desc"
-                    ref={descRef}
-                    value={editor.description}
-                    onChange={(e) => patchEditor({ description: e.target.value })}
-                    autoComplete="off"
-                    placeholder="Ej. Polera básica negra"
-                  />
-                </div>
-                <div className="ing-line-grid-3">
-                  <div className="field">
-                    <label htmlFor="compra-modal-qty">Cant.</label>
-                    <input
-                      id="compra-modal-qty"
-                      type="number"
-                      min={1}
-                      step={1}
-                      inputMode="numeric"
-                      value={editor.quantity}
-                      onChange={(e) => patchEditor({ quantity: e.target.value })}
-                    />
-                  </div>
-                  <div className="field">
-                    <label htmlFor="compra-modal-cost">Precio costo</label>
-                    <input
-                      id="compra-modal-cost"
-                      type="number"
-                      min={0}
-                      step={1}
-                      inputMode="numeric"
-                      value={editor.unitCost}
-                      onChange={(e) => setEditorCost(e.target.value)}
-                      placeholder="0"
-                    />
-                  </div>
-                  <div className="field">
-                    <label htmlFor="compra-modal-sale">Venta</label>
-                    <input
-                      id="compra-modal-sale"
-                      type="number"
-                      min={1}
-                      step={1}
-                      inputMode="numeric"
-                      value={editor.salePrice}
-                      onChange={(e) =>
-                        patchEditor({ salePrice: e.target.value, saleTouched: true })
-                      }
-                    />
-                  </div>
-                </div>
-                <p className="ing-hint">
-                  La venta parte en el doble del costo; puedes cambiarla.
-                </p>
+              {editorError && <p className="error">{editorError}</p>}
+
+              <div className="btn-row ing-line-modal-actions">
+                <button type="button" className="btn secondary" onClick={closeEditor}>
+                  Cancelar
+                </button>
+                <button
+                  type="button"
+                  className="btn"
+                  onClick={commitLineToList}
+                  disabled={editor.photoBusy}
+                >
+                  {editorMode === 'create' ? 'Agregar a la lista' : 'Actualizar en la lista'}
+                </button>
               </div>
-            </div>
-
-            {editorError && <p className="error">{editorError}</p>}
-
-            <div className="btn-row ing-line-modal-actions">
-              <button type="button" className="btn secondary" onClick={closeEditor}>
-                Cancelar
-              </button>
-              <button
-                type="button"
-                className="btn"
-                onClick={commitLineToList}
-                disabled={editor.photoBusy}
-              >
-                {editorMode === 'create' ? 'Agregar a la lista' : 'Actualizar en la lista'}
-              </button>
             </div>
           </div>
         </div>
@@ -740,7 +826,7 @@ export function PurchaseDocumentForm({
       <ConfirmDialog
         open={leaveOpen}
         title="Salir sin guardar"
-        message="Hay cambios sin guardar en la compra. Si sales ahora, se pierden las prendas y datos que agregaste."
+        message="Si sales ahora, se perderá lo que no hayas guardado en esta compra."
         cancelLabel="Seguir editando"
         confirmLabel="Salir sin guardar"
         danger

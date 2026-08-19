@@ -21,6 +21,8 @@ export type PurchaseFormValues = {
   supplierName?: string;
   purchasedAt: string;
   notes: string;
+  /** Sucursal donde se recibirá la mercadería */
+  destinationBranchId: string;
   lines: LineDraft[];
 };
 
@@ -97,6 +99,7 @@ export function toApiPayload(values: PurchaseFormValues) {
     supplierId: values.supplierId || null,
     purchasedAt: values.purchasedAt || null,
     notes: values.notes.trim() || null,
+    destinationBranchId: values.destinationBranchId || undefined,
     items: values.lines.map((l) => ({
       description: l.description,
       quantityOrdered: Number(l.quantity),

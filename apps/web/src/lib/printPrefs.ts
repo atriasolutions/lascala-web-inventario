@@ -33,7 +33,7 @@ export const DEFAULT_PRINT_PREFS: PrintPrefs = {
   },
   receipts: {
     printerName: '',
-    note: 'Térmico 80 mm · comprobantes y boletas',
+    note: 'Térmica ticket 80 mm · ESC/POS (no etiquetas TSPL ni inkjet)',
   },
   preferQzWhenAvailable: true,
 };

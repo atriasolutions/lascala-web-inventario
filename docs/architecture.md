@@ -4,13 +4,17 @@
 
 Monorepo con API REST y SPA. El dominio nace **multi-sucursal / multi-POS**: stock, ventas, mermas y gastos se scopan por `branch_id`; las ventas además requieren `pos_id` y `seller_user_id`.
 
+Impresión física de etiquetas/comprobantes: hoy **QZ Tray**; destino **Atria Print Agent** (`127.0.0.1:9876`, carpeta `atria-print-agent/`). Ver [`atria-print-agent-architecture.md`](./atria-print-agent-architecture.md).
+
 ```mermaid
 flowchart LR
   web[apps/web]
   api[apps/api]
   db[(PostgreSQL)]
+  agent[Atria Print Agent]
   web -->|"REST + JWT"| api
   api --> db
+  web -.->|"HTTP loopback :9876 (cutover)"| agent
 ```
 
 ## Organización

@@ -12,6 +12,8 @@ type StockParams = {
   referenceId?: string;
   notes?: string;
   userId?: string;
+  /** Solo sync offline de ventas: permite quantity_after < 0. Online = false/omitido. */
+  allowNegative?: boolean;
 };
 
 export async function applyStockDeltaWithClient(client: PoolClient, params: StockParams) {
@@ -30,7 +32,9 @@ export async function applyStockDeltaWithClient(client: PoolClient, params: Stoc
   );
   const current = bal.rows[0]?.quantity ?? 0;
   const next = current + params.delta;
-  if (next < 0) throw new HttpError(400, 'Stock insuficiente');
+  if (next < 0 && !params.allowNegative) {
+    throw new HttpError(400, 'Stock insuficiente');
+  }
 
   await client.query(
     `UPDATE inventory_balances SET quantity = $1, updated_at = now()
@@ -75,8 +79,33 @@ export async function applyStockDelta(params: StockParams) {
 
 export function normalizeBarcode(barcode: string | null | undefined): string | null {
   if (barcode == null) return null;
-  const trimmed = barcode.trim().toUpperCase();
+  const trimmed = barcode.trim().replace(/['`´]/g, '').toUpperCase();
   return trimmed.length > 0 ? trimmed : null;
+}
+
+/**
+ * Variantes para lookup pistola: BC000003 ↔ BC-000003; LS-000009 ↔ LS000009.
+ */
+export function expandProductCodeVariants(code: string | null | undefined): string[] {
+  const n = normalizeBarcode(code);
+  if (!n) return [];
+  const keys = new Set<string>([n]);
+
+  const bc = n.match(/^BC-?(\d+)$/);
+  if (bc) {
+    const digits = bc[1];
+    keys.add(`BC${digits}`);
+    keys.add(`BC-${digits}`);
+  }
+
+  const ls = n.match(/^LS-?(\d+)$/);
+  if (ls) {
+    const digits = ls[1];
+    keys.add(`LS-${digits}`);
+    keys.add(`LS${digits}`);
+  }
+
+  return [...keys];
 }
 
 /** Ensures barcode is unique within the organization. Empty/null is allowed. */
@@ -88,7 +117,7 @@ export async function assertBarcodeAvailable(
   const normalized = normalizeBarcode(barcode);
   if (!normalized) return;
   const params: unknown[] = [organizationId, normalized];
-  let sql = `SELECT id FROM products WHERE organization_id = $1 AND barcode = $2`;
+  let sql = `SELECT id FROM products WHERE organization_id = $1 AND (barcode = $2 OR internal_code = $2)`;
   if (opts?.excludeProductId) {
     params.push(opts.excludeProductId);
     sql += ` AND id <> $${params.length}`;
@@ -206,36 +235,18 @@ export async function noteBarcodeUsed(organizationId: string, barcode: string | 
   }
 }
 
-/** Peek del siguiente código (no consume el correlativo). */
+/** Peek del siguiente código de etiqueta = código interno LS-######. */
 export async function nextBarcodeWithClient(client: PoolClient, organizationId: string) {
-  await ensureBarcodeCounterWithClient(client, organizationId);
-  const res = await client.query<{ next_value: number }>(
-    `SELECT next_value FROM barcode_counters WHERE organization_id = $1`,
-    [organizationId],
-  );
-  return formatOrgBarcode(Number(res.rows[0]?.next_value || 1));
+  return nextInternalCodeWithClient(client, organizationId);
 }
 
 export async function nextBarcode(organizationId: string) {
-  const client = await pool.connect();
-  try {
-    return await nextBarcodeWithClient(client, organizationId);
-  } finally {
-    client.release();
-  }
+  return nextInternalCode(organizationId);
 }
 
-/** Asigna y avanza correlativo (cuando el alta pide código automático). */
+/** Asigna el mismo código interno (LS-…) para etiqueta y pistola. */
 export async function allocateNextBarcodeWithClient(client: PoolClient, organizationId: string) {
-  await ensureBarcodeCounterWithClient(client, organizationId);
-  const res = await client.query<{ next_value: number }>(
-    `UPDATE barcode_counters
-     SET next_value = next_value + 1, updated_at = now()
-     WHERE organization_id = $1
-     RETURNING next_value - 1 AS next_value`,
-    [organizationId],
-  );
-  return formatOrgBarcode(Number(res.rows[0]?.next_value || 1));
+  return nextInternalCodeWithClient(client, organizationId);
 }
 
 export async function nextReceiptNumber(organizationId: string) {
@@ -280,6 +291,7 @@ export async function getLowStockAlerts(organizationId: string, branchId: string
      FROM inventory_balances ib
      JOIN products p ON p.id = ib.product_id
      WHERE ib.branch_id = $1
+       AND p.status NOT IN ('archived', 'merma', 'returned_to_supplier')
        AND COALESCE(p.tracks_stock, true) = true
        AND ib.quantity <= COALESCE(ib.low_stock_threshold, p.low_stock_threshold, $2)
      ORDER BY ib.quantity ASC`,
@@ -299,6 +311,7 @@ export async function getNoMovementAlerts(organizationId: string, branchId: stri
      LEFT JOIN inventory_movements m ON m.product_id = p.id AND m.branch_id = ib.branch_id
      WHERE ib.branch_id = $1
        AND ib.quantity > 0
+       AND p.status NOT IN ('archived', 'merma', 'returned_to_supplier')
        AND COALESCE(p.tracks_stock, true) = true
      GROUP BY p.id, p.name, p.internal_code, ib.quantity, p.no_movement_alert_days
      HAVING MAX(m.created_at) IS NULL

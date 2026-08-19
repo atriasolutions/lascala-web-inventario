@@ -5,21 +5,108 @@
 Archivo: `apps/web/public/brand/lscala-logo.png`  
 Circular fucsia con ave ornamental negra y wordmark L'Scala.
 
+### Logo Atria Solutions (Print Agent)
+
+Proveedor del puente de impresión. Isotipo “A” metálico azul (en preview parece fondo negro; el PNG canónico ya incluye transparencia).
+
+| Ruta | Rol |
+|------|-----|
+| `atria-print-agent/assets/atria-logo.png` | **Canónico** del Agent (Dock `.icns`, DMG, Inno) |
+| `atria-print-agent/assets/tray-icon.png` (+ `@2x`) | Menu bar / tray (fondo transparente derivado) |
+| `docs/brand/atria-logo.png` | Copia del canónico para documentación |
+
+Detalle: [`atria-print-agent-installation.md`](./atria-print-agent-installation.md) §6. No sustituye la marca L'Scala en la SPA (PWA / `apps/web/public/brand`).
+
 ## Tokens
+
+Fuente de verdad en CSS: `apps/web/src/styles/index.css` (`:root`). No inventar escalas paralelas.
+
+### Color
 
 | Token | Valor | Uso |
 |-------|-------|-----|
 | `--color-brand` | `#E6007E` | CTAs, acentos, foco |
 | `--color-brand-soft` | `#FF2D8A` | Hover / highlights |
+| `--color-brand-deep` | `#B80065` | Gradiente CTA |
 | `--color-ink` | `#140910` | Texto, iconos |
 | `--color-charcoal` | `#2A1A22` | Texto sobre stage claro |
 | `--color-surface` | `#FFF8FB` | Fondo de trabajo |
 | `--color-surface-elevated` | `#FFFFFF` | Paneles / form |
-| `--color-login-banner` | `public/brand/login-banner.jpg` | Lookbook full-bleed del login (no reutilizar en dashboard) |
 | `--color-muted` | `#6E5A64` | Texto secundario |
 | `--color-line` | `#F0D6E4` | Bordes suaves |
-| `--font-display` | "DM Sans" | Alias de body (sin serif; números legibles) |
-| `--font-body` | "DM Sans" | UI, labels, formularios, CTA, montos |
+| `--color-success` | `#1F7A4C` | Éxito / stock OK |
+| `--color-danger` | `#B00040` | Error / quiebre |
+| `--color-login-banner` | `public/brand/login-banner.jpg` | Lookbook del login (no reutilizar en dashboard) |
+| `--font-display` / `--font-body` | DM Sans | UI completa (sin serif) |
+
+### Espaciado (escala 4px)
+
+| Token | px | Uso típico |
+|-------|-----|------------|
+| `--space-1` … `--space-8` | 4 / 8 / 12 / 16 / 24 / 32 / 48 / 64 | micro → editorial |
+| `--page-pad` | = `--space-4` | padding de página |
+
+Preferir esta escala frente a gaps sueltos (`0.85rem`, etc.).
+
+### Tipografía
+
+| Token | ≈px | Uso |
+|-------|-----|-----|
+| `--text-xs` | 12 | labels uppercase de tabla |
+| `--text-sm` | 13 | muted / meta |
+| `--text-md` | 14 | body de tablas |
+| `--text-base` | 16 | inputs (sin zoom iOS) |
+| `--text-lg` / `--text-xl` | 18–22 | títulos de sección |
+| `--text-kpi` | 28–36 | montos KPI |
+
+Pesos **400 / 500 / 600 / 700**. Montos con `tabular-nums`. Helpers: `.text-muted`, `.text-body`, `.text-title`, `.text-kpi`.
+
+### Radios, sombras, tablas
+
+| Token | Valor | Uso |
+|-------|-------|-----|
+| `--radius` | 20px | cards / sheets |
+| `--radius-sm` | 14px | inputs / filas |
+| `--radius-pill` | 999px | botones |
+| `--shadow-soft` | … | listas / superficies |
+| `--shadow` | … | **solo overlays** |
+| `--table-row-h` | 54px | densidad desktop |
+| `--table-cell-py` | 11px | padding vertical |
+
+Header sticky en desktop; sin sombra por fila; montos a la derecha (`.num` / `.amount`).
+
+### Focus, disabled, motion
+
+| Token | Valor |
+|-------|-------|
+| `--focus-ring` | halo 2px + offset marca |
+| `--opacity-disabled` | `0.6` |
+| `--duration-fast` / `--duration-base` / `--duration-sheet` / `--duration-slow` | 120 / 140 / 180 / 200 ms |
+| `--ease-out` | `cubic-bezier(0.16, 1, 0.3, 1)` |
+
+Estados: hover borde marca **140ms**; press `scale(0.98)` solo en `.btn`; focus ring; disabled 0.6.
+
+### Motion activo
+
+Solo `transform` / `opacity`. `prefers-reduced-motion: reduce` anula **todos** los keyframes.
+
+| Efecto | Trigger | Duración |
+|--------|---------|----------|
+| Sheet/modal | `.pos-modal-panel` → `sheetRise` | 180ms |
+| Overlay | `rise` | 160–180ms |
+| Pulse escaneo | `.pos-stage.is-pulse` → `scanPulse` | 200ms |
+| Fila carrito | `.pos-cart-row` → `cartRowIn` | 180ms |
+| KPI entrada (1×) | `.dash-kpi strong` → `kpiIn` | ≤200ms |
+| Skeleton | `skelShimmer` unificado | 1.2s loop |
+| Botón hover/press | `.btn` | 140ms |
+
+No animar el foco del input de código en POS/Ingresos.
+
+### Densidad de referencia
+
+Plantilla limpia: **Ajustes**. Nivelado: Mermas (menos aire), Productos (`--space-3`), tablas densas tipo Ventas/Ingresos. AppShell posee el título de ruta — no duplicar `h1` en `.page-intro`.
+
+**Prohibido:** purple/indigo, cream+serif terracotta, glassmorphism decorativo, glow neón, clusters de pills, dark mode por defecto.
 
 ## Login — acceso del equipo
 
@@ -35,7 +122,7 @@ Circular fucsia con ave ornamental negra y wordmark L'Scala.
 3. Catálogo foto-first.
 4. POS táctil (≥44px).
 5. Tipografía: solo DM Sans (sin serif display; montos con `tabular-nums`).
-6. Motion sobrio.
+6. Motion sobrio (default to stillness; ver tokens de motion).
 7. Español operativo de boutique.
 
 ## Navegación (post-login)

@@ -60,6 +60,10 @@ export async function loadUser(userId: string): Promise<AuthUser | null> {
   };
 }
 
+export function isOrgOwner(user: Pick<AuthUser, 'branches'>) {
+  return user.branches.some((b) => b.role === 'owner');
+}
+
 export async function requireAuth(req: Request, _res: Response, next: NextFunction) {
   try {
     const header = req.headers.authorization;
@@ -73,13 +77,24 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
     const branchHeader = req.headers['x-branch-id'];
     const posHeader = req.headers['x-pos-id'];
     if (typeof branchHeader === 'string' && branchHeader) {
-      const access = user.branches.find((b) => b.branchId === branchHeader);
-      if (!access) throw new HttpError(403, 'Sin acceso a la sucursal');
-      req.activeBranchId = branchHeader;
-      req.activeRole = access.role;
+      if (isOrgOwner(user)) {
+        const branch = await query<{ id: string }>(
+          `SELECT id FROM branches WHERE id = $1 AND organization_id = $2 AND is_active = true`,
+          [branchHeader, user.organizationId],
+        );
+        if (!branch.rows[0]) throw new HttpError(403, 'Sin acceso a la sucursal');
+        req.activeBranchId = branchHeader;
+        req.activeRole = 'owner';
+      } else {
+        const access = user.branches.find((b) => b.branchId === branchHeader);
+        if (!access) throw new HttpError(403, 'Sin acceso a la sucursal');
+        req.activeBranchId = branchHeader;
+        req.activeRole = access.role;
+      }
     }
-    if (typeof posHeader === 'string' && posHeader) {
-      req.activePosId = posHeader;
+    if (typeof posHeader === 'string' && posHeader && req.activeBranchId) {
+      const allowed = await isPosAllowedForUser(user, posHeader, req.activeBranchId);
+      if (allowed) req.activePosId = posHeader;
     }
     next();
   } catch (err) {
@@ -108,4 +123,26 @@ export async function assertPosInBranch(posId: string, branchId: string) {
     'active',
   ]);
   if (!res.rowCount) throw new HttpError(400, 'POS inválido para la sucursal');
+}
+
+export async function isPosAllowedForUser(user: AuthUser, posId: string, branchId: string) {
+  const inBranch = await query(
+    'SELECT id FROM pos_terminals WHERE id = $1 AND branch_id = $2 AND status = $3',
+    [posId, branchId, 'active'],
+  );
+  if (!inBranch.rowCount) return false;
+  if (isOrgOwner(user)) return true;
+  const assigned = await query(
+    `SELECT 1 FROM user_pos WHERE user_id = $1 AND pos_id = $2`,
+    [user.id, posId],
+  );
+  return Boolean(assigned.rowCount);
+}
+
+/** Caja válida en la sucursal y habilitada para la usuaria (propietaria: todas). */
+export async function assertUserCanUsePos(user: AuthUser, posId: string, branchId: string) {
+  await assertPosInBranch(posId, branchId);
+  if (isOrgOwner(user)) return;
+  const ok = await isPosAllowedForUser(user, posId, branchId);
+  if (!ok) throw new HttpError(403, 'Sin acceso a esa caja');
 }

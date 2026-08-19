@@ -19,13 +19,13 @@ export function ThermalBarcode({ value, className, compact }: Props) {
     try {
       JsBarcode(svgRef.current, code, {
         format: 'CODE128',
-        width: compact ? 1.05 : 1.15,
-        height: compact ? 22 : 32,
+        width: compact ? 1 : 1.15,
+        height: compact ? 18 : 28,
         displayValue: true,
-        fontSize: compact ? 7 : 9,
-        textMargin: 1,
+        fontSize: compact ? 8 : 9,
+        textMargin: 0,
         margin: 0,
-        marginTop: compact ? 1 : 2,
+        marginTop: 0,
         marginBottom: 0,
       });
     } catch {

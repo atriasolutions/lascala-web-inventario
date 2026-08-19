@@ -9,6 +9,8 @@ type Props = {
   disabled?: boolean;
   /** Placeholder cuando no hay color. */
   placeholder?: string;
+  /** Campo “Otro color…” bajo la paleta. */
+  allowCustom?: boolean;
 };
 
 /**
@@ -21,6 +23,7 @@ export function ColorSelect({
   onChange,
   disabled,
   placeholder = 'Seleccionar',
+  allowCustom = true,
 }: Props) {
   const listId = useId();
   const wrapRef = useRef<HTMLDivElement>(null);
@@ -119,6 +122,18 @@ export function ColorSelect({
             </li>
           ) : null}
         </ul>
+      ) : null}
+
+      {allowCustom ? (
+        <input
+          className="color-select-custom"
+          aria-label="Color personalizado"
+          placeholder="Otro color…"
+          value={trimmed && !isPreset ? trimmed : ''}
+          onChange={(e) => onChange(e.target.value)}
+          autoComplete="off"
+          disabled={disabled}
+        />
       ) : null}
     </div>
   );

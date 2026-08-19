@@ -1,34 +1,46 @@
 {
-  "updatedAt": "2026-08-09T04:10:00.000Z",
+  "updatedAt": "2026-08-19T03:05:00.000Z",
   "notes": "IDs de subagentes reutilizables (Task resume). Un id por rol.",
   "agents": {
     "planner": {
       "id": "9c07e882-47ef-4261-8077-3f0eaf573b53",
-      "description": "Plan Productos UX/FE"
+      "description": "Plan refactor Ajustes (post-Mermas)"
     },
     "ux-ui": {
       "id": "9b3b75ad-863b-4afc-a819-389d3ee72e04",
-      "description": "Placeholder vestido foto real"
+      "description": "Anchos Movimientos + header"
     },
     "ux-research": {
-      "id": "9b3b75ad-863b-4afc-a819-389d3ee72e04",
-      "description": "Spec layout POS /vender"
+      "id": "1fad222f-fa3f-470a-be9c-e242f4e248ee",
+      "description": "Referencias visuales + auditoría v2"
     },
     "dev-backend": {
       "id": "6952ceda-d17b-443c-8358-97a2050b8552",
-      "description": "API filtros productos"
+      "description": "API merma kind + voucher fulfill"
     },
     "dev-frontend": {
       "id": "23387b1c-dc1a-4e31-b78c-2b0a4df39296",
-      "description": "Swatch selector color modal"
+      "description": "Reportes 5 vistas + Excel"
     },
     "dev-fullstack": {
       "id": "ea3bfbd3-fa6c-42d3-b0ac-7cc3538fa295",
-      "description": "Fix etiquetas N Allow doble"
+      "description": "Header L'SCALA + 48 cols 80mm"
+    },
+    "dev-platform": {
+      "id": "ea4581a2-f51b-42d8-9d53-23454a9ffc32",
+      "description": "DMG 48 cols GS W 576"
     },
     "qa-functional": {
       "id": "81d7647c-8a8b-4306-8a4a-75803230bc5d",
-      "description": "QA funcional Productos"
+      "description": "QA Dashboard métricas Fase 3"
+    },
+    "qa-automation": {
+      "id": "80c7d1ad-7e83-4401-892a-b2f3ed1a6166",
+      "description": "Playwright + responsive"
+    },
+    "tech-docs": {
+      "id": "de0951e2-818a-48f7-a4a4-880dcd767dcf",
+      "description": "Sync docs Fase 3 printers"
     }
   }
 }

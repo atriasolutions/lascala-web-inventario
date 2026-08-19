@@ -4,6 +4,7 @@ import { InfiniteListFooter } from '../../components/InfiniteListFooter';
 import { SortableTh } from '../../components/SortableTh';
 import { useInfiniteList } from '../../hooks/useInfiniteList';
 import { api } from '../../lib/api';
+import { useAuth } from '../../lib/auth';
 import { withPagination } from '../../lib/pagination';
 import {
   nextSort,
@@ -59,6 +60,7 @@ function rowAction(status: PurchaseStatus) {
 }
 
 export function ComprasListPage() {
+  const { branchId } = useAuth();
   const [filters, setFilters] = useState<AppliedFilters>(DEFAULT_FILTERS);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
@@ -72,7 +74,12 @@ export function ComprasListPage() {
   const modalRef = useRef<HTMLDivElement>(null);
   const filtersTitleId = useId();
 
-  const fetchPage = useCallback(async (f: AppliedFilters, offset: number, limit: number) => {
+  const listFilters = useMemo(
+    () => ({ ...filters, branchId: branchId || '' }),
+    [filters, branchId],
+  );
+
+  const fetchPage = useCallback(async (f: AppliedFilters & { branchId: string }, offset: number, limit: number) => {
     const data = await api<{
       purchases: Purchase[];
       hasMore: boolean;
@@ -93,7 +100,7 @@ export function ComprasListPage() {
     error,
     scrollRef,
     sentinelRef,
-  } = useInfiniteList({ filters, fetchPage });
+  } = useInfiniteList({ filters: listFilters, fetchPage });
 
   const sortedPurchases = useMemo(
     () => sortPurchases(purchases, sortKey, sortDir),
@@ -234,10 +241,9 @@ export function ComprasListPage() {
               {isDefaultEmpty ? (
                 <>
                   <p>Aún no hay compras</p>
-                  <p className="muted">Registra el documento de compra para luego receptar en piso.</p>
-                  <Link to="/compras/nuevo" className="btn" style={{ marginTop: '0.75rem' }}>
-                    Nueva compra
-                  </Link>
+                  <p className="muted">
+                    Usa «Nueva compra» arriba para registrar el documento y luego receptar en piso.
+                  </p>
                 </>
               ) : (
                 <>

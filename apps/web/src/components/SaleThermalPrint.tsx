@@ -1,13 +1,16 @@
 import { money } from '../lib/api';
 import {
   CHANGE_TICKET_DAYS,
+  ESC_POS_CUT_MARKER,
   NON_TAX_DISCLAIMER,
   RECEIPT_CHANGE_RULES,
   SALE_BUSINESS,
   THERMAL_PAPER_WIDTH_MM,
-  VOUCHER_NON_TAX,
+  escPosBarcodeMarker,
   fmtPrintDateOnly,
   fmtPrintDateTime,
+  resolveVoucherScanCode,
+  thermalPadLine,
   ticketModeLabel,
   type SalePrintJob,
 } from '../lib/salePrint';
@@ -17,6 +20,13 @@ type Props = {
   job: SalePrintJob;
 };
 
+const RULE = '------------------------------------------------';
+const DOTS = '················································';
+
+/**
+ * Comprobante + vouchers compactos (menos papel).
+ * Labels con ":" explícito; cortes ASCII; barcode voucher bajo.
+ */
 export function SaleThermalPrint({ job }: Props) {
   const { sale, items, changeTickets, reprint } = job;
 
@@ -26,158 +36,116 @@ export function SaleThermalPrint({ job }: Props) {
       aria-hidden
       data-paper={`${THERMAL_PAPER_WIDTH_MM}mm`}
     >
-      {/*
-        Rollo continuo 80 mm. Headers/footers del navegador (fecha, URL, páginas)
-        no se controlan por CSS: en Chrome desmarcar “Encabezados y pies de página”.
-      */}
       <article className="sale-print-block sale-receipt-print">
-        <header className="sale-print-header">
-          <img
-            className="sale-print-logo"
-            src={SALE_BUSINESS.logoUrl}
-            alt=""
-            width={44}
-            height={44}
-          />
+        <header className="sale-print-header sale-print-header-compact">
+          <p className="sale-print-wordmark">L&apos;SCALA</p>
           <p className="sale-print-legal">{SALE_BUSINESS.legalName}</p>
-          <p className="sale-print-rut">RUT {SALE_BUSINESS.rut}</p>
+          <p className="sale-print-rut">
+            RUT {SALE_BUSINESS.rut} · {SALE_BUSINESS.city}
+          </p>
           <p className="sale-print-address">{SALE_BUSINESS.address}</p>
         </header>
 
+        <p className="sale-print-sep mono">{RULE}</p>
         <h1 className="sale-print-title">COMPROBANTE DE VENTA</h1>
         {reprint ? <p className="sale-print-tag">Reimpresión</p> : null}
+        <p className="sale-print-disclaimer sale-print-disclaimer-dense">{NON_TAX_DISCLAIMER}</p>
 
-        <p className="sale-print-disclaimer">{NON_TAX_DISCLAIMER}</p>
+        <p className="sale-print-kv">
+          Folio: {sale.receipt_number} · {fmtPrintDateTime(sale.sold_at)}
+        </p>
+        <p className="sale-print-kv">
+          {[sale.branch_name ? `Suc: ${sale.branch_name}` : null, `Caja: ${sale.pos_name}`, `Vend: ${sale.seller_name}`]
+            .filter(Boolean)
+            .join(' · ')}
+        </p>
 
-        <dl className="sale-print-meta">
-          <div>
-            <dt>Folio</dt>
-            <dd>{sale.receipt_number}</dd>
-          </div>
-          <div>
-            <dt>Fecha</dt>
-            <dd>{fmtPrintDateTime(sale.sold_at)}</dd>
-          </div>
-          {sale.branch_name ? (
-            <div>
-              <dt>Sucursal</dt>
-              <dd>{sale.branch_name}</dd>
+        <p className="sale-print-sep mono">{DOTS}</p>
+
+        {items.map((i) => {
+          const detail = [
+            i.internal_code,
+            i.size_label ? `T.${i.size_label}` : null,
+            i.color || null,
+          ]
+            .filter(Boolean)
+            .join(' · ');
+          const right = `${String(i.quantity).padStart(2, ' ')} ${money(i.line_total)}`;
+          return (
+            <div key={i.id} className="sale-print-item">
+              <p className="sale-print-item-name mono">
+                {thermalPadLine(i.name.slice(0, 28), right)}
+              </p>
+              {detail ? <p className="sale-print-item-meta">{detail}</p> : null}
             </div>
-          ) : null}
-          <div>
-            <dt>Caja</dt>
-            <dd>{sale.pos_name}</dd>
-          </div>
-          <div>
-            <dt>Vendedora</dt>
-            <dd>{sale.seller_name}</dd>
-          </div>
-        </dl>
+          );
+        })}
 
-        <table className="sale-print-lines">
-          <thead>
-            <tr>
-              <th>Prenda</th>
-              <th>Cant</th>
-              <th>Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            {items.map((i) => (
-              <tr key={i.id}>
-                <td>
-                  <strong>{i.name}</strong>
-                  <span>
-                    {i.internal_code}
-                    {i.size_label ? ` · T.${i.size_label}` : ''}
-                    {i.color ? ` · ${i.color}` : ''}
-                  </span>
-                </td>
-                <td>{i.quantity}</td>
-                <td>{money(i.line_total)}</td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
+        <p className="sale-print-sep mono">{DOTS}</p>
 
-        <div className="sale-print-totals">
-          {sale.subtotal && Number(sale.subtotal) !== Number(sale.total) ? (
-            <div>
-              <span>Subtotal</span>
-              <strong>{money(sale.subtotal)}</strong>
-            </div>
-          ) : null}
-          {Number(sale.discount) > 0 ? (
-            <div>
-              <span>Descuento</span>
-              <strong>−{money(sale.discount)}</strong>
-            </div>
-          ) : null}
-          <div className="is-total">
-            <span>TOTAL</span>
-            <strong>{money(sale.total)}</strong>
-          </div>
-        </div>
+        {sale.subtotal && Number(sale.subtotal) !== Number(sale.total) ? (
+          <p className="sale-print-total-line mono">
+            {thermalPadLine('Subtotal', money(sale.subtotal))}
+          </p>
+        ) : null}
+        {Number(sale.discount) > 0 ? (
+          <p className="sale-print-total-line mono">
+            {thermalPadLine('Descuento', `-${money(sale.discount)}`)}
+          </p>
+        ) : null}
+        <p className="sale-print-total-line sale-print-total-strong mono">
+          {thermalPadLine('TOTAL', money(sale.total))}
+        </p>
 
         {sale.notes?.trim() ? (
           <p className="sale-print-notes">Notas: {sale.notes.trim()}</p>
         ) : null}
 
-        <div className="sale-print-policy">
-          <p className="sale-print-conditions-title">Cambios y devoluciones</p>
-          <ul className="sale-print-rules">
-            {RECEIPT_CHANGE_RULES.map((rule) => (
-              <li key={rule}>{rule}</li>
-            ))}
-          </ul>
-        </div>
-        <p className="sale-print-foot">Gracias · Boutique L&apos;Scala · {SALE_BUSINESS.city}</p>
+        <p className="sale-print-sep mono">{RULE}</p>
+        <p className="sale-print-conditions-title">Cambios</p>
+        {RECEIPT_CHANGE_RULES.map((rule) => (
+          <p key={rule} className="sale-print-rule">
+            · {rule}
+          </p>
+        ))}
+        <p className="sale-print-foot">Gracias · L&apos;Scala {SALE_BUSINESS.city}</p>
       </article>
 
       {changeTickets.map((t) => {
-        const detail = [t.sizeLabel, t.color].filter(Boolean).join(' · ');
+        const attrs = [t.sizeLabel ? `T.${t.sizeLabel}` : null, t.color || null]
+          .filter(Boolean)
+          .join(' · ');
         const validUntil = t.expiresAt
           ? fmtPrintDateOnly(t.expiresAt)
-          : `${CHANGE_TICKET_DAYS} días`;
-        const barcodeValue = (t.barcode || t.internalCode || '').trim();
+          : `${CHANGE_TICKET_DAYS}d`;
+        const scanCode = resolveVoucherScanCode(t);
+        const marker = escPosBarcodeMarker(scanCode);
+        const prendaLine = [t.productName, attrs].filter(Boolean).join(' · ');
 
         return (
           <div key={t.key} className="sale-print-voucher-wrap">
-            <div className="sale-print-perforation" aria-hidden>
-              ✂
-            </div>
+            <p className="sale-print-cut mono">{ESC_POS_CUT_MARKER}</p>
             <article className="sale-print-block sale-change-ticket-print">
-              <header className="sale-print-voucher-head">
-                <img
-                  className="sale-print-logo sale-print-logo-xs"
-                  src={SALE_BUSINESS.logoUrl}
-                  alt=""
-                  width={20}
-                  height={20}
-                />
-                <div>
-                  <p className="sale-print-legal sale-print-legal-sm">L&apos;SCALA</p>
-                  <p className="sale-print-rut">RUT {SALE_BUSINESS.rut}</p>
-                </div>
-              </header>
-
               <h1 className="sale-print-title sale-print-title-sm">{ticketModeLabel(t.mode)}</h1>
-              <p className="sale-print-voucher-n">{t.voucherNumber}</p>
-
               <p className="sale-print-voucher-line">
-                <strong>{t.productName}</strong>
-                <span>
-                  Cód. {t.internalCode}
-                  {detail ? ` · ${detail}` : ''}
-                </span>
+                {t.voucherNumber} · Venta {t.receiptNumber}
               </p>
-
-              {barcodeValue ? <ThermalBarcode value={barcodeValue} /> : null}
-
-              <p className="sale-print-voucher-line sale-print-voucher-meta">
-                Venta {t.receiptNumber} · Válido hasta {validUntil}
+              <p className="sale-print-voucher-line">
+                <strong>{prendaLine}</strong>
               </p>
-              <p className="sale-print-disclaimer sale-print-disclaimer-sm">{VOUCHER_NON_TAX}</p>
+              <p className="sale-print-voucher-line">
+                Cód: {t.internalCode} · Hasta: {validUntil}
+              </p>
+              {scanCode ? (
+                <>
+                  {marker ? (
+                    <p className="sale-print-barcode-marker mono" aria-hidden>
+                      {marker}
+                    </p>
+                  ) : null}
+                  <ThermalBarcode value={scanCode} compact />
+                </>
+              ) : null}
             </article>
           </div>
         );

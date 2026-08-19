@@ -15,6 +15,8 @@ export type Purchase = {
   supplier_id?: string | null;
   supplier_name?: string | null;
   notes?: string | null;
+  destination_branch_id?: string | null;
+  destination_branch_name?: string | null;
   items_count?: number | string | null;
   qty_ordered?: number | string | null;
   qty_received?: number | string | null;

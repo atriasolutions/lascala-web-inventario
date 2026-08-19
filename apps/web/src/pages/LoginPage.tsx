@@ -1,6 +1,6 @@
 import { type FormEvent, useId, useState } from 'react';
 import { Navigate } from 'react-router-dom';
-import { api } from '../lib/api';
+import { api, userFacingError } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { toast } from '../lib/toast';
 
@@ -9,8 +9,8 @@ type Mode = 'login' | 'forgot' | 'forgot-done';
 export function LoginPage() {
   const { login, token, loading } = useAuth();
   const [mode, setMode] = useState<Mode>('login');
-  const [email, setEmail] = useState('admin@lscala.cl');
-  const [password, setPassword] = useState('Admin123!');
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
   const forgotTitleId = useId();
@@ -24,7 +24,7 @@ export function LoginPage() {
     try {
       await login(email, password);
     } catch (err) {
-      setError(err instanceof Error ? err.message : 'No se pudo iniciar sesión');
+      setError(userFacingError(err, 'No se pudo iniciar sesión'));
     } finally {
       setBusy(false);
     }
@@ -42,7 +42,7 @@ export function LoginPage() {
       setMode('forgot-done');
       toast.success(data.message || 'Revisa tu correo si está registrado.');
     } catch (err) {
-      const msg = err instanceof Error ? err.message : 'No se pudo enviar la solicitud';
+      const msg = userFacingError(err, 'No se pudo enviar la solicitud');
       setError(msg);
       toast.error(msg);
     } finally {
