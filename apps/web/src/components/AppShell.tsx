@@ -12,6 +12,7 @@ import { OfflineBanner } from './OfflineBanner';
 import { PwaInstallHint } from './PwaInstallHint';
 import { ShellTitleContext } from './shellTitle';
 import { WorkplaceSwitcher } from './WorkplaceSwitcher';
+import { personalDayGreeting } from '../lib/dayGreeting';
 import { isAdminRole, roleLabel as formatRoleLabel } from '../lib/roles';
 import {
   IconAlertTriangle,
@@ -75,6 +76,7 @@ const navSections: { id: string; label: string; items: NavItem[] }[] = [
     items: [
       { to: '/compras', label: 'Compras', icon: IconReceipt, helpKey: 'nav.compras', roles: adminOnly },
       { to: '/ventas', label: 'Historial de ventas', icon: IconReceipt, helpKey: 'nav.ventas' },
+      { to: '/gastos', label: 'Gastos', icon: IconWallet, helpKey: 'nav.gastos', roles: adminOnly },
     ],
   },
   {
@@ -91,7 +93,6 @@ const navSections: { id: string; label: string; items: NavItem[] }[] = [
     id: 'control',
     label: 'Control',
     items: [
-      { to: '/gastos', label: 'Gastos', icon: IconWallet, helpKey: 'nav.gastos', roles: adminOnly },
       { to: '/reportes', label: 'Reportes', icon: IconChart, helpKey: 'nav.reportes', roles: adminOnly },
       { to: '/ayuda', label: 'Ayuda', icon: IconHelp, helpKey: 'nav.ayuda' },
     ],
@@ -397,7 +398,11 @@ export function AppShell() {
           <header className="topbar-desktop">
             <div className="topbar-title">
               <span className="topbar-eyebrow">{eyebrow}</span>
-              <h1>{title === 'Dashboard' ? `Hola, ${user?.fullName?.split(' ')[0] || ''}` : title}</h1>
+              <h1>
+                {location.pathname === '/'
+                  ? personalDayGreeting(user?.fullName)
+                  : title}
+              </h1>
             </div>
             <div className="right">
               {isOwner ? (

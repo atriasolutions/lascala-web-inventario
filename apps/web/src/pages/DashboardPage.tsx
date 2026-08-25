@@ -24,6 +24,7 @@ import {
 import { api, money } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { chartColor } from '../lib/chartColors';
+import { personalDayGreeting } from '../lib/dayGreeting';
 
 type ExpenseRow = {
   id: string;
@@ -131,7 +132,7 @@ export function DashboardPage() {
   const [data, setData] = useState<Summary | null>(null);
   const [error, setError] = useState('');
   const branchName = branches.find((b) => b.id === branchId)?.name || 'Sucursal';
-  const firstName = user?.fullName?.split(' ')[0] || 'equipo';
+  const greeting = useMemo(() => personalDayGreeting(user?.fullName), [user?.fullName]);
 
   const todayLabel = useMemo(
     () =>
@@ -240,7 +241,7 @@ export function DashboardPage() {
         <div className="dash-hero-copy">
           <p className="dash-kicker">Hoy en {branchName}</p>
           <h2 className="dash-hero-title">
-            <span className="mobile-only">Hola, {firstName}</span>
+            <span className="mobile-only">{greeting}</span>
             <span className="desktop-only">Salón de ventas</span>
           </h2>
           <p className="dash-hero-sub">
