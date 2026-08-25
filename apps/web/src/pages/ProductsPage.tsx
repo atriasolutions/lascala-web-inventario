@@ -7,16 +7,13 @@ import {
   useState,
 } from 'react';
 import { ProductPhotoPlaceholder } from '../components/ProductPhotoPlaceholder';
-import {
-  ProductFichaFields,
-  type ProductFichaFieldKey,
-} from '../components/ProductFichaFields';
+import { ProductFichaFields } from '../components/ProductFichaFields';
 import {
   ProductCodeEntry,
   type ProductCodeMode,
 } from '../components/ProductCodeEntry';
 import { ModalOverlayClose } from '../components/ModalOverlayClose';
-import { IconCheck, IconClose, IconPencil } from '../components/icons';
+import { IconPencil } from '../components/icons';
 import { api, mediaUrl, money } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { isLeadRole, canRegisterProductCode, CODE_REGISTER_FORBIDDEN } from '../lib/roles';
@@ -25,8 +22,7 @@ import { toast } from '../lib/toast';
 import { printLabelJob } from '../services/printing';
 import { fileToDataUrl } from './compras/purchaseFormTypes';
 
-type ModalMode = 'create' | 'view';
-type ModalField = ProductFichaFieldKey | 'policies' | 'inventory' | 'notes' | 'photo';
+type ModalMode = 'create' | 'view' | 'edit';
 
 type Product = {
   id: string;
@@ -252,9 +248,7 @@ export function ProductsPage() {
   const [error, setError] = useState('');
   const [modalOpen, setModalOpen] = useState(false);
   const [modalMode, setModalMode] = useState<ModalMode>('create');
-  const [fieldEdit, setFieldEdit] = useState<ModalField | null>(null);
   const [formSnapshot, setFormSnapshot] = useState<FormState | null>(null);
-  const [fieldBusy, setFieldBusy] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
   const [codeMode, setCodeMode] = useState<ProductCodeMode>('auto');
@@ -429,7 +423,6 @@ export function ProductsPage() {
     revokeBlob();
     setEditing(null);
     setModalMode('create');
-    setFieldEdit(null);
     setFormSnapshot(null);
     setForm(emptyForm());
     setCodeMode('auto');
@@ -481,7 +474,6 @@ export function ProductsPage() {
     revokeBlob();
     setEditing(product);
     setModalMode('view');
-    setFieldEdit(null);
     setFormSnapshot(null);
     setForm({
       name: product.name,
@@ -513,13 +505,27 @@ export function ProductsPage() {
     setModalOpen(true);
   }
 
+  function enterEditMode() {
+    setFormError('');
+    setFormSnapshot(form);
+    setModalMode('edit');
+  }
+
+  function cancelEditMode() {
+    if (formSnapshot) setForm(formSnapshot);
+    setFormSnapshot(null);
+    setFormError('');
+    setModalMode('view');
+    revokeBlob();
+    setPhotoPreview(null);
+    setModalPhotoFailed(false);
+  }
+
   function closeModal() {
     setModalOpen(false);
     setEditing(null);
     setModalMode('create');
-    setFieldEdit(null);
     setFormSnapshot(null);
-    setFieldBusy(false);
     setForm(emptyForm());
     setFormError('');
     setSaving(false);
@@ -534,147 +540,6 @@ export function ProductsPage() {
     const el = triggerRef.current;
     triggerRef.current = null;
     window.setTimeout(() => el?.focus(), 40);
-  }
-
-  function startFieldEdit(key: ModalField) {
-    setFormError('');
-    setFormSnapshot(form);
-    setFieldEdit(key);
-  }
-
-  function cancelFieldEdit() {
-    if (formSnapshot) setForm(formSnapshot);
-    setFormSnapshot(null);
-    setFieldEdit(null);
-    setFormError('');
-  }
-
-  function applyProductLocal(updated: Partial<Product> & { id: string }) {
-    setEditing((prev) => (prev && prev.id === updated.id ? { ...prev, ...updated } : prev));
-    setProducts((prev) =>
-      prev.map((p) => (p.id === updated.id ? { ...p, ...updated } : p)),
-    );
-  }
-
-  async function commitFieldEdit() {
-    if (!editing || !fieldEdit) return;
-    setFormError('');
-    setFieldBusy(true);
-    try {
-      const body: Record<string, unknown> = {};
-      switch (fieldEdit) {
-        case 'name': {
-          const name = form.name.trim();
-          if (!name) throw new Error('Ingresa el nombre de la prenda');
-          body.name = name;
-          break;
-        }
-        case 'categoryId':
-          body.categoryId = form.categoryId || null;
-          break;
-        case 'salePrice': {
-          if (!canEditSalePrice) throw new Error('No puedes editar el precio de venta');
-          const sale = parseChileMoney(form.salePrice) ?? NaN;
-          if (!Number.isFinite(sale) || sale < 0) {
-            throw new Error('Ingresa un precio de venta válido');
-          }
-          body.salePrice = sale;
-          break;
-        }
-        case 'brand':
-          body.brand = form.brand.trim() || null;
-          break;
-        case 'productType':
-          body.productType = form.productType.trim() || null;
-          break;
-        case 'sizeLabel':
-          body.sizeLabel = form.sizeLabel.trim() || null;
-          break;
-        case 'color':
-          body.color = form.color.trim() || null;
-          break;
-        case 'season':
-          body.season = form.season.trim() || null;
-          break;
-        case 'description':
-          body.description = form.description.trim() || null;
-          break;
-        case 'policies':
-          body.allowsExchange = form.allowsExchange;
-          body.allowsReturn = form.allowsReturn;
-          break;
-        case 'inventory':
-          body.tracksStock = form.tracksStock;
-          body.lowStockThreshold = form.tracksStock
-            ? Math.max(0, Math.round(Number(form.lowStockThreshold) || 1))
-            : 1;
-          body.noMovementAlertDays = form.tracksStock
-            ? form.noMovementAlertDays.trim()
-              ? Math.max(1, Math.round(Number(form.noMovementAlertDays)) || 30)
-              : null
-            : null;
-          break;
-        case 'notes':
-          body.notes = form.notes.trim() || null;
-          body.exclusiveNotes = form.exclusiveNotes.trim() || null;
-          break;
-        case 'photo': {
-          const photoUrl = form.photoUrl.trim();
-          const originalPhoto = (editing.photo_url || '').trim();
-          if (photoUrl && photoUrl !== originalPhoto) body.photoUrl = photoUrl;
-          else if (!photoUrl && originalPhoto) body.photoUrl = null;
-          else {
-            setFieldEdit(null);
-            setFormSnapshot(null);
-            setFieldBusy(false);
-            return;
-          }
-          break;
-        }
-        default:
-          break;
-      }
-
-      await api(`/api/products/${editing.id}`, { method: 'PATCH', body });
-
-      const local: Partial<Product> & { id: string } = { id: editing.id };
-      if (body.name !== undefined) local.name = String(body.name);
-      if (body.categoryId !== undefined) local.category_id = (body.categoryId as string) || null;
-      if (body.salePrice !== undefined) local.sale_price = String(body.salePrice);
-      if (body.brand !== undefined) local.brand = body.brand as string | null;
-      if (body.productType !== undefined) local.product_type = body.productType as string | null;
-      if (body.sizeLabel !== undefined) local.size_label = body.sizeLabel as string | null;
-      if (body.color !== undefined) local.color = body.color as string | null;
-      if (body.season !== undefined) local.season = body.season as string | null;
-      if (body.description !== undefined) local.description = body.description as string | null;
-      if (body.notes !== undefined) local.notes = body.notes as string | null;
-      if (body.exclusiveNotes !== undefined) {
-        local.exclusive_notes = body.exclusiveNotes as string | null;
-      }
-      if (body.allowsExchange !== undefined) local.allows_exchange = Boolean(body.allowsExchange);
-      if (body.allowsReturn !== undefined) local.allows_return = Boolean(body.allowsReturn);
-      if (body.tracksStock !== undefined) local.tracks_stock = Boolean(body.tracksStock);
-      if (body.lowStockThreshold !== undefined) {
-        local.low_stock_threshold = body.lowStockThreshold as number;
-      }
-      if (body.noMovementAlertDays !== undefined) {
-        local.no_movement_alert_days = body.noMovementAlertDays as number | null;
-      }
-      if (body.photoUrl !== undefined) {
-        local.photo_url = (body.photoUrl as string | null) || null;
-        local.has_photo = Boolean(body.photoUrl);
-      }
-      applyProductLocal(local);
-      toast.success('Guardado');
-      setFieldEdit(null);
-      setFormSnapshot(null);
-    } catch (err) {
-      const msg = err instanceof Error ? err.message : 'No se pudo guardar';
-      setFormError(msg);
-      toast.error(msg);
-    } finally {
-      setFieldBusy(false);
-    }
   }
 
   function clearFilters() {
@@ -883,13 +748,43 @@ export function ProductsPage() {
     try {
       if (editing) {
         await api(`/api/products/${editing.id}`, { method: 'PATCH', body });
+        const local: Product = {
+          ...editing,
+          name: String(body.name),
+          category_id: (body.categoryId as string) || null,
+          brand: (body.brand as string | null) ?? null,
+          size_label: (body.sizeLabel as string | null) ?? null,
+          color: (body.color as string | null) ?? null,
+          product_type: (body.productType as string | null) ?? null,
+          season: (body.season as string | null) ?? null,
+          description: (body.description as string | null) ?? null,
+          notes: (body.notes as string | null) ?? null,
+          exclusive_notes: (body.exclusiveNotes as string | null) ?? null,
+          allows_return: Boolean(body.allowsReturn),
+          allows_exchange: Boolean(body.allowsExchange),
+          tracks_stock: Boolean(body.tracksStock),
+          low_stock_threshold: body.lowStockThreshold as number,
+          no_movement_alert_days: body.noMovementAlertDays as number | null,
+        };
+        if (body.salePrice !== undefined) local.sale_price = String(body.salePrice);
+        if (body.photoUrl !== undefined) {
+          local.photo_url = (body.photoUrl as string | null) || null;
+          local.has_photo = Boolean(body.photoUrl);
+        }
+        setEditing(local);
+        setProducts((prev) => prev.map((p) => (p.id === local.id ? { ...p, ...local } : p)));
         toast.success('Prenda actualizada');
+        setFormSnapshot(null);
+        setModalMode('view');
+        setSaving(false);
+        setPhotoPreview(null);
+        revokeBlob();
       } else {
         await api('/api/products', { method: 'POST', body });
         toast.success('Prenda creada');
+        closeModal();
+        await load();
       }
-      closeModal();
-      await load();
     } catch (err) {
       const msg = err instanceof Error ? err.message : 'No se pudo guardar la prenda';
       setFormError(msg);
@@ -1175,7 +1070,19 @@ export function ProductsPage() {
                 ) : (
                   <ProductPhotoPlaceholder className="prod-modal-photo-empty" />
                 )}
-                {modalMode === 'create' || fieldEdit === 'photo' ? (
+                {modalMode === 'view' ? (
+                  <div className="prod-modal-photo-actions">
+                    <button
+                      type="button"
+                      className="prod-ficha-pencil"
+                      aria-label="Editar foto"
+                      onClick={enterEditMode}
+                    >
+                      <IconPencil size={15} />
+                      <span>Foto</span>
+                    </button>
+                  </div>
+                ) : (
                   <div className="prod-modal-photo-actions">
                     <label className="ing-photo-btn">
                       <input
@@ -1183,7 +1090,7 @@ export function ProductsPage() {
                         accept="image/*"
                         capture="environment"
                         hidden
-                        disabled={photoBusy || saving || fieldBusy}
+                        disabled={photoBusy || saving}
                         onChange={(e) => {
                           void onPhoto(e.target.files?.[0] ?? null);
                           e.target.value = '';
@@ -1195,46 +1102,12 @@ export function ProductsPage() {
                       <button
                         type="button"
                         className="btn ghost"
-                        disabled={photoBusy || saving || fieldBusy}
+                        disabled={photoBusy || saving}
                         onClick={clearPhoto}
                       >
                         Quitar
                       </button>
                     ) : null}
-                    {modalMode === 'view' && fieldEdit === 'photo' ? (
-                      <div className="prod-ficha-inline-actions">
-                        <button
-                          type="button"
-                          className="prod-ficha-inline-btn is-save"
-                          aria-label="Guardar foto"
-                          disabled={photoBusy || fieldBusy}
-                          onClick={() => void commitFieldEdit()}
-                        >
-                          <IconCheck size={15} />
-                        </button>
-                        <button
-                          type="button"
-                          className="prod-ficha-inline-btn"
-                          aria-label="Cancelar"
-                          disabled={photoBusy || fieldBusy}
-                          onClick={cancelFieldEdit}
-                        >
-                          <IconClose size={15} />
-                        </button>
-                      </div>
-                    ) : null}
-                  </div>
-                ) : (
-                  <div className="prod-modal-photo-actions">
-                    <button
-                      type="button"
-                      className="prod-ficha-pencil"
-                      aria-label="Editar foto"
-                      onClick={() => startFieldEdit('photo')}
-                    >
-                      <IconPencil size={15} />
-                      <span>Foto</span>
-                    </button>
                   </div>
                 )}
               </div>
@@ -1243,26 +1116,8 @@ export function ProductsPage() {
                 <ProductFichaFields
                   idPrefix="prod-modal"
                   mode={modalMode === 'view' ? 'view' : 'edit'}
-                  view={
-                    modalMode === 'view'
-                      ? {
-                          activeField:
-                            fieldEdit &&
-                            fieldEdit !== 'policies' &&
-                            fieldEdit !== 'inventory' &&
-                            fieldEdit !== 'notes' &&
-                            fieldEdit !== 'photo'
-                              ? fieldEdit
-                              : null,
-                          onRequestEdit: (key) => startFieldEdit(key),
-                          onCancelField: cancelFieldEdit,
-                          onCommitField: () => void commitFieldEdit(),
-                          canEditField: (key) =>
-                            key === 'salePrice' ? canEditSalePrice : true,
-                          fieldBusy: fieldBusy || saving || photoBusy,
-                        }
-                      : undefined
-                  }
+                  onEnterEdit={modalMode === 'view' ? enterEditMode : undefined}
+                  canEditField={(key) => (key === 'salePrice' ? canEditSalePrice : true)}
                   values={{
                     name: form.name,
                     categoryId: form.categoryId,
@@ -1275,7 +1130,7 @@ export function ProductsPage() {
                   }}
                   onChange={patchForm}
                   categories={categories}
-                  disabled={saving || photoBusy || fieldBusy}
+                  disabled={saving || photoBusy}
                   nameRef={nameRef}
                   code={
                     editing
@@ -1347,7 +1202,7 @@ export function ProductsPage() {
                         type="button"
                         className="btn prod-print-labels-btn"
                         onClick={openLabelQty}
-                        disabled={saving || photoBusy || printBusy || fieldBusy}
+                        disabled={saving || photoBusy || printBusy}
                       >
                         Imprimir etiquetas
                       </button>
@@ -1360,40 +1215,18 @@ export function ProductsPage() {
                     <h4 className="prod-section-title" style={{ border: 'none', padding: 0 }}>
                       Políticas
                     </h4>
-                    {modalMode === 'view' && fieldEdit !== 'policies' ? (
+                    {modalMode === 'view' ? (
                       <button
                         type="button"
                         className="prod-ficha-pencil"
                         aria-label="Editar políticas"
-                        onClick={() => startFieldEdit('policies')}
+                        onClick={enterEditMode}
                       >
                         <IconPencil size={15} />
                       </button>
                     ) : null}
-                    {modalMode === 'view' && fieldEdit === 'policies' ? (
-                      <div className="prod-ficha-inline-actions">
-                        <button
-                          type="button"
-                          className="prod-ficha-inline-btn is-save"
-                          aria-label="Guardar"
-                          disabled={fieldBusy}
-                          onClick={() => void commitFieldEdit()}
-                        >
-                          <IconCheck size={15} />
-                        </button>
-                        <button
-                          type="button"
-                          className="prod-ficha-inline-btn"
-                          aria-label="Cancelar"
-                          disabled={fieldBusy}
-                          onClick={cancelFieldEdit}
-                        >
-                          <IconClose size={15} />
-                        </button>
-                      </div>
-                    ) : null}
                   </div>
-                  {modalMode === 'view' && fieldEdit !== 'policies' ? (
+                  {modalMode === 'view' ? (
                     <p className="prod-ficha-value">
                       Cambio: {form.allowsExchange ? 'Sí' : 'No'} · Devolución:{' '}
                       {form.allowsReturn ? 'Sí' : 'No'}
@@ -1421,40 +1254,18 @@ export function ProductsPage() {
                     <h4 className="prod-section-title" style={{ border: 'none', padding: 0 }}>
                       Inventario
                     </h4>
-                    {modalMode === 'view' && fieldEdit !== 'inventory' ? (
+                    {modalMode === 'view' ? (
                       <button
                         type="button"
                         className="prod-ficha-pencil"
                         aria-label="Editar inventario"
-                        onClick={() => startFieldEdit('inventory')}
+                        onClick={enterEditMode}
                       >
                         <IconPencil size={15} />
                       </button>
                     ) : null}
-                    {modalMode === 'view' && fieldEdit === 'inventory' ? (
-                      <div className="prod-ficha-inline-actions">
-                        <button
-                          type="button"
-                          className="prod-ficha-inline-btn is-save"
-                          aria-label="Guardar"
-                          disabled={fieldBusy}
-                          onClick={() => void commitFieldEdit()}
-                        >
-                          <IconCheck size={15} />
-                        </button>
-                        <button
-                          type="button"
-                          className="prod-ficha-inline-btn"
-                          aria-label="Cancelar"
-                          disabled={fieldBusy}
-                          onClick={cancelFieldEdit}
-                        >
-                          <IconClose size={15} />
-                        </button>
-                      </div>
-                    ) : null}
                   </div>
-                  {modalMode === 'view' && fieldEdit !== 'inventory' ? (
+                  {modalMode === 'view' ? (
                     <p className="prod-ficha-value">
                       {form.tracksStock
                         ? `Con control · mín. ${form.lowStockThreshold || '1'}${
@@ -1510,40 +1321,18 @@ export function ProductsPage() {
                     <h4 className="prod-section-title" style={{ border: 'none', padding: 0 }}>
                       Notas
                     </h4>
-                    {modalMode === 'view' && fieldEdit !== 'notes' ? (
+                    {modalMode === 'view' ? (
                       <button
                         type="button"
                         className="prod-ficha-pencil"
                         aria-label="Editar notas"
-                        onClick={() => startFieldEdit('notes')}
+                        onClick={enterEditMode}
                       >
                         <IconPencil size={15} />
                       </button>
                     ) : null}
-                    {modalMode === 'view' && fieldEdit === 'notes' ? (
-                      <div className="prod-ficha-inline-actions">
-                        <button
-                          type="button"
-                          className="prod-ficha-inline-btn is-save"
-                          aria-label="Guardar"
-                          disabled={fieldBusy}
-                          onClick={() => void commitFieldEdit()}
-                        >
-                          <IconCheck size={15} />
-                        </button>
-                        <button
-                          type="button"
-                          className="prod-ficha-inline-btn"
-                          aria-label="Cancelar"
-                          disabled={fieldBusy}
-                          onClick={cancelFieldEdit}
-                        >
-                          <IconClose size={15} />
-                        </button>
-                      </div>
-                    ) : null}
                   </div>
-                  {modalMode === 'view' && fieldEdit !== 'notes' ? (
+                  {modalMode === 'view' ? (
                     <div className="prod-ficha-value prod-ficha-notes-view">
                       <p>
                         <span className="muted">Notas · </span>
@@ -1598,12 +1387,26 @@ export function ProductsPage() {
                     {saving ? 'Guardando…' : 'Agregar'}
                   </button>
                 </>
+              ) : modalMode === 'edit' ? (
+                <>
+                  <button
+                    type="button"
+                    className="btn secondary"
+                    onClick={cancelEditMode}
+                    disabled={saving || photoBusy || printBusy}
+                  >
+                    Cancelar
+                  </button>
+                  <button type="submit" className="btn" disabled={saving || photoBusy || printBusy}>
+                    {saving ? 'Guardando…' : 'Guardar'}
+                  </button>
+                </>
               ) : (
                 <button
                   type="button"
                   className="btn secondary"
                   onClick={closeModal}
-                  disabled={printBusy || fieldBusy}
+                  disabled={printBusy}
                 >
                   Cerrar
                 </button>

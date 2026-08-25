@@ -8257,30 +8257,6 @@ button.inv-stat.is-active {
   background: color-mix(in srgb, var(--color-brand) 10%, transparent);
   outline: none;
 }
-.prod-ficha-inline-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.2rem;
-}
-.prod-ficha-inline-btn {
-  display: inline-grid;
-  place-items: center;
-  width: 40px;
-  height: 40px;
-  border: 1px solid var(--color-line);
-  border-radius: 8px;
-  background: #fff;
-  color: var(--color-ink);
-  cursor: pointer;
-}
-.prod-ficha-inline-btn.is-save {
-  border-color: var(--color-brand);
-  color: var(--color-brand);
-}
-.prod-ficha-inline-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
 .prod-ficha-value {
   margin: 0;
   padding: 0.45rem 0;
@@ -8296,11 +8272,6 @@ button.inv-stat.is-active {
 }
 .prod-ficha-notes-view p {
   margin: 0;
-}
-.prod-ficha-field.is-editing {
-  padding: 0.35rem 0.45rem 0.55rem;
-  border-radius: 10px;
-  background: color-mix(in srgb, var(--color-brand) 4%, var(--color-surface));
 }
 @media (min-width: 901px) {
   .prod-ficha-pencil {

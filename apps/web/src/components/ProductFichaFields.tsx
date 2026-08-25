@@ -1,7 +1,7 @@
 import type { ReactNode, Ref } from 'react';
 import { ChileMoneyInput } from './ChileMoneyInput';
 import { ColorSelect } from './ColorSelect';
-import { IconCheck, IconClose, IconPencil } from './icons';
+import { IconPencil } from './icons';
 import { MarginHint } from './MarginHint';
 import { parseChileMoney } from '../lib/chileMoney';
 
@@ -27,7 +27,7 @@ export type ProductFichaValues = {
 
 export type ProductFichaCategory = { id: string; name: string };
 
-/** Campos de identidad/detalle editables con lápiz en modo vista. */
+/** Campos con lápiz en vista (cualquier lápiz abre edición de toda la ficha). */
 export type ProductFichaFieldKey =
   | 'name'
   | 'categoryId'
@@ -54,16 +54,6 @@ type SaleField =
   | { mode: 'edit'; value: string; onChange: (v: string) => void }
   | { mode: 'locked'; display: string; hint: string; amount?: number };
 
-type ViewControls = {
-  activeField: ProductFichaFieldKey | null;
-  onRequestEdit: (key: ProductFichaFieldKey) => void;
-  onCancelField: () => void;
-  onCommitField: () => void;
-  /** Si false, no se muestra lápiz (p. ej. precio para vendedora). */
-  canEditField?: (key: ProductFichaFieldKey) => boolean;
-  fieldBusy?: boolean;
-};
-
 type Props = {
   idPrefix: string;
   values: ProductFichaValues;
@@ -78,11 +68,14 @@ type Props = {
   extraAfterIdentity?: ReactNode;
   extraAfterCode?: ReactNode;
   /**
-   * `edit` = formulario completo (alta / Ingresos).
-   * `view` = lectura + lápiz por campo (ficha Productos).
+   * `edit` = formulario editable (alta o ficha en edición).
+   * `view` = solo lectura + lápiz (entra a edición de toda la ficha).
    */
   mode?: 'edit' | 'view';
-  view?: ViewControls;
+  /** Cualquier lápiz en vista. */
+  onEnterEdit?: () => void;
+  /** Si false, no se muestra lápiz (p. ej. precio para vendedora). */
+  canEditField?: (key: ProductFichaFieldKey) => boolean;
 };
 
 function displayOrDash(v: string | null | undefined) {
@@ -90,67 +83,30 @@ function displayOrDash(v: string | null | undefined) {
   return t || '—';
 }
 
-function FieldChrome({
+function FieldLabel({
   label,
   htmlFor,
-  canEdit,
-  isActive,
-  onEdit,
-  onCancel,
-  onCommit,
-  busy,
-  children,
-  viewValue,
+  showPencil,
+  onEnterEdit,
 }: {
   label: string;
   htmlFor: string;
-  canEdit: boolean;
-  isActive: boolean;
-  onEdit: () => void;
-  onCancel: () => void;
-  onCommit: () => void;
-  busy?: boolean;
-  children: ReactNode;
-  viewValue: ReactNode;
+  showPencil?: boolean;
+  onEnterEdit?: () => void;
 }) {
   return (
-    <div className={`field prod-ficha-field${isActive ? ' is-editing' : ''}`}>
-      <div className="prod-ficha-label-row">
-        <label htmlFor={htmlFor}>{label}</label>
-        {canEdit && !isActive ? (
-          <button
-            type="button"
-            className="prod-ficha-pencil"
-            aria-label={`Editar ${label}`}
-            onClick={onEdit}
-          >
-            <IconPencil size={15} />
-          </button>
-        ) : null}
-        {isActive ? (
-          <div className="prod-ficha-inline-actions">
-            <button
-              type="button"
-              className="prod-ficha-inline-btn is-save"
-              aria-label="Guardar"
-              disabled={busy}
-              onClick={onCommit}
-            >
-              <IconCheck size={15} />
-            </button>
-            <button
-              type="button"
-              className="prod-ficha-inline-btn"
-              aria-label="Cancelar"
-              disabled={busy}
-              onClick={onCancel}
-            >
-              <IconClose size={15} />
-            </button>
-          </div>
-        ) : null}
-      </div>
-      {isActive ? children : <div className="prod-ficha-value">{viewValue}</div>}
+    <div className="prod-ficha-label-row">
+      <label htmlFor={htmlFor}>{label}</label>
+      {showPencil && onEnterEdit ? (
+        <button
+          type="button"
+          className="prod-ficha-pencil"
+          aria-label={`Editar ${label}`}
+          onClick={onEnterEdit}
+        >
+          <IconPencil size={15} />
+        </button>
+      ) : null}
     </div>
   );
 }
@@ -169,9 +125,10 @@ export function ProductFichaFields({
   extraAfterIdentity,
   extraAfterCode,
   mode = 'edit',
-  view,
+  onEnterEdit,
+  canEditField,
 }: Props) {
-  const isView = mode === 'view' && view;
+  const isView = mode === 'view';
   const saleNum =
     salePrice.mode === 'edit'
       ? parseChileMoney(salePrice.value)
@@ -195,18 +152,22 @@ export function ProductFichaFields({
       : (() => {
           const n = parseChileMoney(salePrice.value);
           return n != null
-            ? n.toLocaleString('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 })
+            ? n.toLocaleString('es-CL', {
+                style: 'currency',
+                currency: 'CLP',
+                maximumFractionDigits: 0,
+              })
             : '—';
         })();
 
-  function canEdit(key: ProductFichaFieldKey) {
-    if (!isView) return false;
-    if (view.canEditField && !view.canEditField(key)) return false;
+  function showPencil(key: ProductFichaFieldKey) {
+    if (!isView || !onEnterEdit) return false;
+    if (canEditField && !canEditField(key)) return false;
     if (key === 'salePrice' && salePrice.mode === 'locked') return false;
     return true;
   }
 
-  function wrap(
+  function field(
     key: ProductFichaFieldKey,
     label: string,
     htmlFor: string,
@@ -214,100 +175,70 @@ export function ProductFichaFields({
     editor: ReactNode,
     hint?: ReactNode,
   ) {
-    if (!isView) {
+    const span = key === 'name' || key === 'description' ? ' prod-span-2' : '';
+    if (isView) {
       return (
-        <div className={`field${key === 'name' || key === 'description' ? ' prod-span-2' : ''}`}>
-          <label htmlFor={htmlFor}>{label}</label>
-          {editor}
-          {hint}
+        <div className={`field prod-ficha-field${span}`}>
+          <FieldLabel
+            label={label}
+            htmlFor={htmlFor}
+            showPencil={showPencil(key)}
+            onEnterEdit={onEnterEdit}
+          />
+          <div className="prod-ficha-value">{viewValue}</div>
         </div>
       );
     }
-    const active = view.activeField === key;
     return (
-      <div className={key === 'name' || key === 'description' ? 'prod-span-2' : undefined}>
-        <FieldChrome
-          label={label}
-          htmlFor={htmlFor}
-          canEdit={canEdit(key)}
-          isActive={active}
-          onEdit={() => view.onRequestEdit(key)}
-          onCancel={view.onCancelField}
-          onCommit={view.onCommitField}
-          busy={view.fieldBusy || disabled}
-          viewValue={viewValue}
-        >
-          {editor}
-          {hint}
-        </FieldChrome>
+      <div className={`field${span}`}>
+        <label htmlFor={htmlFor}>{label}</label>
+        {editor}
+        {hint}
       </div>
     );
   }
-
-  const nameEditor = (
-    <input
-      id={`${idPrefix}-name`}
-      ref={nameRef}
-      required={!isView}
-      value={values.name}
-      onChange={(e) => onChange({ name: e.target.value })}
-      autoComplete="off"
-      placeholder="Ej. Vestido satén negro"
-      disabled={disabled || (isView && view.activeField !== 'name')}
-    />
-  );
-
-  const catEditor = (
-    <select
-      id={`${idPrefix}-cat`}
-      value={values.categoryId}
-      onChange={(e) => onChange({ categoryId: e.target.value })}
-      disabled={disabled || (isView && view.activeField !== 'categoryId')}
-    >
-      <option value="">Seleccionar</option>
-      {categories.map((c) => (
-        <option key={c.id} value={c.id}>
-          {c.name}
-        </option>
-      ))}
-    </select>
-  );
-
-  const saleEditor =
-    salePrice.mode === 'edit' ? (
-      <>
-        <ChileMoneyInput
-          id={`${idPrefix}-sale`}
-          required={!isView}
-          value={salePrice.value}
-          onChange={salePrice.onChange}
-          placeholder="0"
-          disabled={disabled || (isView && view.activeField !== 'salePrice')}
-        />
-        <MarginHint cost={costNum} sale={saleNum} />
-      </>
-    ) : (
-      <>
-        <input
-          id={`${idPrefix}-sale`}
-          value={salePrice.display}
-          disabled
-          readOnly
-          aria-readonly="true"
-        />
-        <p className="ing-hint">{salePrice.hint}</p>
-        {(costNum != null && saleNum != null) ? <MarginHint cost={costNum} sale={saleNum} /> : null}
-      </>
-    );
 
   return (
     <>
       <section className="prod-section">
         <h4 className="prod-section-title">Identidad</h4>
         <div className="prod-section-grid">
-          {wrap('name', 'Nombre', `${idPrefix}-name`, displayOrDash(values.name), nameEditor)}
-          {wrap('categoryId', 'Categoría', `${idPrefix}-cat`, catName, catEditor)}
-          {wrap(
+          {field(
+            'name',
+            'Nombre',
+            `${idPrefix}-name`,
+            displayOrDash(values.name),
+            <input
+              id={`${idPrefix}-name`}
+              ref={nameRef}
+              required
+              value={values.name}
+              onChange={(e) => onChange({ name: e.target.value })}
+              autoComplete="off"
+              placeholder="Ej. Vestido satén negro"
+              disabled={disabled}
+            />,
+          )}
+          {field(
+            'categoryId',
+            'Categoría',
+            `${idPrefix}-cat`,
+            catName,
+            <select
+              id={`${idPrefix}-cat`}
+              value={values.categoryId}
+              onChange={(e) => onChange({ categoryId: e.target.value })}
+              disabled={disabled}
+            >
+              <option value="">Seleccionar</option>
+              {categories.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>,
+          )}
+          {field(
             'salePrice',
             'Precio venta',
             `${idPrefix}-sale`,
@@ -319,7 +250,33 @@ export function ProductFichaFields({
                 <MarginHint cost={costNum} sale={saleNum} />
               ) : null}
             </>,
-            saleEditor,
+            salePrice.mode === 'edit' ? (
+              <>
+                <ChileMoneyInput
+                  id={`${idPrefix}-sale`}
+                  required
+                  value={salePrice.value}
+                  onChange={salePrice.onChange}
+                  placeholder="0"
+                  disabled={disabled}
+                />
+                <MarginHint cost={costNum} sale={saleNum} />
+              </>
+            ) : (
+              <>
+                <input
+                  id={`${idPrefix}-sale`}
+                  value={salePrice.display}
+                  disabled
+                  readOnly
+                  aria-readonly="true"
+                />
+                <p className="ing-hint">{salePrice.hint}</p>
+                {costNum != null && saleNum != null ? (
+                  <MarginHint cost={costNum} sale={saleNum} />
+                ) : null}
+              </>
+            ),
           )}
         </div>
         {extraAfterIdentity}
@@ -328,7 +285,7 @@ export function ProductFichaFields({
       <section className="prod-section">
         <h4 className="prod-section-title">Detalle</h4>
         <div className="prod-section-grid">
-          {wrap(
+          {field(
             'brand',
             'Marca',
             `${idPrefix}-brand`,
@@ -338,10 +295,10 @@ export function ProductFichaFields({
               value={values.brand}
               onChange={(e) => onChange({ brand: e.target.value })}
               autoComplete="off"
-              disabled={disabled || (isView && view!.activeField !== 'brand')}
+              disabled={disabled}
             />,
           )}
-          {wrap(
+          {field(
             'productType',
             'Tipología',
             `${idPrefix}-type`,
@@ -352,10 +309,10 @@ export function ProductFichaFields({
               onChange={(e) => onChange({ productType: e.target.value })}
               placeholder="Ej. vestido, jeans"
               autoComplete="off"
-              disabled={disabled || (isView && view!.activeField !== 'productType')}
+              disabled={disabled}
             />,
           )}
-          {wrap(
+          {field(
             'sizeLabel',
             'Talla',
             `${idPrefix}-size`,
@@ -365,10 +322,10 @@ export function ProductFichaFields({
               value={values.sizeLabel}
               onChange={(e) => onChange({ sizeLabel: e.target.value })}
               autoComplete="off"
-              disabled={disabled || (isView && view!.activeField !== 'sizeLabel')}
+              disabled={disabled}
             />,
           )}
-          {wrap(
+          {field(
             'color',
             'Color',
             `${idPrefix}-color`,
@@ -377,10 +334,10 @@ export function ProductFichaFields({
               id={`${idPrefix}-color`}
               value={values.color}
               onChange={(color) => onChange({ color })}
-              disabled={disabled || (isView && view!.activeField !== 'color')}
+              disabled={disabled}
             />,
           )}
-          {wrap(
+          {field(
             'season',
             'Temporada',
             `${idPrefix}-season`,
@@ -389,7 +346,7 @@ export function ProductFichaFields({
               id={`${idPrefix}-season`}
               value={values.season}
               onChange={(e) => onChange({ season: e.target.value })}
-              disabled={disabled || (isView && view!.activeField !== 'season')}
+              disabled={disabled}
             >
               <option value="">Sin definir</option>
               {PRODUCT_SEASONS.map((s) => (
@@ -430,7 +387,7 @@ export function ProductFichaFields({
             {extraAfterCode}
           </div>
 
-          {wrap(
+          {field(
             'description',
             'Descripción',
             `${idPrefix}-desc`,
@@ -441,7 +398,7 @@ export function ProductFichaFields({
               value={values.description}
               onChange={(e) => onChange({ description: e.target.value })}
               placeholder="Detalle de la prenda"
-              disabled={disabled || (isView && view!.activeField !== 'description')}
+              disabled={disabled}
             />,
           )}
         </div>
