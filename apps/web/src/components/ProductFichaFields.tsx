@@ -1,6 +1,7 @@
 import type { ReactNode, Ref } from 'react';
 import { ChileMoneyInput } from './ChileMoneyInput';
 import { ColorSelect } from './ColorSelect';
+import { IconCheck, IconClose, IconPencil } from './icons';
 import { MarginHint } from './MarginHint';
 import { parseChileMoney } from '../lib/chileMoney';
 
@@ -26,6 +27,18 @@ export type ProductFichaValues = {
 
 export type ProductFichaCategory = { id: string; name: string };
 
+/** Campos de identidad/detalle editables con lápiz en modo vista. */
+export type ProductFichaFieldKey =
+  | 'name'
+  | 'categoryId'
+  | 'salePrice'
+  | 'brand'
+  | 'productType'
+  | 'sizeLabel'
+  | 'color'
+  | 'season'
+  | 'description';
+
 type CodeField =
   | { locked: true; value: string; helper?: string }
   | {
@@ -41,6 +54,16 @@ type SaleField =
   | { mode: 'edit'; value: string; onChange: (v: string) => void }
   | { mode: 'locked'; display: string; hint: string; amount?: number };
 
+type ViewControls = {
+  activeField: ProductFichaFieldKey | null;
+  onRequestEdit: (key: ProductFichaFieldKey) => void;
+  onCancelField: () => void;
+  onCommitField: () => void;
+  /** Si false, no se muestra lápiz (p. ej. precio para vendedora). */
+  canEditField?: (key: ProductFichaFieldKey) => boolean;
+  fieldBusy?: boolean;
+};
+
 type Props = {
   idPrefix: string;
   values: ProductFichaValues;
@@ -54,7 +77,83 @@ type Props = {
   costPrice?: number | string | null;
   extraAfterIdentity?: ReactNode;
   extraAfterCode?: ReactNode;
+  /**
+   * `edit` = formulario completo (alta / Ingresos).
+   * `view` = lectura + lápiz por campo (ficha Productos).
+   */
+  mode?: 'edit' | 'view';
+  view?: ViewControls;
 };
+
+function displayOrDash(v: string | null | undefined) {
+  const t = (v || '').trim();
+  return t || '—';
+}
+
+function FieldChrome({
+  label,
+  htmlFor,
+  canEdit,
+  isActive,
+  onEdit,
+  onCancel,
+  onCommit,
+  busy,
+  children,
+  viewValue,
+}: {
+  label: string;
+  htmlFor: string;
+  canEdit: boolean;
+  isActive: boolean;
+  onEdit: () => void;
+  onCancel: () => void;
+  onCommit: () => void;
+  busy?: boolean;
+  children: ReactNode;
+  viewValue: ReactNode;
+}) {
+  return (
+    <div className={`field prod-ficha-field${isActive ? ' is-editing' : ''}`}>
+      <div className="prod-ficha-label-row">
+        <label htmlFor={htmlFor}>{label}</label>
+        {canEdit && !isActive ? (
+          <button
+            type="button"
+            className="prod-ficha-pencil"
+            aria-label={`Editar ${label}`}
+            onClick={onEdit}
+          >
+            <IconPencil size={15} />
+          </button>
+        ) : null}
+        {isActive ? (
+          <div className="prod-ficha-inline-actions">
+            <button
+              type="button"
+              className="prod-ficha-inline-btn is-save"
+              aria-label="Guardar"
+              disabled={busy}
+              onClick={onCommit}
+            >
+              <IconCheck size={15} />
+            </button>
+            <button
+              type="button"
+              className="prod-ficha-inline-btn"
+              aria-label="Cancelar"
+              disabled={busy}
+              onClick={onCancel}
+            >
+              <IconClose size={15} />
+            </button>
+          </div>
+        ) : null}
+      </div>
+      {isActive ? children : <div className="prod-ficha-value">{viewValue}</div>}
+    </div>
+  );
+}
 
 /** Identidad + detalle compartidos (alta en Ingresos y ficha en Productos). */
 export function ProductFichaFields({
@@ -69,7 +168,10 @@ export function ProductFichaFields({
   costPrice,
   extraAfterIdentity,
   extraAfterCode,
+  mode = 'edit',
+  view,
 }: Props) {
+  const isView = mode === 'view' && view;
   const saleNum =
     salePrice.mode === 'edit'
       ? parseChileMoney(salePrice.value)
@@ -83,67 +185,142 @@ export function ProductFichaFields({
         ? parseChileMoney(String(costPrice))
         : null;
 
+  const catName =
+    categories.find((c) => c.id === values.categoryId)?.name ||
+    (values.categoryId ? '—' : 'Sin categoría');
+
+  const saleDisplay =
+    salePrice.mode === 'locked'
+      ? salePrice.display
+      : (() => {
+          const n = parseChileMoney(salePrice.value);
+          return n != null
+            ? n.toLocaleString('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 })
+            : '—';
+        })();
+
+  function canEdit(key: ProductFichaFieldKey) {
+    if (!isView) return false;
+    if (view.canEditField && !view.canEditField(key)) return false;
+    if (key === 'salePrice' && salePrice.mode === 'locked') return false;
+    return true;
+  }
+
+  function wrap(
+    key: ProductFichaFieldKey,
+    label: string,
+    htmlFor: string,
+    viewValue: ReactNode,
+    editor: ReactNode,
+    hint?: ReactNode,
+  ) {
+    if (!isView) {
+      return (
+        <div className={`field${key === 'name' || key === 'description' ? ' prod-span-2' : ''}`}>
+          <label htmlFor={htmlFor}>{label}</label>
+          {editor}
+          {hint}
+        </div>
+      );
+    }
+    const active = view.activeField === key;
+    return (
+      <div className={key === 'name' || key === 'description' ? 'prod-span-2' : undefined}>
+        <FieldChrome
+          label={label}
+          htmlFor={htmlFor}
+          canEdit={canEdit(key)}
+          isActive={active}
+          onEdit={() => view.onRequestEdit(key)}
+          onCancel={view.onCancelField}
+          onCommit={view.onCommitField}
+          busy={view.fieldBusy || disabled}
+          viewValue={viewValue}
+        >
+          {editor}
+          {hint}
+        </FieldChrome>
+      </div>
+    );
+  }
+
+  const nameEditor = (
+    <input
+      id={`${idPrefix}-name`}
+      ref={nameRef}
+      required={!isView}
+      value={values.name}
+      onChange={(e) => onChange({ name: e.target.value })}
+      autoComplete="off"
+      placeholder="Ej. Vestido satén negro"
+      disabled={disabled || (isView && view.activeField !== 'name')}
+    />
+  );
+
+  const catEditor = (
+    <select
+      id={`${idPrefix}-cat`}
+      value={values.categoryId}
+      onChange={(e) => onChange({ categoryId: e.target.value })}
+      disabled={disabled || (isView && view.activeField !== 'categoryId')}
+    >
+      <option value="">Seleccionar</option>
+      {categories.map((c) => (
+        <option key={c.id} value={c.id}>
+          {c.name}
+        </option>
+      ))}
+    </select>
+  );
+
+  const saleEditor =
+    salePrice.mode === 'edit' ? (
+      <>
+        <ChileMoneyInput
+          id={`${idPrefix}-sale`}
+          required={!isView}
+          value={salePrice.value}
+          onChange={salePrice.onChange}
+          placeholder="0"
+          disabled={disabled || (isView && view.activeField !== 'salePrice')}
+        />
+        <MarginHint cost={costNum} sale={saleNum} />
+      </>
+    ) : (
+      <>
+        <input
+          id={`${idPrefix}-sale`}
+          value={salePrice.display}
+          disabled
+          readOnly
+          aria-readonly="true"
+        />
+        <p className="ing-hint">{salePrice.hint}</p>
+        {(costNum != null && saleNum != null) ? <MarginHint cost={costNum} sale={saleNum} /> : null}
+      </>
+    );
+
   return (
     <>
       <section className="prod-section">
         <h4 className="prod-section-title">Identidad</h4>
         <div className="prod-section-grid">
-          <div className="field prod-span-2">
-            <label htmlFor={`${idPrefix}-name`}>Nombre</label>
-            <input
-              id={`${idPrefix}-name`}
-              ref={nameRef}
-              required
-              value={values.name}
-              onChange={(e) => onChange({ name: e.target.value })}
-              autoComplete="off"
-              placeholder="Ej. Vestido satén negro"
-              disabled={disabled}
-            />
-          </div>
-          <div className="field">
-            <label htmlFor={`${idPrefix}-cat`}>Categoría</label>
-            <select
-              id={`${idPrefix}-cat`}
-              value={values.categoryId}
-              onChange={(e) => onChange({ categoryId: e.target.value })}
-              disabled={disabled}
-            >
-              <option value="">Seleccionar</option>
-              {categories.map((c) => (
-                <option key={c.id} value={c.id}>
-                  {c.name}
-                </option>
-              ))}
-            </select>
-          </div>
-          <div className="field">
-            <label htmlFor={`${idPrefix}-sale`}>Precio venta</label>
-            {salePrice.mode === 'edit' ? (
-              <ChileMoneyInput
-                id={`${idPrefix}-sale`}
-                required
-                value={salePrice.value}
-                onChange={salePrice.onChange}
-                placeholder="0"
-                disabled={disabled}
-              />
-            ) : (
-              <>
-                <input
-                  id={`${idPrefix}-sale`}
-                  value={salePrice.display}
-                  disabled
-                  readOnly
-                  aria-readonly="true"
-                />
+          {wrap('name', 'Nombre', `${idPrefix}-name`, displayOrDash(values.name), nameEditor)}
+          {wrap('categoryId', 'Categoría', `${idPrefix}-cat`, catName, catEditor)}
+          {wrap(
+            'salePrice',
+            'Precio venta',
+            `${idPrefix}-sale`,
+            <>
+              <span>{saleDisplay}</span>
+              {salePrice.mode === 'locked' ? (
                 <p className="ing-hint">{salePrice.hint}</p>
-              </>
-            )}
-            {(salePrice.mode === 'edit' || (costNum != null && saleNum != null)) ? (
-              <MarginHint cost={costNum} sale={saleNum} />
-            ) : null}
-          </div>
+              ) : costNum != null && saleNum != null ? (
+                <MarginHint cost={costNum} sale={saleNum} />
+              ) : null}
+            </>,
+            saleEditor,
+          )}
         </div>
         {extraAfterIdentity}
       </section>
@@ -151,53 +328,68 @@ export function ProductFichaFields({
       <section className="prod-section">
         <h4 className="prod-section-title">Detalle</h4>
         <div className="prod-section-grid">
-          <div className="field">
-            <label htmlFor={`${idPrefix}-brand`}>Marca</label>
+          {wrap(
+            'brand',
+            'Marca',
+            `${idPrefix}-brand`,
+            displayOrDash(values.brand),
             <input
               id={`${idPrefix}-brand`}
               value={values.brand}
               onChange={(e) => onChange({ brand: e.target.value })}
               autoComplete="off"
-              disabled={disabled}
-            />
-          </div>
-          <div className="field">
-            <label htmlFor={`${idPrefix}-type`}>Tipología</label>
+              disabled={disabled || (isView && view!.activeField !== 'brand')}
+            />,
+          )}
+          {wrap(
+            'productType',
+            'Tipología',
+            `${idPrefix}-type`,
+            displayOrDash(values.productType),
             <input
               id={`${idPrefix}-type`}
               value={values.productType}
               onChange={(e) => onChange({ productType: e.target.value })}
               placeholder="Ej. vestido, jeans"
               autoComplete="off"
-              disabled={disabled}
-            />
-          </div>
-          <div className="field">
-            <label htmlFor={`${idPrefix}-size`}>Talla</label>
+              disabled={disabled || (isView && view!.activeField !== 'productType')}
+            />,
+          )}
+          {wrap(
+            'sizeLabel',
+            'Talla',
+            `${idPrefix}-size`,
+            displayOrDash(values.sizeLabel),
             <input
               id={`${idPrefix}-size`}
               value={values.sizeLabel}
               onChange={(e) => onChange({ sizeLabel: e.target.value })}
               autoComplete="off"
-              disabled={disabled}
-            />
-          </div>
-          <div className="field">
-            <label htmlFor={`${idPrefix}-color`}>Color</label>
+              disabled={disabled || (isView && view!.activeField !== 'sizeLabel')}
+            />,
+          )}
+          {wrap(
+            'color',
+            'Color',
+            `${idPrefix}-color`,
+            displayOrDash(values.color),
             <ColorSelect
               id={`${idPrefix}-color`}
               value={values.color}
               onChange={(color) => onChange({ color })}
-              disabled={disabled}
-            />
-          </div>
-          <div className="field">
-            <label htmlFor={`${idPrefix}-season`}>Temporada</label>
+              disabled={disabled || (isView && view!.activeField !== 'color')}
+            />,
+          )}
+          {wrap(
+            'season',
+            'Temporada',
+            `${idPrefix}-season`,
+            displayOrDash(values.season),
             <select
               id={`${idPrefix}-season`}
               value={values.season}
               onChange={(e) => onChange({ season: e.target.value })}
-              disabled={disabled}
+              disabled={disabled || (isView && view!.activeField !== 'season')}
             >
               <option value="">Sin definir</option>
               {PRODUCT_SEASONS.map((s) => (
@@ -205,8 +397,9 @@ export function ProductFichaFields({
                   {s}
                 </option>
               ))}
-            </select>
-          </div>
+            </select>,
+          )}
+
           <div className="field">
             <label htmlFor={`${idPrefix}-code`}>Código</label>
             {code.locked ? (
@@ -236,17 +429,21 @@ export function ProductFichaFields({
             ) : null}
             {extraAfterCode}
           </div>
-          <div className="field prod-span-2">
-            <label htmlFor={`${idPrefix}-desc`}>Descripción</label>
+
+          {wrap(
+            'description',
+            'Descripción',
+            `${idPrefix}-desc`,
+            displayOrDash(values.description),
             <textarea
               id={`${idPrefix}-desc`}
               rows={2}
               value={values.description}
               onChange={(e) => onChange({ description: e.target.value })}
               placeholder="Detalle de la prenda"
-              disabled={disabled}
-            />
-          </div>
+              disabled={disabled || (isView && view!.activeField !== 'description')}
+            />,
+          )}
         </div>
       </section>
     </>
