@@ -1,6 +1,6 @@
 /**
  * Normaliza códigos leídos por pistola / teclado en Caja e Ingresos.
- * LS-* = interno; BC* = código de barras de etiqueta.
+ * Serie LS###### (histórico LS-######); BC* = legado de etiqueta.
  */
 
 /** Quita basura típica de wedge (apóstrofe por guión, espacios). */
@@ -10,7 +10,7 @@ export function normalizeScanCode(code: string): string {
 
 /**
  * Variantes equivalentes para match:
- * BC000003 ↔ BC-000003; LS-000009 ↔ LS000009.
+ * BC000003 ↔ BC-000003; LS100007 ↔ LS-100007 (también padding a 6).
  */
 export function expandProductCodeVariants(code: string): string[] {
   const n = normalizeScanCode(code);
@@ -22,13 +22,23 @@ export function expandProductCodeVariants(code: string): string[] {
     const digits = bc[1];
     keys.add(`BC${digits}`);
     keys.add(`BC-${digits}`);
+    if (digits.length < 6) {
+      const padded = digits.padStart(6, '0');
+      keys.add(`BC${padded}`);
+      keys.add(`BC-${padded}`);
+    }
   }
 
   const ls = n.match(/^LS-?(\d+)$/i);
   if (ls) {
     const digits = ls[1];
-    keys.add(`LS-${digits}`);
     keys.add(`LS${digits}`);
+    keys.add(`LS-${digits}`);
+    if (digits.length < 6) {
+      const padded = digits.padStart(6, '0');
+      keys.add(`LS${padded}`);
+      keys.add(`LS-${padded}`);
+    }
   }
 
   return [...keys];

@@ -29,7 +29,13 @@ describe('scanCode', () => {
   it('matches barcode to internal equivalents', () => {
     assert.equal(codesMatch('BC000003', 'BC-000003'), true);
     assert.equal(codesMatch('LS-000009', 'LS000009'), true);
+    assert.equal(codesMatch('LS100007', 'LS-100007'), true);
     assert.equal(codesMatch('BC000003', 'LS-000009'), false);
+  });
+
+  it('pads short LS for match with stored 6-digit codes', () => {
+    assert.equal(codesMatch('LS12', 'LS000012'), true);
+    assert.equal(codesMatch('LS-12', 'LS-000012'), true);
   });
 });
 

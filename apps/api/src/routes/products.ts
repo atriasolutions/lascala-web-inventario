@@ -4,12 +4,14 @@ import { query } from '../db/pool.js';
 import { requireAuth, requireBranch, requireRoles } from '../middleware/auth.js';
 import {
   assertBarcodeAvailable,
+  canonicalizeStoredProductCode,
   expandProductCodeVariants,
   getSettingNumber,
   isBarcodeAvailable,
   nextInternalCode,
   normalizeBarcode,
 } from '../services/inventory.js';
+import { assertCanEditSalePrice, assertCanRegisterProductCode } from '../auth/roles.js';
 import { asyncHandler, HttpError } from '../utils/errors.js';
 
 /** http(s), archivos subidos o assets estáticos de marca en public/brand */
@@ -153,7 +155,10 @@ productsRouter.get(
     const available = await isBarcodeAvailable(req.user!.organizationId, code, {
       excludeProductId: excludeRaw,
     });
-    res.json({ available, barcode: normalizeBarcode(code) });
+    res.json({
+      available,
+      barcode: canonicalizeStoredProductCode(code) ?? normalizeBarcode(code),
+    });
   }),
 );
 
@@ -190,13 +195,16 @@ productsRouter.get(
 productsRouter.post(
   '/',
   requireBranch,
-  requireRoles('owner', 'branch_manager', 'seller'),
+  requireRoles('owner', 'branch_manager'),
   asyncHandler(async (req, res) => {
+    assertCanRegisterProductCode(req.activeRole);
     const body = z
       .object({
         name: z.string().min(1),
         categoryId: z.string().uuid().optional().nullable(),
+        /** Código explícito, vacío/omitido/"auto" → genera LS###### libre. */
         barcode: z.string().optional().nullable(),
+        codeMode: z.enum(['auto', 'manual']).optional(),
         brand: z.string().optional().nullable(),
         sizeLabel: z.string().optional().nullable(),
         color: z.string().optional().nullable(),
@@ -205,7 +213,7 @@ productsRouter.post(
         description: z.string().optional().nullable(),
         /** Costo referencial; el costo maestro viene de compras (unit_cost). */
         costPrice: z.number().nonnegative().optional(),
-        salePrice: z.number().nonnegative(),
+        salePrice: z.number().nonnegative().optional(),
         allowsExchange: z.boolean().optional(),
         allowsReturn: z.boolean().optional(),
         tracksStock: z.boolean().optional(),
@@ -230,8 +238,22 @@ productsRouter.post(
     }
 
     const costPrice = body.costPrice ?? 0;
-    const salePrice = body.salePrice;
-    const requestedCode = normalizeBarcode(body.barcode);
+    let salePrice = body.salePrice;
+    if (req.activeRole === 'seller') {
+      if (body.salePrice !== undefined) assertCanEditSalePrice('seller');
+      salePrice = 0;
+    } else if (salePrice === undefined) {
+      throw new HttpError(400, 'Ingresa el precio de venta');
+    }
+    const requestedRaw = body.barcode?.trim() ?? '';
+    const wantsAuto =
+      body.codeMode === 'auto' ||
+      !requestedRaw ||
+      requestedRaw.toLowerCase() === 'auto';
+    const requestedCode = wantsAuto ? null : canonicalizeStoredProductCode(requestedRaw);
+    if (!wantsAuto && !requestedCode) {
+      throw new HttpError(400, 'Ingresa un código válido o elige Autogenerar');
+    }
     if (requestedCode) {
       await assertBarcodeAvailable(req.user!.organizationId, requestedCode);
     }
@@ -322,6 +344,10 @@ productsRouter.patch(
         color: z.string().optional().nullable(),
       })
       .parse(req.body);
+
+    if (req.activeRole === 'seller' && body.salePrice !== undefined) {
+      assertCanEditSalePrice('seller');
+    }
 
     const productId = String(req.params.id);
 

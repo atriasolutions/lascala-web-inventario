@@ -1,5 +1,10 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { ColorSwatch } from './ColorSwatch';
+import { ModalOverlayClose } from './ModalOverlayClose';
+import {
+  ProductCodeEntry,
+  type ProductCodeMode,
+} from './ProductCodeEntry';
 import { ProductFichaFields } from './ProductFichaFields';
 import { ProductPhotoPlaceholder } from './ProductPhotoPlaceholder';
 import { api, mediaUrl, money } from '../lib/api';
@@ -52,6 +57,8 @@ type Props = {
     labelCopies: number;
   }) => Promise<void>;
   onPrintLabel: (name: string, code: string, copies: number) => void | Promise<void>;
+  /** false = Vendedor/a: solo buscar/vincular existente e imprimir etiqueta. */
+  canCreateProduct?: boolean;
 };
 
 function linePending(line: NoBarcodeLine) {
@@ -68,6 +75,7 @@ export function NoBarcodeModal({
   onCreateAndReceive,
   onLinkExisting,
   onPrintLabel,
+  canCreateProduct = true,
 }: Props) {
   const panelRef = useRef<HTMLDivElement>(null);
   const searchId = useId();
@@ -78,6 +86,11 @@ export function NoBarcodeModal({
 
   const [pickLineId, setPickLineId] = useState('');
   const [barcode, setBarcode] = useState(suggestedBarcode);
+  const [codeMode, setCodeMode] = useState<ProductCodeMode>('auto');
+  const [codeGenerating, setCodeGenerating] = useState(false);
+  const [codeAvailability, setCodeAvailability] = useState<
+    'idle' | 'checking' | 'ok' | 'taken' | 'error'
+  >('idle');
   const [name, setName] = useState('');
   const [color, setColor] = useState('');
   const [sizeLabel, setSizeLabel] = useState('');
@@ -104,11 +117,14 @@ export function NoBarcodeModal({
 
   useEffect(() => {
     if (!open) return;
-    setMode('new');
+    setMode(canCreateProduct ? 'new' : 'search');
     setError('');
     setBusy(false);
     setPrintBusy(false);
     setBarcode(suggestedBarcode);
+    setCodeMode('auto');
+    setCodeAvailability('idle');
+    setCodeGenerating(false);
     setSearchQ('');
     setSearchHits([]);
     setSelected(null);
@@ -128,7 +144,7 @@ export function NoBarcodeModal({
     requestAnimationFrame(() => {
       panelRef.current?.querySelector<HTMLElement>('input, select, button')?.focus();
     });
-  }, [open, suggestedBarcode, lines]);
+  }, [open, suggestedBarcode, lines, canCreateProduct]);
 
   useEffect(() => {
     if (!selectedLine || mode !== 'new') return;
@@ -187,6 +203,35 @@ export function NoBarcodeModal({
     return data;
   }
 
+  async function fetchNextCode() {
+    setCodeGenerating(true);
+    setCodeAvailability('idle');
+    try {
+      const data = await api<{ nextBarcode: string }>('/api/products/next-barcode');
+      setBarcode((data.nextBarcode || '').trim().toUpperCase());
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo generar el código');
+    } finally {
+      setCodeGenerating(false);
+    }
+  }
+
+  async function checkScanBarcode() {
+    const code = barcode.trim().toUpperCase().replace(/\s+/g, '');
+    if (!code || codeMode !== 'scan') {
+      setCodeAvailability('idle');
+      return;
+    }
+    setCodeAvailability('checking');
+    try {
+      const data = await checkBarcodeUnique(code);
+      if (data.barcode && data.barcode !== code) setBarcode(data.barcode);
+      setCodeAvailability(data.available ? 'ok' : 'taken');
+    } catch {
+      setCodeAvailability('error');
+    }
+  }
+
   async function executeCreate() {
     if (!pickLineId || !selectedLine) return;
     const code = barcode.trim().toUpperCase().replace(/\s+/g, '');
@@ -194,11 +239,21 @@ export function NoBarcodeModal({
     setBusy(true);
     setError('');
     try {
-      const check = await checkBarcodeUnique(code);
-      if (!check.available) {
-        setError('Ese código ya existe');
+      if (!code) {
+        setError(
+          codeMode === 'scan'
+            ? 'Pistolea o ingresa un código, o elige Autogenerar'
+            : 'Espera el código autogenerado o pulsa Otro código',
+        );
         return;
       }
+      const check = await checkBarcodeUnique(code);
+      if (!check.available) {
+        setCodeAvailability('taken');
+        setError('Ese código ya está en uso');
+        return;
+      }
+      setCodeAvailability('ok');
       await onCreateAndReceive({
         purchaseItemId: pickLineId,
         barcode: check.barcode || code,
@@ -232,7 +287,15 @@ export function NoBarcodeModal({
     }
     const code = barcode.trim().toUpperCase().replace(/\s+/g, '');
     if (!code) {
-      setError('Ingresa el código de la prenda');
+      setError(
+        codeMode === 'scan'
+          ? 'Pistolea o ingresa un código, o elige Autogenerar'
+          : 'Espera el código autogenerado o pulsa Otro código',
+      );
+      return;
+    }
+    if (codeMode === 'scan' && codeAvailability === 'taken') {
+      setError('Ese código ya está en uso');
       return;
     }
     if (!name.trim()) {
@@ -329,6 +392,8 @@ export function NoBarcodeModal({
         if (e.target === e.currentTarget) onClose();
       }}
     >
+      <ModalOverlayClose onClose={onClose}>
+      <div className="ing-line-modal-shell">
       <div
         className="pos-modal-panel ing-nb-panel"
         ref={panelRef}
@@ -338,24 +403,23 @@ export function NoBarcodeModal({
       >
         <div className="pos-modal-head">
           <h3 id={titleId}>Sin código de barras</h3>
-          <button type="button" className="btn ghost" onClick={onClose} aria-label="Cerrar">
-            Cerrar
-          </button>
         </div>
 
         <div className="ing-nb-tabs" role="tablist" aria-label="Modo">
-          <button
-            type="button"
-            role="tab"
-            aria-selected={mode === 'new'}
-            className={`ing-nb-tab${mode === 'new' ? ' is-active' : ''}`}
-            onClick={() => {
-              setMode('new');
-              setError('');
-            }}
-          >
-            Producto nuevo
-          </button>
+          {canCreateProduct ? (
+            <button
+              type="button"
+              role="tab"
+              aria-selected={mode === 'new'}
+              className={`ing-nb-tab${mode === 'new' ? ' is-active' : ''}`}
+              onClick={() => {
+                setMode('new');
+                setError('');
+              }}
+            >
+              Producto nuevo
+            </button>
+          ) : null}
           <button
             type="button"
             role="tab"
@@ -369,6 +433,12 @@ export function NoBarcodeModal({
             Buscar existente
           </button>
         </div>
+        {!canCreateProduct ? (
+          <p className="ing-hint" style={{ padding: '0 1.25rem' }}>
+            Solo la administración puede dar de alta el código en el sistema. Puedes buscar una
+            prenda ya registrada e imprimir la etiqueta.
+          </p>
+        ) : null}
 
         {mode === 'new' ? (
           <div className="ing-nb-body" role="tabpanel">
@@ -379,7 +449,7 @@ export function NoBarcodeModal({
             ) : (
               <>
                 <p className="ing-hint">
-                  Elige la línea y completa la ficha. El código (LS-…) es el de la etiqueta y de la
+                  Elige la línea y completa la ficha. El código (LS…) es el de la etiqueta y de la
                   pistola.
                 </p>
 
@@ -432,14 +502,40 @@ export function NoBarcodeModal({
                   code={{
                     locked: false,
                     value: barcode,
-                    onChange: setBarcode,
-                    helper: `Es el código de la etiqueta y de la pistola. Sugerido: ${suggestedBarcode}`,
+                    onChange: (v) => {
+                      setBarcode(v);
+                      setCodeAvailability('idle');
+                    },
+                    helper: '',
+                    slot: (
+                      <ProductCodeEntry
+                        id="ing-nb-code"
+                        value={barcode}
+                        mode={codeMode}
+                        onModeChange={(m) => {
+                          setCodeMode(m);
+                          setCodeAvailability('idle');
+                          if (m === 'scan') setBarcode('');
+                        }}
+                        onChange={(v) => {
+                          setBarcode(v);
+                          setCodeAvailability('idle');
+                        }}
+                        onAutogenerate={fetchNextCode}
+                        disabled={busy}
+                        generating={codeGenerating}
+                        availability={codeAvailability}
+                        onBlurCheck={() => void checkScanBarcode()}
+                      />
+                    ),
                   }}
                   salePrice={{
                     mode: 'locked',
                     display: displaySale > 0 ? money(displaySale) : '—',
+                    amount: displaySale > 0 ? displaySale : undefined,
                     hint: 'Fijado en la compra · no editable en recepción',
                   }}
+                  costPrice={selectedLine ? Number(selectedLine.unit_cost) : null}
                 />
                 <div className="ing-nb-grid">
                   <div className="field">
@@ -532,7 +628,7 @@ export function NoBarcodeModal({
                 id={searchId}
                 value={searchQ}
                 onChange={(e) => setSearchQ(e.target.value)}
-                placeholder="Ej. vestido negro, LS-000012"
+                placeholder="Ej. vestido negro, LS000012"
                 autoComplete="off"
               />
             </div>
@@ -667,6 +763,7 @@ export function NoBarcodeModal({
           </div>
         )}
       </div>
+      </div></ModalOverlayClose>
     </div>
   );
 }

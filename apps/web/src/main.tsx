@@ -5,6 +5,7 @@ import { registerSW } from 'virtual:pwa-register';
 import { AuthProvider } from './lib/auth';
 import { NetworkStatusProvider } from './lib/networkStatus';
 import { capturePwaInstallPrompt } from './lib/pwaInstallPrompt';
+import { HelpModeProvider } from './components/help/HelpModeProvider';
 import { ToastProvider } from './lib/toast';
 import { router } from './App';
 import './styles/index.css';
@@ -27,7 +28,9 @@ createRoot(document.getElementById('root')!).render(
     <AuthProvider>
       <NetworkStatusProvider>
         <ToastProvider>
-          <RouterProvider router={router} />
+          <HelpModeProvider>
+            <RouterProvider router={router} />
+          </HelpModeProvider>
         </ToastProvider>
       </NetworkStatusProvider>
     </AuthProvider>

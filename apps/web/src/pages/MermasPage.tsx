@@ -10,6 +10,7 @@ import {
 import { Link } from 'react-router-dom';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { InfiniteListFooter } from '../components/InfiniteListFooter';
+import { ModalOverlayClose } from '../components/ModalOverlayClose';
 import { SortableTh } from '../components/SortableTh';
 import { useInfiniteList } from '../hooks/useInfiniteList';
 import { api, mediaUrl, money, userFacingError } from '../lib/api';
@@ -82,6 +83,20 @@ type TicketDetail = {
   blockedReason: string | null;
 };
 
+type SaleLookupInfo = {
+  kind: 'sale';
+  receiptNumber: string;
+  needsProductScan: boolean;
+  openCount: number;
+  usedCount: number;
+  totalCount: number;
+};
+
+type TicketLookupResponse = {
+  voucher: TicketDetail | null;
+  saleLookup?: SaleLookupInfo | null;
+};
+
 type Merma = {
   id: string;
   product_id: string;
@@ -141,7 +156,7 @@ const DEFAULT_VOUCHER_FILTERS: VoucherFilters = {
 };
 
 const MERMA_DESTINATIONS: { id: MermaKind; label: string; hint: string }[] = [
-  { id: 'discard', label: 'A botar / pérdida', hint: 'Sale de vitrina, no vuelve a sala' },
+  { id: 'discard', label: 'Pérdida', hint: 'Sale de vitrina, no vuelve a sala' },
   { id: 'supplier', label: 'Devolver al proveedor', hint: 'Baja trazable hacia el proveedor' },
 ];
 
@@ -152,7 +167,7 @@ const VOUCHER_OUTCOMES: { id: VoucherOutcome; label: string }[] = [
 
 const VOUCHER_DESTINATIONS: { id: VoucherDest; label: string }[] = [
   { id: 'restock', label: 'Volver a vitrina' },
-  { id: 'discard', label: 'A botar / pérdida' },
+  { id: 'discard', label: 'Pérdida' },
   { id: 'supplier', label: 'A proveedor' },
 ];
 
@@ -161,7 +176,7 @@ const MERMA_SORT_OPTIONS: { key: MermaSortKey; label: string }[] = [
   { key: 'product', label: 'Producto' },
   { key: 'qty', label: 'Cantidad' },
   { key: 'reason', label: 'Motivo' },
-  { key: 'user', label: 'Usuaria' },
+  { key: 'user', label: 'Usuario' },
   { key: 'cost', label: 'Impacto' },
 ];
 
@@ -340,7 +355,10 @@ export function MermasPage() {
   const [draftDateTo, setDraftDateTo] = useState('');
   const [draftQ, setDraftQ] = useState('');
   const filtersTitleId = useId();
+  const wizardTitleId = useId();
   const modalRef = useRef<HTMLDivElement>(null);
+  const wizardRef = useRef<HTMLDivElement>(null);
+  const [wizardOpen, setWizardOpen] = useState(false);
 
   const mermaScanRef = useRef<HTMLInputElement>(null);
   const ticketScanRef = useRef<HTMLInputElement>(null);
@@ -356,6 +374,7 @@ export function MermasPage() {
 
   const [ticketNumber, setTicketNumber] = useState('');
   const [ticket, setTicket] = useState<TicketDetail | null>(null);
+  const [pendingSaleLookup, setPendingSaleLookup] = useState<SaleLookupInfo | null>(null);
   const [ticketLooking, setTicketLooking] = useState(false);
   const [garmentCode, setGarmentCode] = useState('');
   const [garmentOk, setGarmentOk] = useState(false);
@@ -546,12 +565,12 @@ export function MermasPage() {
     setMermaQty('1');
     setMermaKind('discard');
     setMermaNotes('');
-    window.setTimeout(() => mermaScanRef.current?.focus(), 40);
   }
 
   function resetTicketWizard() {
     setTicketNumber('');
     setTicket(null);
+    setPendingSaleLookup(null);
     setGarmentCode('');
     setGarmentOk(false);
     setOutcome('');
@@ -559,23 +578,52 @@ export function MermasPage() {
     setNewProduct(null);
     setNewCode('');
     setOverrideNote('');
-    window.setTimeout(() => ticketScanRef.current?.focus(), 40);
+  }
+
+  function closeWizard() {
+    setWizardOpen(false);
+    resetMermaWizard();
+    resetTicketWizard();
+  }
+
+  function openMermaWizard() {
+    resetMermaWizard();
+    resetTicketWizard();
+    setTab('mermas');
+    setWizardOpen(true);
+  }
+
+  function openCambioWizard() {
+    resetMermaWizard();
+    resetTicketWizard();
+    setTab('vouchers');
+    setWizardOpen(true);
   }
 
   useEffect(() => {
-    resetMermaWizard();
-    resetTicketWizard();
+    closeWizard();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reset al cambiar sucursal
   }, [branchId]);
 
   useEffect(() => {
-    if (tab === 'mermas' && !mermaProduct) {
-      mermaScanRef.current?.focus();
+    if (!wizardOpen) return;
+    const t = window.setTimeout(() => {
+      if (tab === 'mermas') mermaScanRef.current?.focus();
+      else if (!ticket) ticketScanRef.current?.focus();
+      else garmentScanRef.current?.focus();
+    }, 40);
+    function onKey(e: KeyboardEvent) {
+      if (e.key !== 'Escape') return;
+      if (confirm) return;
+      e.preventDefault();
+      closeWizard();
     }
-    if (tab === 'vouchers' && !ticket) {
-      ticketScanRef.current?.focus();
-    }
-  }, [tab, mermaProduct, ticket]);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      window.clearTimeout(t);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [wizardOpen, tab, ticket, confirm]);
 
   async function lookupProduct(raw: string): Promise<LookupProduct> {
     const code = normalizeScanCode(raw);
@@ -654,7 +702,7 @@ export function MermasPage() {
       });
       toast.success('Merma registrada');
       setConfirm(null);
-      resetMermaWizard();
+      closeWizard();
       mermasList.reload();
     } catch (err) {
       toast.error(userFacingError(err, 'No se pudo registrar la merma'));
@@ -662,6 +710,39 @@ export function MermasPage() {
       setSaving(false);
       setActionBusy(false);
     }
+  }
+
+  async function fetchTicketByNumber(number: string, garment?: string) {
+    const q = garment ? `?garment=${encodeURIComponent(garment)}` : '';
+    return api<TicketLookupResponse>(
+      `/api/ops/vouchers/by-number/${encodeURIComponent(number)}${q}`,
+    );
+  }
+
+  function applyTicketLookup(data: TicketLookupResponse, typedNumber: string) {
+    if (data.saleLookup?.needsProductScan && !data.voucher) {
+      setPendingSaleLookup(data.saleLookup);
+      setTicket(null);
+      setTicketNumber(typedNumber);
+      setGarmentOk(false);
+      window.setTimeout(() => garmentScanRef.current?.focus(), 40);
+      return 'pending';
+    }
+    if (!data.voucher) {
+      setTicket(null);
+      setPendingSaleLookup(null);
+      toast.error('Ticket no encontrado');
+      return 'empty';
+    }
+    setPendingSaleLookup(null);
+    setTicket(data.voucher);
+    setTicketNumber(data.voucher.voucher_number);
+    if (data.voucher.blockedReason) {
+      toast.error(data.voucher.blockedReason);
+      return 'blocked';
+    }
+    window.setTimeout(() => garmentScanRef.current?.focus(), 40);
+    return 'ok';
   }
 
   async function onLookupTicket(e?: FormEvent) {
@@ -675,19 +756,14 @@ export function MermasPage() {
     setDestination('');
     setNewProduct(null);
     setOverrideNote('');
+    setPendingSaleLookup(null);
+    setTicket(null);
     try {
-      const data = await api<{ voucher: TicketDetail }>(
-        `/api/ops/vouchers/by-number/${encodeURIComponent(raw)}`,
-      );
-      setTicket(data.voucher);
-      setTicketNumber(data.voucher.voucher_number);
-      if (data.voucher.blockedReason) {
-        toast.error(data.voucher.blockedReason);
-      } else {
-        window.setTimeout(() => garmentScanRef.current?.focus(), 40);
-      }
+      const data = await fetchTicketByNumber(raw);
+      applyTicketLookup(data, raw);
     } catch (err) {
       setTicket(null);
+      setPendingSaleLookup(null);
       toast.error(userFacingError(err, 'Ticket no encontrado'));
       ticketScanRef.current?.focus();
     } finally {
@@ -695,12 +771,35 @@ export function MermasPage() {
     }
   }
 
-  function onScanGarment(e?: FormEvent) {
+  async function onScanGarment(e?: FormEvent) {
     e?.preventDefault();
-    if (!ticket) return;
     const raw = garmentScanRef.current?.value ?? garmentCode;
     const code = normalizeScanCode(raw);
     if (!code) return;
+
+    if (pendingSaleLookup && !ticket) {
+      setTicketLooking(true);
+      try {
+        const data = await fetchTicketByNumber(pendingSaleLookup.receiptNumber, code);
+        const outcome = applyTicketLookup(data, pendingSaleLookup.receiptNumber);
+        if (outcome === 'ok' && data.voucher) {
+          const match =
+            codesMatch(code, data.voucher.product.internal_code) ||
+            codesMatch(code, data.voucher.product.barcode);
+          setGarmentCode(code);
+          setGarmentOk(Boolean(match));
+          if (!match) toast.error('El código no corresponde a la prenda de este ticket');
+        }
+      } catch (err) {
+        setGarmentOk(false);
+        toast.error(userFacingError(err, 'No se pudo elegir el ticket de esa prenda'));
+      } finally {
+        setTicketLooking(false);
+      }
+      return;
+    }
+
+    if (!ticket) return;
     const match =
       codesMatch(code, ticket.product.internal_code) || codesMatch(code, ticket.product.barcode);
     setGarmentCode(code);
@@ -784,7 +883,7 @@ export function MermasPage() {
       });
       toast.success(outcome === 'exchange' ? 'Cambio registrado' : 'Devolución de efectivo registrada');
       setConfirm(null);
-      resetTicketWizard();
+      closeWizard();
       vouchersList.reload();
       mermasList.reload();
     } catch (err) {
@@ -797,15 +896,27 @@ export function MermasPage() {
 
   async function attendFromHistory(v: Voucher) {
     setTab('vouchers');
+    resetMermaWizard();
     setTicketNumber(v.voucher_number);
+    setGarmentCode('');
+    setGarmentOk(false);
+    setOutcome('');
+    setDestination('');
+    setNewProduct(null);
+    setNewCode('');
+    setOverrideNote('');
+    setWizardOpen(true);
     setTicketLooking(true);
     try {
-      const data = await api<{ voucher: TicketDetail }>(
+      const data = await api<TicketLookupResponse>(
         `/api/ops/vouchers/by-number/${encodeURIComponent(v.voucher_number)}`,
       );
+      if (!data.voucher) {
+        toast.error('Ticket no encontrado');
+        return;
+      }
       setTicket(data.voucher);
       if (data.voucher.blockedReason) toast.error(data.voucher.blockedReason);
-      else window.setTimeout(() => garmentScanRef.current?.focus(), 40);
     } catch (err) {
       toast.error(userFacingError(err, 'Ticket no encontrado'));
     } finally {
@@ -867,297 +978,34 @@ export function MermasPage() {
     <div className="ing-list merma-list">
       <div className={`ing-list-workspace${showEmptyFigure ? ' has-empty-figure' : ''}`}>
         <div className="ing-list-main">
-          <p className="admin-lede">
-            Bajas de vitrina y tickets de cambio. Pistolea el código; el historial queda abajo.
-          </p>
+          <div className="section-title merma-topbar">
+            <nav className="admin-tabs merma-tabs-inline" aria-label="Mermas y cambios">
+              <button
+                type="button"
+                className={tab === 'mermas' ? 'is-active' : undefined}
+                onClick={() => setTab('mermas')}
+              >
+                Merma
+              </button>
+              <button
+                type="button"
+                className={tab === 'vouchers' ? 'is-active' : undefined}
+                onClick={() => setTab('vouchers')}
+              >
+                Cambio / devolución
+              </button>
+            </nav>
+            {tab === 'mermas' ? (
+              <button type="button" className="btn merma-register-btn" data-help="cta.mermas.registrar" onClick={openMermaWizard}>
+                Registrar merma
+              </button>
+            ) : (
+              <button type="button" className="btn merma-register-btn" data-help="cta.mermas.ticket" onClick={openCambioWizard}>
+                Atender ticket
+              </button>
+            )}
+          </div>
 
-          <nav className="admin-tabs" aria-label="Mermas y cambios">
-            <button
-              type="button"
-              className={tab === 'mermas' ? 'is-active' : undefined}
-              onClick={() => setTab('mermas')}
-            >
-              Merma
-            </button>
-            <button
-              type="button"
-              className={tab === 'vouchers' ? 'is-active' : undefined}
-              onClick={() => setTab('vouchers')}
-            >
-              Cambio / devolución
-            </button>
-          </nav>
-
-          {tab === 'mermas' ? (
-            <section className="merma-wizard" aria-labelledby="merma-wizard-title">
-              <h2 id="merma-wizard-title" className="merma-wizard-title">
-                Dar de baja
-              </h2>
-              <form className="merma-scan-row" onSubmit={(e) => void onScanMerma(e)}>
-                <label className="sr-only" htmlFor="merma-scan">
-                  Código de la prenda
-                </label>
-                <input
-                  id="merma-scan"
-                  ref={mermaScanRef}
-                  value={mermaCode}
-                  onChange={(e) => setMermaCode(e.target.value)}
-                  placeholder="Pistolea o escribe el código y pulsa Enter"
-                  autoComplete="off"
-                  autoFocus
-                  inputMode="text"
-                />
-                <button type="submit" className="btn" disabled={mermaLooking}>
-                  {mermaLooking ? 'Buscando…' : 'Buscar'}
-                </button>
-              </form>
-              {mermaProduct ? (
-                <>
-                  <ProductFicha
-                    name={mermaProduct.name}
-                    code={displayProductCode(mermaProduct.internal_code, mermaProduct.barcode)}
-                    meta={[mermaProduct.size_label, mermaProduct.color].filter(Boolean).join(' · ')}
-                    photoUrl={mermaProduct.photo_url}
-                    stock={mermaStock}
-                  />
-                  {mermaStock <= 0 ? (
-                    <p className="error merma-wizard-warn">Sin stock en esta sucursal. No se puede dar de baja.</p>
-                  ) : (
-                    <>
-                      <div className="field merma-qty-field">
-                        <label htmlFor="merma-qty">Cantidad</label>
-                        <input
-                          id="merma-qty"
-                          type="number"
-                          min={1}
-                          max={mermaStock}
-                          inputMode="numeric"
-                          value={mermaQty}
-                          onChange={(e) => setMermaQty(e.target.value)}
-                        />
-                        <span className="muted">Máximo {mermaStock}</span>
-                      </div>
-                      <div className="merma-choice" role="group" aria-label="Destino de la prenda">
-                        {MERMA_DESTINATIONS.map((d) => (
-                          <button
-                            key={d.id}
-                            type="button"
-                            className={`merma-choice-btn${mermaKind === d.id ? ' is-active' : ''}`}
-                            onClick={() => setMermaKind(d.id)}
-                          >
-                            <strong>{d.label}</strong>
-                            <span>{d.hint}</span>
-                          </button>
-                        ))}
-                      </div>
-                      <div className="field">
-                        <label htmlFor="merma-notes">Nota (opcional)</label>
-                        <input
-                          id="merma-notes"
-                          value={mermaNotes}
-                          onChange={(e) => setMermaNotes(e.target.value)}
-                          placeholder="Detalle para la trazabilidad…"
-                          maxLength={500}
-                        />
-                      </div>
-                      <div className="merma-wizard-actions">
-                        <button type="button" className="btn ghost" onClick={resetMermaWizard}>
-                          Otra prenda
-                        </button>
-                        <button
-                          type="button"
-                          className="btn"
-                          disabled={saving || mermaBlocked}
-                          onClick={askRegisterMerma}
-                        >
-                          Dar de baja
-                        </button>
-                      </div>
-                    </>
-                  )}
-                </>
-              ) : (
-                <p className="muted merma-wizard-hint">
-                  Enfoca el campo y usa la pistola. Enter busca en esta sucursal.
-                </p>
-              )}
-            </section>
-          ) : (
-            <section className="merma-wizard" aria-labelledby="cambio-wizard-title">
-              <h2 id="cambio-wizard-title" className="merma-wizard-title">
-                Ticket de cambio
-              </h2>
-              <form className="merma-scan-row" onSubmit={(e) => void onLookupTicket(e)}>
-                <label className="sr-only" htmlFor="ticket-scan">
-                  Número de ticket
-                </label>
-                <input
-                  id="ticket-scan"
-                  ref={ticketScanRef}
-                  value={ticketNumber}
-                  onChange={(e) => setTicketNumber(e.target.value)}
-                  placeholder="N° de ticket de cambio"
-                  autoComplete="off"
-                  autoFocus={tab === 'vouchers'}
-                />
-                <button type="submit" className="btn" disabled={ticketLooking}>
-                  {ticketLooking ? 'Buscando…' : 'Buscar'}
-                </button>
-              </form>
-              {ticket ? (
-                <>
-                  <ProductFicha
-                    name={ticket.product.name}
-                    code={displayProductCode(ticket.product.internal_code, ticket.product.barcode)}
-                    meta={[ticket.product.size_label, ticket.product.color].filter(Boolean).join(' · ')}
-                    photoUrl={ticket.product.photo_url}
-                  />
-                  <p className="merma-ticket-meta">
-                    <span
-                      className={voucherBadgeClass(
-                        ticket.expired && ticket.status === 'open' ? 'expired' : ticket.status,
-                      )}
-                    >
-                      {ticket.expired && ticket.canFulfill
-                        ? 'Vencido'
-                        : voucherStatusLabel(ticket.status)}
-                    </span>
-                    <span className="muted">
-                      {ticket.expired ? 'Venció' : 'Vence'} {fmtDay(ticket.expires_at)}
-                      {!ticket.expired && daysLeftLabel(ticket.days_left, ticket.status)
-                        ? ` · ${daysLeftLabel(ticket.days_left, ticket.status)}`
-                        : ''}
-                    </span>
-                    {ticket.sale?.id &&
-                    ticket.sale.receipt_number &&
-                    ticket.sale.receipt_number !== ticket.voucher_number ? (
-                      <Link className="merma-ticket-sale" to={`/ventas?sale=${ticket.sale.id}`}>
-                        Venta {ticket.sale.receipt_number}
-                      </Link>
-                    ) : null}
-                  </p>
-                  {ticket.blockedReason ? (
-                    <p className="error merma-wizard-warn">{ticket.blockedReason}</p>
-                  ) : null}
-                  {ticket.warnPartyDress ? (
-                    <p className="merma-wizard-party" role="status">
-                      Vestido de fiesta: por defecto no admite cambios. Puedes seguir si la dueña lo autoriza.
-                    </p>
-                  ) : null}
-                  {ticket.expired && ticket.canFulfill ? (
-                    <div className="field">
-                      <p className="merma-wizard-warn-inline" role="status">
-                        El plazo del ticket venció. Puedes seguir si indicas el motivo.
-                      </p>
-                      <label htmlFor="override-note">Motivo (obligatorio si está vencido)</label>
-                      <input
-                        id="override-note"
-                        value={overrideNote}
-                        onChange={(e) => setOverrideNote(e.target.value)}
-                        placeholder="Por qué se atiende fuera de plazo…"
-                        maxLength={500}
-                      />
-                    </div>
-                  ) : null}
-                  {ticket.canFulfill ? (
-                    <>
-                      <form className="merma-scan-row" onSubmit={onScanGarment}>
-                        <label className="sr-only" htmlFor="garment-scan">
-                          Código de la prenda del ticket
-                        </label>
-                        <input
-                          id="garment-scan"
-                          ref={garmentScanRef}
-                          value={garmentCode}
-                          onChange={(e) => {
-                            setGarmentCode(e.target.value);
-                            setGarmentOk(false);
-                          }}
-                          placeholder="Pistolea la prenda del ticket"
-                          autoComplete="off"
-                        />
-                        <button type="submit" className="btn secondary">
-                          Confirmar prenda
-                        </button>
-                      </form>
-                      {garmentOk ? <p className="merma-stock-ok">Prenda coincide con el ticket.</p> : null}
-                      {garmentOk ? (
-                        <>
-                          <div className="merma-choice" role="group" aria-label="Tipo de atención">
-                            {VOUCHER_OUTCOMES.map((o) => (
-                              <button
-                                key={o.id}
-                                type="button"
-                                className={`merma-choice-btn${outcome === o.id ? ' is-active' : ''}`}
-                                onClick={() => setOutcome(o.id)}
-                              >
-                                <strong>{o.label}</strong>
-                              </button>
-                            ))}
-                          </div>
-                          {outcome === 'cash_refund' && ticket.sale?.line_total ? (
-                            <p className="muted">Monto de la línea: {money(ticket.sale.line_total)}</p>
-                          ) : null}
-                          {outcome === 'exchange' ? (
-                            <form className="merma-scan-row" onSubmit={(e) => void onScanNewProduct(e)}>
-                              <label className="sr-only" htmlFor="new-scan">
-                                Código de la prenda nueva
-                              </label>
-                              <input
-                                id="new-scan"
-                                ref={newScanRef}
-                                value={newCode}
-                                onChange={(e) => setNewCode(e.target.value)}
-                                placeholder="Pistolea la prenda nueva de vitrina"
-                                autoComplete="off"
-                              />
-                              <button type="submit" className="btn secondary" disabled={newLooking}>
-                                {newLooking ? 'Buscando…' : 'Prenda nueva'}
-                              </button>
-                            </form>
-                          ) : null}
-                          {newProduct ? (
-                            <ProductFicha
-                              name={newProduct.name}
-                              code={displayProductCode(newProduct.internal_code, newProduct.barcode)}
-                              meta={[newProduct.size_label, newProduct.color].filter(Boolean).join(' · ')}
-                              photoUrl={newProduct.photo_url}
-                              stock={Number(newProduct.stock) || 0}
-                            />
-                          ) : null}
-                          <p className="merma-choice-label">Destino de la prenda devuelta</p>
-                          <div className="merma-choice" role="group" aria-label="Destino">
-                            {VOUCHER_DESTINATIONS.map((d) => (
-                              <button
-                                key={d.id}
-                                type="button"
-                                className={`merma-choice-btn${destination === d.id ? ' is-active' : ''}`}
-                                onClick={() => setDestination(d.id)}
-                              >
-                                <strong>{d.label}</strong>
-                              </button>
-                            ))}
-                          </div>
-                          <div className="merma-wizard-actions">
-                            <button type="button" className="btn ghost" onClick={resetTicketWizard}>
-                              Otro ticket
-                            </button>
-                            <button type="button" className="btn" disabled={saving} onClick={askFulfill}>
-                              Registrar
-                            </button>
-                          </div>
-                        </>
-                      ) : null}
-                    </>
-                  ) : null}
-                </>
-              ) : (
-                <p className="muted merma-wizard-hint">Ingresa el n° del ticket de cambio (impreso en la venta).</p>
-              )}
-            </section>
-          )}
-
-          <p className="merma-history-label">Historial</p>
 
           {tab === 'mermas' ? (
             <div className="inv-stats merma-stats" aria-label="Resumen de mermas">
@@ -1181,7 +1029,7 @@ export function MermasPage() {
                 <div className="inv-stat">
                   <span className="inv-stat-label">Trazabilidad</span>
                   <strong className="inv-stat-value">OK</strong>
-                  <span className="inv-stat-meta">Usuaria + fecha</span>
+                  <span className="inv-stat-meta">Usuario + fecha</span>
                 </div>
               )}
             </div>
@@ -1345,7 +1193,7 @@ export function MermasPage() {
                     <p className="muted">
                       Se generan en la venta si la prenda admite cambio o devolución.
                     </p>
-                    <Link to="/ventas" className="btn secondary" style={{ marginTop: '0.75rem' }}>
+                    <Link to="/ventas" className="btn secondary desktop-only" style={{ marginTop: '0.75rem' }}>
                       Ir a historial de ventas
                     </Link>
                   </>
@@ -1438,7 +1286,7 @@ export function MermasPage() {
                           }}
                         />
                         <SortableTh
-                          label="Usuaria"
+                          label="Usuario"
                           column="user"
                           sortKey={mermaSortKey}
                           sortDir={mermaSortDir}
@@ -1556,7 +1404,7 @@ export function MermasPage() {
                             ) : null}
                           </div>
                         ) : v.sale_receipt ? (
-                          <Link className="merma-origin-link" to="/ventas">
+                          <Link className="merma-origin-link desktop-only" to="/ventas">
                             Ver en historial de ventas →
                           </Link>
                         ) : null}
@@ -1712,6 +1560,7 @@ export function MermasPage() {
             if (e.target === e.currentTarget) closeDrawer();
           }}
         >
+          <ModalOverlayClose onClose={closeDrawer}>
           <div
             className="pos-modal-panel ing-filters-sheet"
             ref={modalRef}
@@ -1721,9 +1570,6 @@ export function MermasPage() {
           >
             <div className="pos-modal-head">
               <h3 id={filtersTitleId}>Filtros</h3>
-              <button className="btn ghost" type="button" onClick={closeDrawer} aria-label="Cerrar">
-                Cerrar
-              </button>
             </div>
             <div className="ing-filters-sheet-body">
               <div className="ing-filter-fields">
@@ -1753,7 +1599,7 @@ export function MermasPage() {
                     onChange={(e) => setDraftQ(e.target.value)}
                     placeholder={
                       tab === 'mermas'
-                        ? 'Producto, motivo, usuaria…'
+                        ? 'Producto, motivo, usuario…'
                         : 'N° ticket, producto, venta…'
                     }
                     autoComplete="off"
@@ -1769,10 +1615,341 @@ export function MermasPage() {
                 Aplicar
               </button>
             </div>
-          </div>
+          </div></ModalOverlayClose>
         </div>
       )}
 
+
+      {wizardOpen ? (
+        <div
+          className="pos-modal open no-print"
+          role="presentation"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !confirm) closeWizard();
+          }}
+        >
+          <ModalOverlayClose onClose={closeWizard}>
+          <div
+            className="pos-modal-panel merma-form-sheet"
+            ref={wizardRef}
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby={wizardTitleId}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="pos-modal-head">
+              <h3 id={wizardTitleId}>
+                {tab === 'mermas' ? 'Registrar merma' : 'Atender ticket'}
+              </h3>
+            </div>
+            <div className="merma-form-body">
+          {tab === 'mermas' ? (
+            <section className="merma-wizard" aria-label="Dar de baja">
+              <form className="merma-scan-row" onSubmit={(e) => void onScanMerma(e)}>
+                <label className="sr-only" htmlFor="merma-scan">
+                  Código de la prenda
+                </label>
+                <input
+                  id="merma-scan"
+                  ref={mermaScanRef}
+                  value={mermaCode}
+                  onChange={(e) => setMermaCode(e.target.value)}
+                  placeholder="Pistolea el código y pulsa Enter"
+                  autoComplete="off"
+                  inputMode="text"
+                />
+                <button type="submit" className="btn" disabled={mermaLooking}>
+                  {mermaLooking ? 'Buscando…' : 'Buscar'}
+                </button>
+              </form>
+              {mermaProduct ? (
+                <div className="merma-wizard-body">
+                  <ProductFicha
+                    name={mermaProduct.name}
+                    code={displayProductCode(mermaProduct.internal_code, mermaProduct.barcode)}
+                    meta={[mermaProduct.size_label, mermaProduct.color].filter(Boolean).join(' · ')}
+                    photoUrl={mermaProduct.photo_url}
+                    stock={mermaStock}
+                  />
+                  {mermaStock <= 0 ? (
+                    <p className="error merma-wizard-warn">Sin stock. No se puede dar de baja.</p>
+                  ) : (
+                    <div className="merma-wizard-actions-col">
+                      <div className="field merma-qty-field">
+                        <label htmlFor="merma-qty">Cantidad</label>
+                        <input
+                          id="merma-qty"
+                          type="number"
+                          min={1}
+                          max={mermaStock}
+                          inputMode="numeric"
+                          value={mermaQty}
+                          onChange={(e) => setMermaQty(e.target.value)}
+                        />
+                        <span className="muted">Máximo {mermaStock}</span>
+                      </div>
+                      <div className="merma-choice" role="group" aria-label="Destino de la prenda">
+                        {MERMA_DESTINATIONS.map((d) => (
+                          <button
+                            key={d.id}
+                            type="button"
+                            className={`merma-choice-btn${mermaKind === d.id ? ' is-active' : ''}`}
+                            onClick={() => setMermaKind(d.id)}
+                          >
+                            <strong>{d.label}</strong>
+                            <span>{d.hint}</span>
+                          </button>
+                        ))}
+                      </div>
+                      <div className="field">
+                        <label htmlFor="merma-notes">Nota (opcional)</label>
+                        <input
+                          id="merma-notes"
+                          value={mermaNotes}
+                          onChange={(e) => setMermaNotes(e.target.value)}
+                          placeholder="Detalle para la trazabilidad…"
+                          maxLength={500}
+                        />
+                      </div>
+                      <div className="merma-wizard-actions">
+                        <button type="button" className="btn ghost" onClick={resetMermaWizard}>
+                          Otra prenda
+                        </button>
+                        <button
+                          type="button"
+                          className="btn"
+                          disabled={saving || mermaBlocked}
+                          onClick={askRegisterMerma}
+                        >
+                          Dar de baja
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              ) : (
+                <p className="muted merma-wizard-hint">Usa la pistola. Enter busca en esta sucursal.</p>
+              )}
+            </section>
+          ) : (
+            <section className="merma-wizard" aria-label="Ticket de cambio">
+              <form className="merma-scan-row" onSubmit={(e) => void onLookupTicket(e)}>
+                <label className="sr-only" htmlFor="ticket-scan">
+                  Número de ticket
+                </label>
+                <input
+                  id="ticket-scan"
+                  ref={ticketScanRef}
+                  value={ticketNumber}
+                  onChange={(e) => setTicketNumber(e.target.value)}
+                  placeholder="N° ticket (VC…) o boleta (V…)"
+                  autoComplete="off"
+                />
+                <button type="submit" className="btn" disabled={ticketLooking}>
+                  {ticketLooking ? 'Buscando…' : 'Buscar'}
+                </button>
+              </form>
+              {!ticket && pendingSaleLookup?.needsProductScan ? (
+                <>
+                  <p className="muted merma-wizard-hint">
+                    Hay {pendingSaleLookup.openCount} ticket
+                    {pendingSaleLookup.openCount === 1 ? '' : 's'} vigente
+                    {pendingSaleLookup.openCount === 1 ? '' : 's'} en la venta{' '}
+                    {pendingSaleLookup.receiptNumber}. Pistolea la prenda para elegir el ticket.
+                  </p>
+                  <form className="merma-scan-row" onSubmit={(e) => void onScanGarment(e)}>
+                    <label className="sr-only" htmlFor="garment-scan">
+                      Código de la prenda del ticket
+                    </label>
+                    <input
+                      id="garment-scan"
+                      ref={garmentScanRef}
+                      value={garmentCode}
+                      onChange={(e) => {
+                        setGarmentCode(e.target.value);
+                        setGarmentOk(false);
+                      }}
+                      placeholder="Pistolea el código de barras de la prenda"
+                      autoComplete="off"
+                    />
+                    <button type="submit" className="btn secondary" disabled={ticketLooking}>
+                      {ticketLooking ? 'Buscando…' : 'Confirmar'}
+                    </button>
+                  </form>
+                </>
+              ) : !ticket ? (
+                <p className="muted merma-wizard-hint">
+                  Busca el ticket (VC…) o la boleta (V…). Si la venta tiene varias prendas, después
+                  pistolea el código de esa prenda.
+                </p>
+              ) : (
+                <>
+                  <p className="merma-ticket-meta">
+                    <span
+                      className={voucherBadgeClass(
+                        ticket.expired && ticket.status === 'open' ? 'expired' : ticket.status,
+                      )}
+                    >
+                      {ticket.expired && ticket.canFulfill
+                        ? 'Vencido'
+                        : voucherStatusLabel(ticket.status)}
+                    </span>
+                    <span className="muted">
+                      {ticket.expired ? 'Venció' : 'Vence'} {fmtDay(ticket.expires_at)}
+                      {!ticket.expired && daysLeftLabel(ticket.days_left, ticket.status)
+                        ? ` · ${daysLeftLabel(ticket.days_left, ticket.status)}`
+                        : ''}
+                    </span>
+                    {ticket.sale?.id &&
+                    ticket.sale.receipt_number &&
+                    ticket.sale.receipt_number !== ticket.voucher_number ? (
+                      <Link className="merma-ticket-sale desktop-only" to={`/ventas?sale=${ticket.sale.id}`}>
+                        Venta {ticket.sale.receipt_number}
+                      </Link>
+                    ) : null}
+                  </p>
+                  {ticket.blockedReason ? (
+                    <p className="error merma-wizard-warn">{ticket.blockedReason}</p>
+                  ) : null}
+                  {ticket.warnPartyDress ? (
+                    <p className="merma-wizard-party" role="status">
+                      Vestido de fiesta: por defecto no admite cambios. Puedes seguir si la dueña lo autoriza.
+                    </p>
+                  ) : null}
+                  {ticket.expired && ticket.canFulfill ? (
+                    <div className="field merma-override-field">
+                      <p className="merma-wizard-warn-inline" role="status">
+                        El plazo venció. Indica el motivo para seguir.
+                      </p>
+                      <label htmlFor="override-note">Motivo</label>
+                      <input
+                        id="override-note"
+                        value={overrideNote}
+                        onChange={(e) => setOverrideNote(e.target.value)}
+                        placeholder="Por qué se atiende fuera de plazo…"
+                        maxLength={500}
+                      />
+                    </div>
+                  ) : null}
+                  {ticket.canFulfill ? (
+                    <>
+                      <form className="merma-scan-row" onSubmit={(e) => void onScanGarment(e)}>
+                        <label className="sr-only" htmlFor="garment-scan">
+                          Código de la prenda del ticket
+                        </label>
+                        <input
+                          id="garment-scan"
+                          ref={garmentScanRef}
+                          value={garmentCode}
+                          onChange={(e) => {
+                            setGarmentCode(e.target.value);
+                            setGarmentOk(false);
+                          }}
+                          placeholder="Pistolea el código de barras de la prenda"
+                          autoComplete="off"
+                        />
+                        <button type="submit" className="btn secondary">
+                          Confirmar
+                        </button>
+                      </form>
+                      {garmentOk ? (
+                        <div className="merma-wizard-body">
+                          <ProductFicha
+                            name={ticket.product.name}
+                            code={displayProductCode(
+                              ticket.product.internal_code,
+                              ticket.product.barcode,
+                            )}
+                            meta={[ticket.product.size_label, ticket.product.color]
+                              .filter(Boolean)
+                              .join(' · ')}
+                            photoUrl={ticket.product.photo_url}
+                          />
+                          <div className="merma-wizard-actions-col">
+                            <div className="merma-choice" role="group" aria-label="Tipo de atención">
+                              {VOUCHER_OUTCOMES.map((o) => (
+                                <button
+                                  key={o.id}
+                                  type="button"
+                                  className={`merma-choice-btn${outcome === o.id ? ' is-active' : ''}`}
+                                  onClick={() => setOutcome(o.id)}
+                                >
+                                  <strong>{o.label}</strong>
+                                </button>
+                              ))}
+                            </div>
+                            {outcome === 'cash_refund' && ticket.sale?.line_total ? (
+                              <p className="muted">Monto de la línea: {money(ticket.sale.line_total)}</p>
+                            ) : null}
+                            {outcome === 'exchange' ? (
+                              <form className="merma-scan-row" onSubmit={(e) => void onScanNewProduct(e)}>
+                                <label className="sr-only" htmlFor="new-scan">
+                                  Código de la prenda nueva
+                                </label>
+                                <input
+                                  id="new-scan"
+                                  ref={newScanRef}
+                                  value={newCode}
+                                  onChange={(e) => setNewCode(e.target.value)}
+                                  placeholder="Pistolea la prenda nueva"
+                                  autoComplete="off"
+                                />
+                                <button type="submit" className="btn secondary" disabled={newLooking}>
+                                  {newLooking ? 'Buscando…' : 'Prenda nueva'}
+                                </button>
+                              </form>
+                            ) : null}
+                            {newProduct ? (
+                              <ProductFicha
+                                name={newProduct.name}
+                                code={displayProductCode(newProduct.internal_code, newProduct.barcode)}
+                                meta={[newProduct.size_label, newProduct.color]
+                                  .filter(Boolean)
+                                  .join(' · ')}
+                                photoUrl={newProduct.photo_url}
+                                stock={Number(newProduct.stock) || 0}
+                              />
+                            ) : null}
+                            <p className="merma-choice-label">Destino de la prenda devuelta</p>
+                            <div className="merma-choice" role="group" aria-label="Destino">
+                              {VOUCHER_DESTINATIONS.map((d) => (
+                                <button
+                                  key={d.id}
+                                  type="button"
+                                  className={`merma-choice-btn${destination === d.id ? ' is-active' : ''}`}
+                                  onClick={() => setDestination(d.id)}
+                                >
+                                  <strong>{d.label}</strong>
+                                </button>
+                              ))}
+                            </div>
+                            <div className="merma-wizard-actions">
+                              <button type="button" className="btn ghost" onClick={resetTicketWizard}>
+                                Otro ticket
+                              </button>
+                              <button type="button" className="btn" disabled={saving} onClick={askFulfill}>
+                                Registrar
+                              </button>
+                            </div>
+                          </div>
+                        </div>
+                      ) : (
+                        <p className="muted merma-wizard-hint">
+                          La foto aparece al confirmar el código de esa prenda.
+                        </p>
+                      )}
+                    </>
+                  ) : null}
+                </>
+              )}
+            </section>
+          )}
+
+
+            </div>
+          </div></ModalOverlayClose>
+        </div>
+      ) : null}
 
       <ConfirmDialog
         open={Boolean(confirm)}

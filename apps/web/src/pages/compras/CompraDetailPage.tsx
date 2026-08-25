@@ -121,7 +121,7 @@ export function CompraDetailPage() {
       <p>
         Esta compra ya no se puede editar porque la recepción ya comenzó o está cerrada.
       </p>
-      <Link to={`/ingresos/${purchase.id}`} className="btn secondary">
+      <Link to={`/ingresos/${purchase.id}`} className="btn secondary desktop-only">
         Ir a recepción
       </Link>
     </div>

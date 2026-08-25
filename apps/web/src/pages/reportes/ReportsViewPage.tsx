@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { Link, useSearchParams } from 'react-router-dom';
 import {
   Area,
   AreaChart,
@@ -20,6 +21,7 @@ import type { ReportsVista } from './reportsPeriod';
 import type {
   GastosReport,
   IngresosReport,
+  InventariosReport,
   MermasReport,
   ReportGrain,
   ReportSeriesPoint,
@@ -304,10 +306,17 @@ function formatAxisClp(v: number) {
   return compactClp.format(v);
 }
 
-function useReport<T>(vista: ReportsVista, from: string, to: string, branchId: string | null) {
+function useReport<T>(
+  vista: ReportsVista,
+  from: string,
+  to: string,
+  branchId: string | null,
+  extra?: Record<string, string | undefined>,
+) {
   const [data, setData] = useState<T | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
+  const extraKey = JSON.stringify(extra || {});
 
   useEffect(() => {
     let cancelled = false;
@@ -315,6 +324,11 @@ function useReport<T>(vista: ReportsVista, from: string, to: string, branchId: s
     setError('');
     const qs = new URLSearchParams({ from, to });
     if (vista === 'ventas') qs.set('limit', '100');
+    if (extra) {
+      for (const [key, value] of Object.entries(extra)) {
+        if (value) qs.set(key, value);
+      }
+    }
     void (async () => {
       try {
         const json = await api<T>(`/api/reports/${vista}?${qs}`);
@@ -331,7 +345,7 @@ function useReport<T>(vista: ReportsVista, from: string, to: string, branchId: s
     return () => {
       cancelled = true;
     };
-  }, [vista, from, to, branchId]);
+  }, [vista, from, to, branchId, extraKey]);
 
   return { data, loading, error };
 }
@@ -905,11 +919,139 @@ function MermasPanel({ data }: { data: MermasReport }) {
   );
 }
 
+function InventariosPanel({ data }: { data: InventariosReport }) {
+  const [, setSearchParams] = useSearchParams();
+  const selected = data.selected_stocktake_id || '';
+  const neto = Number(data.totals.neto_value);
+  const netoLabel = neto > 0 ? 'Ganancia neta' : neto < 0 ? 'Pérdida neta' : 'Empate';
+  const selectedTake = data.takes.find((t) => t.id === selected);
+  const movQ = selectedTake?.take_label || '';
+
+  const bars = [
+    { name: 'Faltante', value: Number(data.totals.faltante_value) },
+    { name: 'Sobrante', value: Number(data.totals.sobrante_value) },
+  ].filter((r) => r.value > 0);
+
+  return (
+    <>
+      <label className="reports-filter-field reports-take-field">
+        <span>Inventario realizado</span>
+        <select
+          value={selected}
+          onChange={(e) => {
+            const id = e.target.value;
+            if (!id) setSearchParams({}, { replace: true });
+            else setSearchParams({ take: id }, { replace: true });
+          }}
+        >
+          <option value="">Todas las tomas del período</option>
+          {data.takes.map((t) => (
+            <option key={t.id} value={t.id}>
+              {t.take_label}
+              {t.applied_by_name ? ` · ${t.applied_by_name}` : ''}
+            </option>
+          ))}
+        </select>
+      </label>
+
+      <div className="inv-stats reports-kpis">
+        <Kpi
+          label="Faltante"
+          value={money(data.totals.faltante_value)}
+          meta={`${data.totals.faltante_units} ud. a p. venta`}
+        />
+        <Kpi
+          label="Sobrante"
+          value={money(data.totals.sobrante_value)}
+          meta={`${data.totals.sobrante_units} ud. a p. venta`}
+        />
+        <Kpi
+          label="Neto"
+          value={money(data.totals.neto_value)}
+          meta={`${netoLabel} · ${data.totals.takes_count} toma${data.totals.takes_count === 1 ? '' : 's'}`}
+        />
+      </div>
+      {data.notes?.valuation ? <p className="muted reports-section-hint">{data.notes.valuation}</p> : null}
+      {data.notes?.neto ? <p className="muted reports-section-hint">{data.notes.neto}</p> : null}
+
+      <section className="reports-section" aria-labelledby="reports-chart-inv">
+        <h3 id="reports-chart-inv" className="reports-section-title">
+          Valor a precio de venta
+        </h3>
+        {!bars.length ? (
+          <div className="reports-chart-slot">
+            <SectionEmpty>No hay faltante ni sobrante en esta selección.</SectionEmpty>
+          </div>
+        ) : (
+          <MoneyHBars data={bars} seriesName="Valor a p. venta" yWidth={120} maxChars={16} />
+        )}
+      </section>
+
+      <section className="reports-section" aria-labelledby="reports-table-inv">
+        <h3 id="reports-table-inv" className="reports-section-title">
+          Prendas que movieron stock
+        </h3>
+        {data.notes?.movements ? <p className="muted reports-section-hint">{data.notes.movements}</p> : null}
+        {movQ ? (
+          <p className="reports-section-hint">
+            <Link to={`/movimientos?q=${encodeURIComponent(movQ)}&type=ADJUSTMENT`}>
+              Ver ajustes de {movQ} en Movimientos →
+            </Link>
+          </p>
+        ) : null}
+        {!data.items.length ? (
+          <div className="sales-empty" role="status">
+            <h3>Sin diferencias aplicadas</h3>
+            <p>
+              Elige una toma {selectedTake ? selectedTake.take_label : 'del período'} o aplica una
+              conciliación con Conservar inventario o Ajustar.
+            </p>
+          </div>
+        ) : (
+          <div className="table-wrap reports-table-scroll">
+            <table className="table">
+              <thead>
+                <tr>
+                  <th>Toma</th>
+                  <th>Prenda</th>
+                  <th>Decisión</th>
+                  <th>Tipo</th>
+                  <th>Ud.</th>
+                  <th>Valor</th>
+                </tr>
+              </thead>
+              <tbody>
+                {data.items.map((row) => (
+                  <tr key={`${row.stocktake_id}-${row.internal_code}`}>
+                    <td>
+                      <Link to={`/inventarios/${row.stocktake_id}`}>{row.take_label}</Link>
+                    </td>
+                    <td>
+                      {row.product_name}
+                      <div className="muted">{row.internal_code}</div>
+                    </td>
+                    <td>{row.decision_label}</td>
+                    <td>{row.kind === 'faltante' ? 'Faltante' : 'Sobrante'}</td>
+                    <td>{row.units}</td>
+                    <td>{money(row.sale_value)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        )}
+      </section>
+    </>
+  );
+}
+
 export function ReportsViewPage({ vista }: { vista: ReportsVista }) {
   const { branchName, from, to, branchId } = useReportsFilters();
+  const [searchParams] = useSearchParams();
+  const stocktakeId = vista === 'inventarios' ? searchParams.get('take') || undefined : undefined;
   const { data, loading, error } = useReport<
-    VentasReport | StockReport | IngresosReport | GastosReport | MermasReport
-  >(vista, from, to, branchId);
+    VentasReport | StockReport | IngresosReport | GastosReport | MermasReport | InventariosReport
+  >(vista, from, to, branchId, stocktakeId ? { stocktakeId } : undefined);
 
   if (loading) return <ReportsPanelSkeleton />;
   if (error) {
@@ -936,6 +1078,7 @@ export function ReportsViewPage({ vista }: { vista: ReportsVista }) {
       {vista === 'ingresos' ? <IngresosPanel data={data as IngresosReport} /> : null}
       {vista === 'gastos' ? <GastosPanel data={data as GastosReport} /> : null}
       {vista === 'mermas' ? <MermasPanel data={data as MermasReport} /> : null}
+      {vista === 'inventarios' ? <InventariosPanel data={data as InventariosReport} /> : null}
     </div>
   );
 }
@@ -954,4 +1097,7 @@ export function ReportsGastosPage() {
 }
 export function ReportsMermasPage() {
   return <ReportsViewPage vista="mermas" />;
+}
+export function ReportsInventariosPage() {
+  return <ReportsViewPage vista="inventarios" />;
 }

@@ -1,5 +1,6 @@
 /**
- * Único módulo que habla HTTP con Atria Print Agent (127.0.0.1:9876).
+ * Único módulo que habla HTTP con Atria Print Agent (loopback en ESTE computador).
+ * No usa VITE_API_URL: el Agent no vive en el droplet.
  * Componentes y páginas NO deben hacer fetch directo al Agent.
  */
 

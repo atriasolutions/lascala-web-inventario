@@ -11,42 +11,40 @@ export function AdminLayout() {
   const intro = pathname.includes('/usuarias')
     ? 'Nombre, rol y cajas que cada persona puede usar.'
     : pathname.includes('/sucursales')
-      ? 'Tiendas de L\'Scala. La sucursal activa se cambia arriba.'
+      ? "Tiendas de L'Scala. La sucursal activa se cambia arriba."
       : pathname.includes('/cajas')
-        ? 'Cada caja pertenece a una sucursal. Asigna cuáles puede usar cada usuaria.'
-        : 'En este computador. Deja Atria Print Agent abierto en la barra de menú.';
+        ? 'Cada caja pertenece a una sucursal. Asigna cuáles puede usar cada usuario.'
+        : 'Impresoras USB de este computador. El Agent se instala aquí (DMG), no en la nube.';
 
   return (
     <div className="admin-page">
       <p className="admin-lede">{intro}</p>
 
-      <nav className="admin-tabs" aria-label="Secciones de Ajustes">
-        {isOwner ? (
-          <>
-            <NavLink
-              to="/admin/usuarias"
-              className={({ isActive }) => (isActive ? 'is-active' : undefined)}
-            >
-              Usuarias
-            </NavLink>
-            <NavLink
-              to="/admin/sucursales"
-              className={({ isActive }) => (isActive ? 'is-active' : undefined)}
-            >
-              Sucursales
-            </NavLink>
-            <NavLink
-              to="/admin/cajas"
-              className={({ isActive }) => (isActive ? 'is-active' : undefined)}
-            >
-              Cajas
-            </NavLink>
-          </>
-        ) : null}
-        <NavLink to="/admin/equipo" className={({ isActive }) => (isActive ? 'is-active' : undefined)}>
-          Impresoras
-        </NavLink>
-      </nav>
+      {isOwner ? (
+        <nav className="admin-tabs" aria-label="Secciones de Ajustes">
+          <NavLink
+            to="/admin/usuarias"
+            className={({ isActive }) => (isActive ? 'is-active' : undefined)}
+          >
+            Usuarios
+          </NavLink>
+          <NavLink
+            to="/admin/sucursales"
+            className={({ isActive }) => (isActive ? 'is-active' : undefined)}
+          >
+            Sucursales
+          </NavLink>
+          <NavLink
+            to="/admin/cajas"
+            className={({ isActive }) => (isActive ? 'is-active' : undefined)}
+          >
+            Cajas
+          </NavLink>
+          <NavLink to="/admin/equipo" className={({ isActive }) => (isActive ? 'is-active' : undefined)}>
+            Impresoras
+          </NavLink>
+        </nav>
+      ) : null}
 
       <Outlet />
     </div>

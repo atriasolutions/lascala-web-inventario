@@ -10,6 +10,7 @@ import {
 } from 'react';
 import { useBlocker } from 'react-router-dom';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { ModalOverlayClose } from '../components/ModalOverlayClose';
 import { SaleThermalPrint } from '../components/SaleThermalPrint';
 import { ColorSwatch } from '../components/ColorSwatch';
 import { ProductPhotoPlaceholder } from '../components/ProductPhotoPlaceholder';
@@ -624,7 +625,7 @@ export function PosPage() {
             ref={barcodeRef}
             value={code}
             onChange={(e) => setCode(e.target.value)}
-            placeholder="Código de barras o interno (LS-…)"
+            placeholder="Código de barras o interno (LS…)"
             autoComplete="off"
             inputMode="text"
             autoFocus
@@ -639,6 +640,7 @@ export function PosPage() {
         <button
           className="btn secondary pos-search-trigger"
           type="button"
+          data-help="cta.caja.buscar"
           onClick={openSearch}
           disabled={modalBlocksScan}
         >
@@ -808,6 +810,7 @@ export function PosPage() {
           <button
             className="btn block"
             type="button"
+            data-help="cta.caja.finalizar"
             onClick={openFinalizeConfirm}
             disabled={busy || !cart.length}
           >
@@ -824,6 +827,7 @@ export function PosPage() {
         <button
           className="btn"
           type="button"
+          data-help="cta.caja.finalizar"
           onClick={openFinalizeConfirm}
           disabled={busy || !cart.length}
         >
@@ -839,6 +843,7 @@ export function PosPage() {
             if (e.target === e.currentTarget) closeSearch();
           }}
         >
+          <ModalOverlayClose onClose={closeSearch}>
           <div
             className="pos-modal-panel"
             ref={modalPanelRef}
@@ -848,9 +853,6 @@ export function PosPage() {
           >
             <div className="pos-modal-head">
               <h3 id={searchTitleId}>Buscar prenda</h3>
-              <button className="btn ghost" type="button" onClick={closeSearch} aria-label="Cerrar">
-                Cerrar
-              </button>
             </div>
             <div className="field" style={{ marginBottom: '0.75rem' }}>
               <label htmlFor="pos-search-input">Nombre, código o categoría</label>
@@ -910,7 +912,7 @@ export function PosPage() {
                   );
                 })}
             </div>
-          </div>
+          </div></ModalOverlayClose>
         </div>
       )}
 
@@ -922,6 +924,7 @@ export function PosPage() {
             if (e.target === e.currentTarget) closeFinalizeConfirm();
           }}
         >
+          <ModalOverlayClose onClose={closeFinalizeConfirm} disabled={busy}>
           <div
             className="pos-modal-panel confirm-dialog-panel pos-finalize-panel"
             role="alertdialog"
@@ -932,15 +935,6 @@ export function PosPage() {
           >
             <div className="pos-modal-head">
               <h3 id={confirmTitleId}>{online ? 'Finalizar venta' : 'Guardar venta offline'}</h3>
-              <button
-                type="button"
-                className="btn ghost"
-                onClick={closeFinalizeConfirm}
-                disabled={busy}
-                aria-label="Cerrar"
-              >
-                Cerrar
-              </button>
             </div>
 
             <div id={confirmDescId} className="pos-finalize-body">
@@ -1021,7 +1015,7 @@ export function PosPage() {
                 {busy ? 'Procesando…' : online ? 'Confirmar e imprimir' : 'Guardar en este equipo'}
               </button>
             </div>
-          </div>
+          </div></ModalOverlayClose>
         </div>
       )}
 

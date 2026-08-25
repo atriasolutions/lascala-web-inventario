@@ -106,9 +106,31 @@ export type ChangeTicketPrint = {
   mode: 'cambio' | 'devolucion' | 'ambos';
 };
 
-/** Código de etiqueta/pistola: barcode = código interno (LS-…). */
+/** Código de pistola de la prenda (LS…). */
 export function resolveVoucherScanCode(t: Pick<ChangeTicketPrint, 'barcode' | 'internalCode'>): string {
   return (t.barcode || t.internalCode || '').trim();
+}
+
+/**
+ * Code128 en 80 mm (módulo 2): tope conservador para que no se corte el trazo.
+ * `VC-000095` entra holgado; si no cabe, se recorta a ASCII.
+ */
+export const ACCESS_BARCODE_MAX_LEN = 22;
+
+function asciiPrintable(s: string) {
+  return /^[\x20-\x7E]+$/.test(s);
+}
+
+/**
+ * Barcode Ticket = `VC-…` único de esa prenda (no el n° de venta: chocaría dos tickets).
+ * Caption debajo = el mismo payload. La boleta va solo como texto `Venta V-…`.
+ */
+export function resolveAccessScanCode(t: Pick<ChangeTicketPrint, 'voucherNumber'>): string {
+  const voucher = (t.voucherNumber || '').trim();
+  if (voucher && voucher.length <= ACCESS_BARCODE_MAX_LEN && asciiPrintable(voucher)) {
+    return voucher;
+  }
+  return voucher.replace(/[^\x20-\x7E]/g, '').slice(0, ACCESS_BARCODE_MAX_LEN);
 }
 
 export type SalePrintJob = {

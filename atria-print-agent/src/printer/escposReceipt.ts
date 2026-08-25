@@ -31,6 +31,8 @@ export const FINAL_FEED_BEFORE = 5;
 
 const HEADER_END_RE = /^Folio:/i;
 const BODY_LEFT_RE = /^C[oó]d:/i;
+/** Etiquetas cortas sobre Code128 en voucher (ASCII, sin tilde). */
+const BARCODE_CAPTION_RE = /^(Ticket|Prenda)$/i;
 
 /**
  * Convierte HTML de comprobante L'Scala → bytes ESC/POS.
@@ -129,6 +131,11 @@ export function buildEscPosFromLines(lines: string[], cols = RECEIPT_COLS_80MM):
       flushText();
       chunks.push(buildEscPosWordmark(cols));
       inHeader = true;
+      continue;
+    }
+    if (BARCODE_CAPTION_RE.test(trimmed)) {
+      buf.push(centerLine(trimmed, cols));
+      inHeader = false;
       continue;
     }
     const bc = trimmed.match(BARCODE_LINE_RE);

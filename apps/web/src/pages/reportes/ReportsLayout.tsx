@@ -23,6 +23,7 @@ const LEDES: Record<ReportsVista, string> = {
   ingresos: 'Reinversión a Precio costo y documentos del período.',
   gastos: 'Gastos de operación por categoría. El registro está en Gastos.',
   mermas: 'Bajas y vouchers del período. El registro está en Mermas.',
+  inventarios: 'Faltante, sobrante y neto de cada toma aplicada (INV-…). Valorado a precio de venta.',
 };
 
 function vistaFromPath(pathname: string): ReportsVista {
@@ -39,17 +40,21 @@ function formatPeriodDay(iso: string) {
 /** Layout Reportes: tabs + filtros sticky. Los datos los completa cada vista. */
 export function ReportsLayout() {
   const { branches, branchId } = useAuth();
-  const { pathname } = useLocation();
+  const { pathname, search } = useLocation();
   const vista = vistaFromPath(pathname);
   const branchName = branches.find((b) => b.id === branchId)?.name || 'la sucursal activa';
 
-  const [period, setPeriod] = useState<ReportsPeriodState>(() =>
-    loadListFilters('reports', branchId, defaultPeriodState()),
-  );
+  const [period, setPeriod] = useState<ReportsPeriodState>(() => ({
+    ...defaultPeriodState(),
+    ...loadListFilters('reports', branchId, defaultPeriodState()),
+  }));
   const [exporting, setExporting] = useState(false);
 
   useEffect(() => {
-    setPeriod(loadListFilters('reports', branchId, defaultPeriodState()));
+    setPeriod({
+      ...defaultPeriodState(),
+      ...loadListFilters('reports', branchId, defaultPeriodState()),
+    });
   }, [branchId]);
 
   useEffect(() => {
@@ -83,6 +88,8 @@ export function ReportsLayout() {
 
       const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:4000';
       const qs = new URLSearchParams({ from, to });
+      const take = new URLSearchParams(search).get('take');
+      if (take) qs.set('stocktakeId', take);
       const res = await fetch(`${apiUrl}/api/reports/${vista}/export?${qs}`, { headers });
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as { error?: string };
@@ -145,6 +152,17 @@ export function ReportsLayout() {
             : `${formatPeriodDay(from)} – ${formatPeriodDay(to)}`}
         </p>
 
+        {period.preset === 'day' ? (
+          <label className="reports-filter-field">
+            <span className="sr-only">Día</span>
+            <input
+              type="date"
+              value={period.day}
+              onChange={(e) => patchPeriod({ preset: 'day', day: e.target.value })}
+            />
+          </label>
+        ) : null}
+
         {period.preset === 'month' ? (
           <label className="reports-filter-field">
             <span className="sr-only">Mes</span>
@@ -198,6 +216,7 @@ export function ReportsLayout() {
           <button
             type="button"
             className="btn reports-export-btn"
+            data-help="cta.reportes.excel"
             onClick={() => void downloadExcel()}
             disabled={exporting}
           >

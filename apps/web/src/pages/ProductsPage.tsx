@@ -8,8 +8,15 @@ import {
 } from 'react';
 import { ProductPhotoPlaceholder } from '../components/ProductPhotoPlaceholder';
 import { ProductFichaFields } from '../components/ProductFichaFields';
+import {
+  ProductCodeEntry,
+  type ProductCodeMode,
+} from '../components/ProductCodeEntry';
+import { ModalOverlayClose } from '../components/ModalOverlayClose';
 import { api, mediaUrl, money } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { isLeadRole, canRegisterProductCode, CODE_REGISTER_FORBIDDEN } from '../lib/roles';
+import { chileMoneyFromNumber, parseChileMoney } from '../lib/chileMoney';
 import { toast } from '../lib/toast';
 import { printLabelJob } from '../services/printing';
 import { fileToDataUrl } from './compras/purchaseFormTypes';
@@ -221,7 +228,10 @@ function ProductCardMedia({
 }
 
 export function ProductsPage() {
-  const { branchId } = useAuth();
+  const { branchId, branches } = useAuth();
+  const role = branches.find((b) => b.id === branchId)?.role || '';
+  const canEditSalePrice = isLeadRole(role);
+  const canCreateProduct = canRegisterProductCode(role);
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [q, setQ] = useState('');
@@ -236,6 +246,11 @@ export function ProductsPage() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<Product | null>(null);
   const [form, setForm] = useState<FormState>(emptyForm);
+  const [codeMode, setCodeMode] = useState<ProductCodeMode>('auto');
+  const [codeGenerating, setCodeGenerating] = useState(false);
+  const [codeAvailability, setCodeAvailability] = useState<
+    'idle' | 'checking' | 'ok' | 'taken' | 'error'
+  >('idle');
   const [saving, setSaving] = useState(false);
   const [formError, setFormError] = useState('');
   const [photoBusy, setPhotoBusy] = useState(false);
@@ -395,15 +410,56 @@ export function ProductsPage() {
   }
 
   function openCreate(trigger?: HTMLElement | null) {
+    if (!canCreateProduct) {
+      toast.warn(CODE_REGISTER_FORBIDDEN);
+      return;
+    }
     triggerRef.current = trigger ?? null;
     revokeBlob();
     setEditing(null);
     setForm(emptyForm());
+    setCodeMode('auto');
+    setCodeAvailability('idle');
     setPhotoPreview(null);
     setModalPhotoFailed(false);
     setPhotoBusy(false);
     setFormError('');
     setModalOpen(true);
+    void fetchNextCode();
+  }
+
+  async function fetchNextCode() {
+    setCodeGenerating(true);
+    setCodeAvailability('idle');
+    try {
+      const data = await api<{ nextBarcode: string }>('/api/products/next-barcode');
+      const code = (data.nextBarcode || '').trim().toUpperCase();
+      patchForm({ barcode: code });
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'No se pudo generar el código');
+    } finally {
+      setCodeGenerating(false);
+    }
+  }
+
+  async function checkCreateBarcode() {
+    const code = form.barcode.trim();
+    if (!code || codeMode !== 'scan') {
+      setCodeAvailability('idle');
+      return;
+    }
+    setCodeAvailability('checking');
+    try {
+      const data = await api<{ available: boolean; barcode: string | null }>(
+        `/api/products/barcode-available?code=${encodeURIComponent(code)}`,
+      );
+      if (data.barcode && data.barcode !== code) {
+        patchForm({ barcode: data.barcode });
+      }
+      setCodeAvailability(data.available ? 'ok' : 'taken');
+    } catch {
+      setCodeAvailability('error');
+    }
   }
 
   function openEdit(product: Product, trigger?: HTMLElement | null) {
@@ -413,7 +469,7 @@ export function ProductsPage() {
     setForm({
       name: product.name,
       categoryId: product.category_id || '',
-      salePrice: String(Number(product.sale_price) || ''),
+      salePrice: chileMoneyFromNumber(product.sale_price),
       brand: product.brand || '',
       sizeLabel: product.size_label || '',
       color: product.color || '',
@@ -603,8 +659,8 @@ export function ProductsPage() {
     }
     setFormError('');
     setSaving(true);
-    const sale = Number(form.salePrice);
-    if (!Number.isFinite(sale) || sale < 0) {
+    const sale = parseChileMoney(form.salePrice) ?? NaN;
+    if (canEditSalePrice && (!Number.isFinite(sale) || sale < 0)) {
       setFormError('Ingresa un precio de venta válido');
       setSaving(false);
       return;
@@ -613,7 +669,6 @@ export function ProductsPage() {
     const body: Record<string, unknown> = {
       name: form.name.trim(),
       categoryId: form.categoryId || null,
-      salePrice: sale,
       brand: form.brand.trim() || null,
       sizeLabel: form.sizeLabel.trim() || null,
       color: form.color.trim() || null,
@@ -634,12 +689,33 @@ export function ProductsPage() {
           : null
         : null,
     };
+    if (canEditSalePrice) body.salePrice = sale;
     if (editing) {
       const originalPhoto = (editing.photo_url || '').trim();
       if (photoUrl && photoUrl !== originalPhoto) body.photoUrl = photoUrl;
       else if (!photoUrl && originalPhoto) body.photoUrl = null;
     } else if (photoUrl) {
       body.photoUrl = photoUrl;
+    }
+    if (!editing) {
+      const code = form.barcode.trim().toUpperCase();
+      if (codeMode === 'scan') {
+        if (!code) {
+          setFormError('Pistolea o ingresa un código, o elige Autogenerar');
+          setSaving(false);
+          return;
+        }
+        if (codeAvailability === 'taken') {
+          setFormError('Ese código ya está en uso');
+          setSaving(false);
+          return;
+        }
+        body.barcode = code;
+        body.codeMode = 'manual';
+      } else {
+        body.barcode = code || 'auto';
+        body.codeMode = 'auto';
+      }
     }
     try {
       if (editing) {
@@ -696,13 +772,16 @@ export function ProductsPage() {
               </span>
             ) : null}
           </button>
-          <button
-            type="button"
-            className="btn"
-            onClick={(e) => openCreate(e.currentTarget)}
-          >
-            Nueva prenda
-          </button>
+          {canCreateProduct ? (
+            <button
+              type="button"
+              className="btn"
+              data-help="cta.productos.nueva"
+              onClick={(e) => openCreate(e.currentTarget)}
+            >
+              Nueva prenda
+            </button>
+          ) : null}
         </div>
 
         {/* Desktop: atajos visibles; mobile usa el sheet */}
@@ -814,15 +893,21 @@ export function ProductsPage() {
       {!loading && !products.length && !filtersActive && (
         <div className="sales-empty">
           <h3>Aún no hay prendas</h3>
-          <p className="muted">Agrega la primera para armar el catálogo.</p>
-          <button
-            type="button"
-            className="btn secondary"
-            style={{ marginTop: '0.75rem' }}
-            onClick={(e) => openCreate(e.currentTarget)}
-          >
-            Nueva prenda
-          </button>
+          <p className="muted">
+            {canCreateProduct
+              ? 'Agrega la primera para armar el catálogo.'
+              : 'Solo la administración puede dar de alta prendas nuevas.'}
+          </p>
+          {canCreateProduct ? (
+            <button
+              type="button"
+              className="btn secondary"
+              style={{ marginTop: '0.75rem' }}
+              onClick={(e) => openCreate(e.currentTarget)}
+            >
+              Nueva prenda
+            </button>
+          ) : null}
         </div>
       )}
 
@@ -896,6 +981,8 @@ export function ProductsPage() {
             if (e.target === e.currentTarget && !labelQtyOpen) closeModal();
           }}
         >
+          <ModalOverlayClose onClose={closeModal}>
+          <div className="ing-line-modal-shell prod-modal-shell">
           <form
             className="pos-modal-panel ing-line-modal prod-modal"
             role="dialog"
@@ -906,9 +993,6 @@ export function ProductsPage() {
           >
             <div className="pos-modal-head">
               <h3 id={modalTitleId}>{editing ? 'Editar prenda' : 'Nueva prenda'}</h3>
-              <button type="button" className="btn ghost" onClick={closeModal} aria-label="Cerrar">
-                Cerrar
-              </button>
             </div>
 
             <div className="prod-modal-body">
@@ -975,17 +1059,54 @@ export function ProductsPage() {
                     editing
                       ? { locked: true, value: editing.internal_code || form.barcode }
                       : {
-                          locked: true,
-                          value: '',
-                          helper:
-                            'El código (LS-…) se genera al guardar: es el de la etiqueta y de la pistola.',
+                          locked: false,
+                          value: form.barcode,
+                          onChange: (barcode) => {
+                            patchForm({ barcode });
+                            setCodeAvailability('idle');
+                          },
+                          helper: '',
+                          slot: (
+                            <ProductCodeEntry
+                              id="prod-modal-code"
+                              value={form.barcode}
+                              mode={codeMode}
+                              onModeChange={(m) => {
+                                setCodeMode(m);
+                                setCodeAvailability('idle');
+                                if (m === 'scan') patchForm({ barcode: '' });
+                              }}
+                              onChange={(barcode) => {
+                                patchForm({ barcode });
+                                setCodeAvailability('idle');
+                              }}
+                              onAutogenerate={fetchNextCode}
+                              disabled={saving || photoBusy}
+                              generating={codeGenerating}
+                              availability={codeAvailability}
+                              onBlurCheck={() => void checkCreateBarcode()}
+                            />
+                          ),
                         }
                   }
-                  salePrice={{
-                    mode: 'edit',
-                    value: form.salePrice,
-                    onChange: (salePrice) => patchForm({ salePrice }),
-                  }}
+                  costPrice={showLastCost ? lastCost : null}
+                  salePrice={
+                    canEditSalePrice
+                      ? {
+                          mode: 'edit',
+                          value: form.salePrice,
+                          onChange: (salePrice) => patchForm({ salePrice }),
+                        }
+                      : {
+                          mode: 'locked',
+                          display: (() => {
+                            const n = parseChileMoney(form.salePrice);
+                            return n != null ? money(n) : '—';
+                          })(),
+                          amount: parseChileMoney(form.salePrice) ?? undefined,
+                          hint: 'El precio de venta lo define Administrador/a o Encargado/a.',
+                        }
+                  }
                   extraAfterIdentity={
                     showLastCost ? (
                       <p className="ing-hint prod-cost-hint">
@@ -1107,6 +1228,7 @@ export function ProductsPage() {
               </button>
             </div>
           </form>
+          </div></ModalOverlayClose>
         </div>
       )}
 
@@ -1118,6 +1240,7 @@ export function ProductsPage() {
             if (e.target === e.currentTarget) closeLabelQty();
           }}
         >
+          <ModalOverlayClose onClose={closeLabelQty} disabled={printBusy}>
           <div
             className="pos-modal-panel confirm-dialog-panel"
             role="dialog"
@@ -1127,15 +1250,6 @@ export function ProductsPage() {
           >
             <div className="pos-modal-head">
               <h3 id={labelQtyTitleId}>Imprimir etiquetas</h3>
-              <button
-                type="button"
-                className="btn ghost"
-                onClick={closeLabelQty}
-                disabled={printBusy}
-                aria-label="Cerrar"
-              >
-                Cerrar
-              </button>
             </div>
             <p className="confirm-dialog-message">
               ¿Cuántas etiquetas quieres imprimir? (máximo 100)
@@ -1183,7 +1297,7 @@ export function ProductsPage() {
                 {printBusy ? 'Imprimiendo…' : 'Imprimir'}
               </button>
             </div>
-          </div>
+          </div></ModalOverlayClose>
         </div>
       )}
 
@@ -1195,6 +1309,7 @@ export function ProductsPage() {
             if (e.target === e.currentTarget) setFiltersOpen(false);
           }}
         >
+          <ModalOverlayClose onClose={() => setFiltersOpen(false)}>
           <div
             id="prod-filters-sheet"
             className="pos-modal-panel prod-filters-sheet"
@@ -1206,14 +1321,6 @@ export function ProductsPage() {
           >
             <div className="pos-modal-head">
               <h3 id={filtersTitleId}>Filtros</h3>
-              <button
-                type="button"
-                className="btn ghost"
-                onClick={() => setFiltersOpen(false)}
-                aria-label="Cerrar"
-              >
-                Cerrar
-              </button>
             </div>
 
             <div className="prod-filter-fields">
@@ -1325,6 +1432,7 @@ export function ProductsPage() {
               </button>
             </div>
           </div>
+          </ModalOverlayClose>
         </div>
       )}
     </div>

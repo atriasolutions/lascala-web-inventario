@@ -9,8 +9,11 @@ import { PosPage } from './pages/PosPage';
 import { SalesHistoryPage } from './pages/SalesHistoryPage';
 import { ProductsPage } from './pages/ProductsPage';
 import { InventoryPage } from './pages/InventoryPage';
+import { StocktakesListPage } from './pages/StocktakesListPage';
+import { StocktakeDetailPage } from './pages/StocktakeDetailPage';
 import { MovementsPage } from './pages/MovementsPage';
 import { MermasPage } from './pages/MermasPage';
+import { HelpPage } from './pages/HelpPage';
 import { ExpensesPage } from './pages/ExpensesPage';
 import { AdminLayout, AdminHomeRedirect, RequireOwner } from './pages/admin/AdminLayout';
 import { AdminEquipoPage } from './pages/admin/AdminEquipoPage';
@@ -25,6 +28,7 @@ import { CompraDetailPage } from './pages/compras/CompraDetailPage';
 import {
   ReportsGastosPage,
   ReportsIngresosPage,
+  ReportsInventariosPage,
   ReportsMermasPage,
   ReportsStockPage,
   ReportsVentasPage,
@@ -56,7 +60,49 @@ function Protected({ children }: { children: React.ReactNode }) {
   return children;
 }
 
-/** Data router: habilita `useBlocker` (p. ej. guardia de salida en Caja). */
+function RequireRoles({
+  allow,
+  children,
+}: {
+  allow: Array<'owner' | 'branch_manager' | 'seller'>;
+  children: React.ReactNode;
+}) {
+  const { branches, branchId, loading } = useAuth();
+  if (loading) return <p className="muted" style={{ padding: '2rem' }}>Cargando…</p>;
+  const role = branches.find((b) => b.id === branchId)?.role;
+  if (!role || !allow.includes(role as 'owner' | 'branch_manager' | 'seller')) {
+    return <Navigate to="/vender" replace />;
+  }
+  return children;
+}
+
+function RequireAdmin({ children }: { children: React.ReactNode }) {
+  return <RequireRoles allow={['owner']}>{children}</RequireRoles>;
+}
+
+/** Landing `/` según rol y viewport (mismo corte ~900px del AppShell). */
+function HomeRedirect() {
+  const { branches, branchId, loading } = useAuth();
+  if (loading) return <p className="muted" style={{ padding: '2rem' }}>Cargando…</p>;
+  const role = branches.find((b) => b.id === branchId)?.role;
+  if (role === 'owner') {
+    return (
+      <OnlineOnly>
+        <Lazy>
+          <DashboardPage />
+        </Lazy>
+      </OnlineOnly>
+    );
+  }
+  const isMobile =
+    typeof window !== 'undefined' && window.matchMedia('(max-width: 900px)').matches;
+  if (role === 'branch_manager' || role === 'seller') {
+    return <Navigate to={isMobile ? '/productos' : '/vender'} replace />;
+  }
+  return <Navigate to="/vender" replace />;
+}
+
+/** Data router: habilita `useBlocker` (p. ej. guardia de salida en Ventas). */
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
   { path: '/reset-password', element: <ResetPasswordPage /> },
@@ -70,13 +116,7 @@ export const router = createBrowserRouter([
     children: [
       {
         index: true,
-        element: (
-          <OnlineOnly>
-            <Lazy>
-              <DashboardPage />
-            </Lazy>
-          </OnlineOnly>
-        ),
+        element: <HomeRedirect />,
       },
       { path: 'vender', element: <PosPage /> },
       {
@@ -115,25 +155,31 @@ export const router = createBrowserRouter([
       {
         path: 'compras',
         element: (
-          <OnlineOnly>
-            <ComprasListPage />
-          </OnlineOnly>
+          <RequireAdmin>
+            <OnlineOnly>
+              <ComprasListPage />
+            </OnlineOnly>
+          </RequireAdmin>
         ),
       },
       {
         path: 'compras/nuevo',
         element: (
-          <OnlineOnly>
-            <CompraNuevaPage />
-          </OnlineOnly>
+          <RequireAdmin>
+            <OnlineOnly>
+              <CompraNuevaPage />
+            </OnlineOnly>
+          </RequireAdmin>
         ),
       },
       {
         path: 'compras/:id',
         element: (
-          <OnlineOnly>
-            <CompraDetailPage />
-          </OnlineOnly>
+          <RequireAdmin>
+            <OnlineOnly>
+              <CompraDetailPage />
+            </OnlineOnly>
+          </RequireAdmin>
         ),
       },
       {
@@ -141,6 +187,22 @@ export const router = createBrowserRouter([
         element: (
           <OnlineOnly>
             <InventoryPage />
+          </OnlineOnly>
+        ),
+      },
+      {
+        path: 'inventarios',
+        element: (
+          <OnlineOnly>
+            <StocktakesListPage />
+          </OnlineOnly>
+        ),
+      },
+      {
+        path: 'inventarios/:id',
+        element: (
+          <OnlineOnly>
+            <StocktakeDetailPage />
           </OnlineOnly>
         ),
       },
@@ -161,21 +223,33 @@ export const router = createBrowserRouter([
         ),
       },
       {
+        path: 'ayuda',
+        element: <Navigate to="/ayuda/overview" replace />,
+      },
+      {
+        path: 'ayuda/:seccion',
+        element: <HelpPage />,
+      },
+      {
         path: 'gastos',
         element: (
-          <OnlineOnly>
-            <ExpensesPage />
-          </OnlineOnly>
+          <RequireAdmin>
+            <OnlineOnly>
+              <ExpensesPage />
+            </OnlineOnly>
+          </RequireAdmin>
         ),
       },
       {
         path: 'reportes',
         element: (
-          <OnlineOnly>
-            <Lazy>
-              <ReportsLayout />
-            </Lazy>
-          </OnlineOnly>
+          <RequireAdmin>
+            <OnlineOnly>
+              <Lazy>
+                <ReportsLayout />
+              </Lazy>
+            </OnlineOnly>
+          </RequireAdmin>
         ),
         children: [
           { index: true, element: <Navigate to="ventas" replace /> },
@@ -184,6 +258,7 @@ export const router = createBrowserRouter([
           { path: 'ingresos', element: <ReportsIngresosPage /> },
           { path: 'gastos', element: <ReportsGastosPage /> },
           { path: 'mermas', element: <ReportsMermasPage /> },
+          { path: 'inventarios', element: <ReportsInventariosPage /> },
         ],
       },
       {

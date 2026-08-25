@@ -1,4 +1,5 @@
 import { type FormEvent, useEffect, useId, useState } from 'react';
+import { ModalOverlayClose } from './ModalOverlayClose';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { toast } from '../lib/toast';
@@ -58,6 +59,7 @@ export function AccountSheet({ open, onClose }: Props) {
         if (e.target === e.currentTarget) onClose();
       }}
     >
+      <ModalOverlayClose onClose={onClose}>
       <div
         className="pos-modal-panel admin-sheet"
         role="dialog"
@@ -67,9 +69,6 @@ export function AccountSheet({ open, onClose }: Props) {
       >
         <div className="pos-modal-head">
           <h3 id={titleId}>Mi cuenta</h3>
-          <button type="button" className="btn ghost" onClick={onClose} aria-label="Cerrar">
-            Cerrar
-          </button>
         </div>
         <form className="admin-sheet-form" onSubmit={onSubmit}>
           <div className="field">
@@ -86,7 +85,7 @@ export function AccountSheet({ open, onClose }: Props) {
             <label htmlFor="account-email">Email</label>
             <input id="account-email" value={user?.email || ''} readOnly disabled />
             <span className="muted admin-field-hint">
-              El email lo cambia la propietaria en Ajustes → Usuarias.
+              El email lo cambia Administrador/a en Ajustes → Usuarios.
             </span>
           </div>
           <div className="field">
@@ -110,7 +109,7 @@ export function AccountSheet({ open, onClose }: Props) {
             </button>
           </div>
         </form>
-      </div>
+      </div></ModalOverlayClose>
     </div>
   );
 }

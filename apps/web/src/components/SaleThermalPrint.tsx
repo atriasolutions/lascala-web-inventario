@@ -9,6 +9,7 @@ import {
   escPosBarcodeMarker,
   fmtPrintDateOnly,
   fmtPrintDateTime,
+  resolveAccessScanCode,
   resolveVoucherScanCode,
   thermalPadLine,
   ticketModeLabel,
@@ -25,7 +26,7 @@ const DOTS = '·································
 
 /**
  * Comprobante + vouchers compactos (menos papel).
- * Labels con ":" explícito; cortes ASCII; barcode voucher bajo.
+ * Labels con ":" explícito; cortes ASCII; voucher: barcode boleta + barcode prenda.
  */
 export function SaleThermalPrint({ job }: Props) {
   const { sale, items, changeTickets, reprint } = job;
@@ -118,8 +119,8 @@ export function SaleThermalPrint({ job }: Props) {
         const validUntil = t.expiresAt
           ? fmtPrintDateOnly(t.expiresAt)
           : `${CHANGE_TICKET_DAYS}d`;
-        const scanCode = resolveVoucherScanCode(t);
-        const marker = escPosBarcodeMarker(scanCode);
+        const accessCode = resolveAccessScanCode(t);
+        const prendaCode = resolveVoucherScanCode(t);
         const prendaLine = [t.productName, attrs].filter(Boolean).join(' · ');
 
         return (
@@ -127,29 +128,42 @@ export function SaleThermalPrint({ job }: Props) {
             <p className="sale-print-cut mono">{ESC_POS_CUT_MARKER}</p>
             <article className="sale-print-block sale-change-ticket-print">
               <h1 className="sale-print-title sale-print-title-sm">{ticketModeLabel(t.mode)}</h1>
-              <p className="sale-print-voucher-line">
-                {t.voucherNumber} · Venta {t.receiptNumber}
-              </p>
+              <p className="sale-print-voucher-line">Venta {t.receiptNumber}</p>
               <p className="sale-print-voucher-line">
                 <strong>{prendaLine}</strong>
               </p>
               <p className="sale-print-voucher-line">
                 Cód: {t.internalCode} · Hasta: {validUntil}
               </p>
-              {scanCode ? (
-                <>
-                  {marker ? (
-                    <p className="sale-print-barcode-marker mono" aria-hidden>
-                      {marker}
-                    </p>
-                  ) : null}
-                  <ThermalBarcode value={scanCode} compact />
-                </>
-              ) : null}
+              <div className="sale-print-bc-stack">
+                {accessCode ? (
+                  <VoucherBarcodeBlock label="Ticket" value={accessCode} />
+                ) : null}
+                {prendaCode && prendaCode !== accessCode ? (
+                  <VoucherBarcodeBlock label="Prenda" value={prendaCode} />
+                ) : null}
+              </div>
             </article>
           </div>
         );
       })}
+    </div>
+  );
+}
+
+function VoucherBarcodeBlock({ label, value }: { label: string; value: string }) {
+  const code = value.trim();
+  if (!code) return null;
+  const marker = escPosBarcodeMarker(code);
+  return (
+    <div className="sale-print-bc-block">
+      <p className="sale-print-bc-label">{label}</p>
+      {marker ? (
+        <p className="sale-print-barcode-marker mono" aria-hidden>
+          {marker}
+        </p>
+      ) : null}
+      <ThermalBarcode value={code} compact />
     </div>
   );
 }

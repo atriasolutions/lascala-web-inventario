@@ -30,6 +30,7 @@ function ContextSelect({
   options,
   className,
   menuAlign = 'start',
+  helpKey,
 }: {
   icon: ReactNode;
   label: string;
@@ -38,6 +39,7 @@ function ContextSelect({
   options: MenuOption[];
   className?: string;
   menuAlign?: 'start' | 'end';
+  helpKey?: string;
 }) {
   const [open, setOpen] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
@@ -55,6 +57,7 @@ function ContextSelect({
       <button
         type="button"
         className="ctx-select-trigger"
+        data-help={helpKey}
         aria-haspopup="listbox"
         aria-expanded={open}
         aria-controls={listId}
@@ -158,6 +161,7 @@ export function WorkplaceSwitcher({
           <ContextSelect
             icon={<IconStore size={16} />}
             label="Sucursal"
+            helpKey="header.sucursal"
             value={activeBranch?.id || ''}
             onChange={onBranchChange}
             options={
@@ -168,7 +172,7 @@ export function WorkplaceSwitcher({
             className="ctx-select-branch"
           />
         ) : (
-          <div className="ctx-select ctx-select-ro ctx-select-branch" aria-label="Sucursal">
+          <div className="ctx-select ctx-select-ro ctx-select-branch" aria-label="Sucursal" data-help="header.sucursal">
             <span className="ctx-select-ico">
               <IconStore size={16} />
             </span>
@@ -181,6 +185,7 @@ export function WorkplaceSwitcher({
         <ContextSelect
           icon={<IconPos size={16} />}
           label="Caja / POS"
+          helpKey="header.caja"
           className="ctx-select-pos"
           menuAlign="end"
           value={posId && posList.some((p) => p.id === posId) ? posId : posList[0]?.id || ''}

@@ -257,7 +257,7 @@ catalogRouter.get(
 catalogRouter.post(
   '/pos',
   requireBranch,
-  requireRoles('owner', 'branch_manager'),
+  requireRoles('owner'),
   asyncHandler(async (req, res) => {
     const body = z
       .object({
@@ -275,7 +275,7 @@ catalogRouter.post(
 
     const access = req.user!.branches.find((b) => b.branchId === body.branchId);
     const owner = isOrgOwner(req.user!);
-    if (!owner && (!access || (access.role !== 'owner' && access.role !== 'branch_manager'))) {
+    if (!owner && access?.role !== 'owner') {
       throw new HttpError(403, 'Sin permiso para crear cajas en esa sucursal');
     }
 

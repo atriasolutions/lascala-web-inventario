@@ -202,6 +202,8 @@ Marca L'Scala (fucsia `#E6007E`) sigue en la SPA; el Agent lleva **identidad Atr
 
 No pedir a la usuaria que ejecute `node` ni comandos npm.
 
+**HTTPS → Agent HTTP (mixed content / red privada).** La SPA en `https://inventario.lscala.cl` llama a `http://127.0.0.1:9876`. Chrome suele permitir localhost; el Agent responde CORS + `Access-Control-Allow-Private-Network`. Safari a veces bloquea HTTP desde una página HTTPS: prueba Chrome, o abre `http://127.0.0.1:9876/health` en una pestaña. No hay TLS en loopback a propósito; no instales el Agent en el droplet.
+
 ---
 
 ## 8. Relación con QZ Tray (transición)

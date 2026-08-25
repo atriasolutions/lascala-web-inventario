@@ -1,4 +1,5 @@
 import { useEffect, useId, useState } from 'react';
+import { ModalOverlayClose } from './ModalOverlayClose';
 import {
   getProfile,
   loadPrintPrefs,
@@ -19,7 +20,7 @@ type Props = {
 
 /**
  * Recordatorio antes de window.print(): el SO/navegador abre el diálogo
- * y la usuaria debe elegir la impresora configurada.
+ * y el usuario debe elegir la impresora configurada.
  */
 export function PrintReminderModal({ open, profile, onConfirm, onCancel }: Props) {
   const titleId = useId();
@@ -74,6 +75,7 @@ export function PrintReminderModal({ open, profile, onConfirm, onCancel }: Props
         if (e.target === e.currentTarget) onCancel();
       }}
     >
+      <ModalOverlayClose onClose={onCancel}>
       <div
         className="pos-modal-panel print-reminder-panel"
         role="dialog"
@@ -83,9 +85,6 @@ export function PrintReminderModal({ open, profile, onConfirm, onCancel }: Props
       >
         <div className="pos-modal-head">
           <h3 id={titleId}>{profileTitle(profile)}</h3>
-          <button type="button" className="btn ghost" onClick={onCancel} aria-label="Cancelar">
-            Cancelar
-          </button>
         </div>
 
         <div id={descId} className="print-reminder-body">
@@ -144,7 +143,7 @@ export function PrintReminderModal({ open, profile, onConfirm, onCancel }: Props
             Imprimir
           </button>
         </div>
-      </div>
+      </div></ModalOverlayClose>
     </div>
   );
 }

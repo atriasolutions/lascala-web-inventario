@@ -5,7 +5,7 @@ import { createContext, useContext } from 'react';
  * Páginas de detalle pueden sobrescribir con useShellTitle().
  */
 export const SHELL_TITLES = {
-  vender: 'Caja (POS)',
+  vender: 'Ventas',
   ventas: 'Historial de ventas',
 } as const;
 

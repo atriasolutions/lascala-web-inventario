@@ -84,7 +84,7 @@ export function normalizeBarcode(barcode: string | null | undefined): string | n
 }
 
 /**
- * Variantes para lookup pistola: BC000003 ↔ BC-000003; LS-000009 ↔ LS000009.
+ * Variantes para lookup pistola: BC000003 ↔ BC-000003; LS100007 ↔ LS-100007.
  */
 export function expandProductCodeVariants(code: string | null | undefined): string[] {
   const n = normalizeBarcode(code);
@@ -101,11 +101,81 @@ export function expandProductCodeVariants(code: string | null | undefined): stri
   const ls = n.match(/^LS-?(\d+)$/);
   if (ls) {
     const digits = ls[1];
-    keys.add(`LS-${digits}`);
     keys.add(`LS${digits}`);
+    keys.add(`LS-${digits}`);
+    if (digits.length < 6) {
+      const padded = digits.padStart(6, '0');
+      keys.add(`LS${padded}`);
+      keys.add(`LS-${padded}`);
+    }
   }
 
   return [...keys];
+}
+
+/**
+ * VC… es ticket de una prenda; V… / VD… es n° de venta (varios tickets independientes).
+ * Variantes pistola: VC000019 ↔ VC-000019; VD000056 ↔ V-D000056; V000019 ↔ V-000019.
+ */
+export function saleDocLookupKind(code: string | null | undefined): 'voucher' | 'sale' {
+  const n = normalizeBarcode(code);
+  if (n && /^VC-?\d+$/.test(n)) return 'voucher';
+  return 'sale';
+}
+
+export function expandSaleDocNumberVariants(code: string | null | undefined): string[] {
+  const n = normalizeBarcode(code);
+  if (!n) return [];
+  const keys = new Set<string>([n]);
+
+  function addSeries(prefixHyphen: string, prefixBare: string, digits: string) {
+    const padded =
+      digits.length >= 6 ? digits.replace(/^0+(?=\d)/, '').padStart(6, '0') : digits.padStart(6, '0');
+    const rawPad = digits.padStart(6, '0');
+    for (const d of new Set([digits, padded, rawPad])) {
+      keys.add(`${prefixHyphen}${d}`);
+      keys.add(`${prefixBare}${d}`);
+    }
+  }
+
+  const vc = n.match(/^VC-?(\d+)$/);
+  if (vc) {
+    addSeries('VC-', 'VC', vc[1]);
+    return [...keys];
+  }
+
+  const vd = n.match(/^V-?D-?(\d+)$/);
+  if (vd) {
+    addSeries('V-D', 'VD', vd[1]);
+    return [...keys];
+  }
+
+  const v = n.match(/^V-?(\d+)$/);
+  if (v) {
+    addSeries('V-', 'V', v[1]);
+  }
+
+  return [...keys];
+}
+
+/**
+ * Forma canónica al guardar (sin guión): LS100007, BC000003.
+ * LS-JEANS-001 y otros no numéricos se dejan tal cual (solo mayúsculas).
+ */
+export function canonicalizeStoredProductCode(code: string | null | undefined): string | null {
+  const n = normalizeBarcode(code);
+  if (!n) return null;
+  const ls = n.match(/^LS-?(\d+)$/);
+  if (ls) {
+    const digits = ls[1].length < 6 ? ls[1].padStart(6, '0') : ls[1];
+    return `LS${digits}`;
+  }
+  const bc = n.match(/^BC-?(\d+)$/);
+  if (bc) {
+    const digits = bc[1].length < 6 ? bc[1].padStart(6, '0') : bc[1];
+    return `BC${digits}`;
+  }
+  return n;
 }
 
 /** Ensures barcode is unique within the organization. Empty/null is allowed. */
@@ -114,10 +184,13 @@ export async function assertBarcodeAvailable(
   barcode: string | null | undefined,
   opts?: { excludeProductId?: string; client?: PoolClient },
 ) {
-  const normalized = normalizeBarcode(barcode);
+  const normalized = canonicalizeStoredProductCode(barcode) ?? normalizeBarcode(barcode);
   if (!normalized) return;
-  const params: unknown[] = [organizationId, normalized];
-  let sql = `SELECT id FROM products WHERE organization_id = $1 AND (barcode = $2 OR internal_code = $2)`;
+  const variants = expandProductCodeVariants(normalized);
+  const params: unknown[] = [organizationId, variants];
+  let sql = `SELECT id FROM products
+    WHERE organization_id = $1
+      AND (barcode = ANY($2::text[]) OR internal_code = ANY($2::text[]))`;
   if (opts?.excludeProductId) {
     params.push(opts.excludeProductId);
     sql += ` AND id <> $${params.length}`;
@@ -126,7 +199,7 @@ export async function assertBarcodeAvailable(
   const res = opts?.client
     ? await opts.client.query<{ id: string }>(sql, params)
     : await query<{ id: string }>(sql, params);
-  if (res.rows[0]) throw new HttpError(409, 'Código de barras ya existe');
+  if (res.rows[0]) throw new HttpError(409, 'Ese código ya está en uso');
 }
 
 export async function isBarcodeAvailable(
@@ -134,7 +207,7 @@ export async function isBarcodeAvailable(
   barcode: string,
   opts?: { excludeProductId?: string },
 ): Promise<boolean> {
-  const normalized = normalizeBarcode(barcode);
+  const normalized = canonicalizeStoredProductCode(barcode) ?? normalizeBarcode(barcode);
   if (!normalized) return false;
   try {
     await assertBarcodeAvailable(organizationId, normalized, opts);
@@ -145,22 +218,63 @@ export async function isBarcodeAvailable(
   }
 }
 
-export async function nextInternalCodeWithClient(client: PoolClient, organizationId: string) {
-  const res = await client.query<{ count: string }>(
-    'SELECT COUNT(*)::text AS count FROM products WHERE organization_id = $1',
+/** Nuevo formato canónico sin guión: LS100007. */
+export function formatInternalCode(n: number) {
+  return `LS${String(Math.max(1, Math.floor(n))).padStart(6, '0')}`;
+}
+
+export function formatReceiptNumber(n: number) {
+  return `V${String(Math.max(1, Math.floor(n))).padStart(6, '0')}`;
+}
+
+export function formatVoucherNumber(n: number) {
+  return `VC${String(Math.max(1, Math.floor(n))).padStart(6, '0')}`;
+}
+
+/** Máximo correlativo numérico de la serie LS###### / LS-###### (ignora LS-JEANS-… etc.). */
+export async function maxNumericInternalCodeWithClient(
+  client: PoolClient,
+  organizationId: string,
+): Promise<number> {
+  const res = await client.query<{ max_n: string | null }>(
+    `SELECT MAX(
+       CASE
+         WHEN internal_code ~ '^LS-?[0-9]+$' THEN regexp_replace(internal_code, '^LS-?', '')::int
+         WHEN barcode ~ '^LS-?[0-9]+$' THEN regexp_replace(barcode, '^LS-?', '')::int
+         ELSE NULL
+       END
+     )::text AS max_n
+     FROM products WHERE organization_id = $1`,
     [organizationId],
   );
-  const n = Number(res.rows[0]?.count || 0) + 1;
-  return `LS-${String(n).padStart(6, '0')}`;
+  return Number(res.rows[0]?.max_n || 0);
+}
+
+export async function nextInternalCodeWithClient(client: PoolClient, organizationId: string) {
+  let n = (await maxNumericInternalCodeWithClient(client, organizationId)) + 1;
+  for (let i = 0; i < 100; i += 1) {
+    const code = formatInternalCode(n);
+    const variants = expandProductCodeVariants(code);
+    const clash = await client.query<{ id: string }>(
+      `SELECT id FROM products
+       WHERE organization_id = $1
+         AND (internal_code = ANY($2::text[]) OR barcode = ANY($2::text[]))
+       LIMIT 1`,
+      [organizationId, variants],
+    );
+    if (!clash.rows[0]) return code;
+    n += 1;
+  }
+  throw new HttpError(500, 'No se pudo generar un código libre');
 }
 
 export async function nextInternalCode(organizationId: string) {
-  const res = await query<{ count: string }>(
-    'SELECT COUNT(*)::text AS count FROM products WHERE organization_id = $1',
-    [organizationId],
-  );
-  const n = Number(res.rows[0]?.count || 0) + 1;
-  return `LS-${String(n).padStart(6, '0')}`;
+  const client = await pool.connect();
+  try {
+    return await nextInternalCodeWithClient(client, organizationId);
+  } finally {
+    client.release();
+  }
 }
 
 /** Formato retail: BC000003 (sin guión; pistolas a menudo leen "-" como "'"). */
@@ -235,7 +349,7 @@ export async function noteBarcodeUsed(organizationId: string, barcode: string | 
   }
 }
 
-/** Peek del siguiente código de etiqueta = código interno LS-######. */
+/** Peek del siguiente código de etiqueta = código interno LS######. */
 export async function nextBarcodeWithClient(client: PoolClient, organizationId: string) {
   return nextInternalCodeWithClient(client, organizationId);
 }
@@ -244,27 +358,52 @@ export async function nextBarcode(organizationId: string) {
   return nextInternalCode(organizationId);
 }
 
-/** Asigna el mismo código interno (LS-…) para etiqueta y pistola. */
+/** Asigna el mismo código interno (LS…) para etiqueta y pistola. */
 export async function allocateNextBarcodeWithClient(client: PoolClient, organizationId: string) {
   return nextInternalCodeWithClient(client, organizationId);
 }
 
 export async function nextReceiptNumber(organizationId: string) {
-  const res = await query<{ count: string }>(
-    'SELECT COUNT(*)::text AS count FROM sales WHERE organization_id = $1',
+  const res = await query<{ max_n: string | null }>(
+    `SELECT MAX(
+       CASE
+         WHEN receipt_number ~ '^V-?[0-9]+$' THEN regexp_replace(receipt_number, '^V-?', '')::int
+         ELSE NULL
+       END
+     )::text AS max_n
+     FROM sales WHERE organization_id = $1`,
     [organizationId],
   );
-  const n = Number(res.rows[0]?.count || 0) + 1;
-  return `V-${String(n).padStart(6, '0')}`;
+  const n = Number(res.rows[0]?.max_n || 0) + 1;
+  return formatReceiptNumber(n);
 }
 
 export async function nextVoucherNumber(organizationId: string) {
-  const res = await query<{ count: string }>(
-    'SELECT COUNT(*)::text AS count FROM change_vouchers WHERE organization_id = $1',
+  const res = await query<{ n: string }>(
+    `SELECT COALESCE(MAX(
+       CASE WHEN voucher_number ~ '^VC-?[0-9]+$'
+         THEN regexp_replace(voucher_number, '^VC-?', '')::int
+       END
+     ), 0)::text AS n
+     FROM change_vouchers WHERE organization_id = $1`,
     [organizationId],
   );
-  const n = Number(res.rows[0]?.count || 0) + 1;
-  return `VC-${String(n).padStart(6, '0')}`;
+  const n = Number(res.rows[0]?.n || 0) + 1;
+  return formatVoucherNumber(n);
+}
+
+export async function nextVoucherNumberWithClient(client: PoolClient, organizationId: string) {
+  const res = await client.query<{ n: string }>(
+    `SELECT COALESCE(MAX(
+       CASE WHEN voucher_number ~ '^VC-?[0-9]+$'
+         THEN regexp_replace(voucher_number, '^VC-?', '')::int
+       END
+     ), 0)::text AS n
+     FROM change_vouchers WHERE organization_id = $1`,
+    [organizationId],
+  );
+  const n = Number(res.rows[0]?.n || 0) + 1;
+  return formatVoucherNumber(n);
 }
 
 export async function getSettingNumber(organizationId: string, key: string, fallback: number) {

@@ -1,5 +1,6 @@
-import { createContext, useContext, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { createContext, useContext, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
 import { api, type User } from './api';
+import { persistentSessionHints } from './pwaSession';
 
 type PosTerminal = { id: string; code: string; name: string; status: string };
 
@@ -50,6 +51,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [branchId, setBranchIdState] = useState<string | null>(localStorage.getItem('lscala_branch'));
   const [posId, setPosIdState] = useState<string | null>(localStorage.getItem('lscala_pos'));
   const [loading, setLoading] = useState(true);
+  const persistentUpgraded = useRef(false);
 
   const applyWorkplace = (list: BranchCtx[], preferredBranch: string | null, preferredPos: string | null) => {
     const nextBranch =
@@ -87,6 +89,22 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         const me = await api<{ user: User }>('/api/auth/me');
         setUser(me.user);
         await refreshBranches();
+        const hints = persistentSessionHints();
+        if (hints.persistent && !persistentUpgraded.current) {
+          persistentUpgraded.current = true;
+          try {
+            const session = await api<{ token: string }>('/api/auth/refresh', {
+              method: 'POST',
+              body: hints,
+            });
+            if (session.token && session.token !== token) {
+              localStorage.setItem('lscala_token', session.token);
+              setToken(session.token);
+            }
+          } catch {
+            /* Sesión actual sigue válida; no forzar re-login. */
+          }
+        }
       } catch {
         localStorage.removeItem('lscala_token');
         setToken(null);
@@ -107,16 +125,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       posId,
       loading,
       async login(email, password) {
+        const hints = persistentSessionHints();
         const data = await api<{ token: string; user: User }>('/api/auth/login', {
           method: 'POST',
-          body: { email, password },
+          body: { email, password, ...hints },
           token: null,
         });
+        if (hints.persistent) persistentUpgraded.current = true;
         localStorage.setItem('lscala_token', data.token);
         setToken(data.token);
         setUser(data.user);
       },
       logout() {
+        persistentUpgraded.current = false;
         localStorage.removeItem('lscala_token');
         localStorage.removeItem('lscala_branch');
         localStorage.removeItem('lscala_pos');

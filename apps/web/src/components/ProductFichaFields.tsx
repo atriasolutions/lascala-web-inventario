@@ -1,5 +1,8 @@
 import type { ReactNode, Ref } from 'react';
+import { ChileMoneyInput } from './ChileMoneyInput';
 import { ColorSelect } from './ColorSelect';
+import { MarginHint } from './MarginHint';
+import { parseChileMoney } from '../lib/chileMoney';
 
 export const PRODUCT_SEASONS = [
   'Todo el año',
@@ -25,11 +28,18 @@ export type ProductFichaCategory = { id: string; name: string };
 
 type CodeField =
   | { locked: true; value: string; helper?: string }
-  | { locked: false; value: string; onChange: (v: string) => void; helper: string };
+  | {
+      locked: false;
+      value: string;
+      onChange: (v: string) => void;
+      helper: string;
+      /** Reemplaza el input simple (p. ej. Autogenerar | Pistolear). */
+      slot?: ReactNode;
+    };
 
 type SaleField =
   | { mode: 'edit'; value: string; onChange: (v: string) => void }
-  | { mode: 'locked'; display: string; hint: string };
+  | { mode: 'locked'; display: string; hint: string; amount?: number };
 
 type Props = {
   idPrefix: string;
@@ -40,6 +50,8 @@ type Props = {
   nameRef?: Ref<HTMLInputElement>;
   code: CodeField;
   salePrice: SaleField;
+  /** Precio costo (número o string formateado) para margen en vivo. */
+  costPrice?: number | string | null;
   extraAfterIdentity?: ReactNode;
   extraAfterCode?: ReactNode;
 };
@@ -54,9 +66,23 @@ export function ProductFichaFields({
   nameRef,
   code,
   salePrice,
+  costPrice,
   extraAfterIdentity,
   extraAfterCode,
 }: Props) {
+  const saleNum =
+    salePrice.mode === 'edit'
+      ? parseChileMoney(salePrice.value)
+      : salePrice.amount != null
+        ? salePrice.amount
+        : null;
+  const costNum =
+    typeof costPrice === 'number'
+      ? costPrice
+      : costPrice != null && costPrice !== ''
+        ? parseChileMoney(String(costPrice))
+        : null;
+
   return (
     <>
       <section className="prod-section">
@@ -94,15 +120,11 @@ export function ProductFichaFields({
           <div className="field">
             <label htmlFor={`${idPrefix}-sale`}>Precio venta</label>
             {salePrice.mode === 'edit' ? (
-              <input
+              <ChileMoneyInput
                 id={`${idPrefix}-sale`}
                 required
-                type="number"
-                min={0}
-                step={1}
-                inputMode="decimal"
                 value={salePrice.value}
-                onChange={(e) => salePrice.onChange(e.target.value)}
+                onChange={salePrice.onChange}
                 placeholder="0"
                 disabled={disabled}
               />
@@ -118,6 +140,9 @@ export function ProductFichaFields({
                 <p className="ing-hint">{salePrice.hint}</p>
               </>
             )}
+            {(salePrice.mode === 'edit' || (costNum != null && saleNum != null)) ? (
+              <MarginHint cost={costNum} sale={saleNum} />
+            ) : null}
           </div>
         </div>
         {extraAfterIdentity}
@@ -188,6 +213,8 @@ export function ProductFichaFields({
               <p className="prod-code-locked" id={`${idPrefix}-code`}>
                 {code.value.trim() || 'Se asigna al guardar'}
               </p>
+            ) : code.slot ? (
+              code.slot
             ) : (
               <input
                 id={`${idPrefix}-code`}
@@ -195,16 +222,18 @@ export function ProductFichaFields({
                 onChange={(e) => code.onChange(e.target.value.toUpperCase().replace(/\s+/g, ''))}
                 autoComplete="off"
                 spellCheck={false}
-                placeholder="Ej. LS-000012"
+                placeholder="Ej. LS000012"
                 disabled={disabled}
               />
             )}
-            <p className="ing-hint">
-              {code.locked
-                ? code.helper ||
-                  'Es el código de la etiqueta y de la pistola. No se puede cambiar.'
-                : code.helper}
-            </p>
+            {code.locked || !code.slot ? (
+              <p className="ing-hint">
+                {code.locked
+                  ? code.helper ||
+                    'Es el código de la etiqueta y de la pistola. No se puede cambiar.'
+                  : code.helper}
+              </p>
+            ) : null}
             {extraAfterCode}
           </div>
           <div className="field prod-span-2">

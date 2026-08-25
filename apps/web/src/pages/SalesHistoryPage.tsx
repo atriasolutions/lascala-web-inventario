@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { InfiniteListFooter } from '../components/InfiniteListFooter';
+import { ModalOverlayClose } from '../components/ModalOverlayClose';
 import { SaleThermalPrint } from '../components/SaleThermalPrint';
 import { SortableTh } from '../components/SortableTh';
 import { useInfiniteList } from '../hooks/useInfiniteList';
@@ -755,6 +756,7 @@ export function SalesHistoryPage() {
             if (e.target === e.currentTarget) closeDrawer();
           }}
         >
+          <ModalOverlayClose onClose={closeDrawer}>
           <div
             className="pos-modal-panel ing-filters-sheet"
             ref={modalRef}
@@ -764,9 +766,6 @@ export function SalesHistoryPage() {
           >
             <div className="pos-modal-head">
               <h3 id={filtersTitleId}>Filtros</h3>
-              <button className="btn ghost" type="button" onClick={closeDrawer} aria-label="Cerrar">
-                Cerrar
-              </button>
             </div>
 
             <div className="ing-filters-sheet-body">
@@ -795,7 +794,7 @@ export function SalesHistoryPage() {
                     id="sales-f-receipt"
                     value={draftReceiptNumber}
                     onChange={(e) => setDraftReceiptNumber(e.target.value)}
-                    placeholder="Ej. V-000123"
+                    placeholder="Ej. V000123"
                     autoComplete="off"
                   />
                 </div>
@@ -840,7 +839,7 @@ export function SalesHistoryPage() {
                 Aplicar
               </button>
             </div>
-          </div>
+          </div></ModalOverlayClose>
         </div>
       )}
 
@@ -852,6 +851,7 @@ export function SalesHistoryPage() {
             if (e.target === e.currentTarget) closeDetail();
           }}
         >
+          <ModalOverlayClose onClose={closeDetail}>
           <div
             className="pos-modal-panel sales-detail-modal"
             ref={detailPanelRef}
@@ -863,9 +863,6 @@ export function SalesHistoryPage() {
             <div className="sales-detail-scroll">
               <div className="pos-modal-head">
                 <h3 id={detailTitleId}>{selected.receipt_number}</h3>
-                <button type="button" className="btn ghost" onClick={closeDetail} aria-label="Cerrar">
-                  ×
-                </button>
               </div>
 
               <p className="sales-detail-meta muted">
@@ -968,7 +965,7 @@ export function SalesHistoryPage() {
                 </button>
               </div>
             )}
-          </div>
+          </div></ModalOverlayClose>
         </div>
       )}
 

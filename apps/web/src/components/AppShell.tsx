@@ -5,16 +5,21 @@ import { useNetworkStatus } from '../lib/networkStatus';
 import { countPendingOfflineSales } from '../lib/posCatalogCache';
 import { AccountSheet } from './AccountSheet';
 import { ConfirmDialog } from './ConfirmDialog';
+import { HelpModeBanner } from './help/HelpModeProvider';
+import { HelpModeToggle } from './help/HelpModeToggle';
 import { NotificationBell } from './NotificationBell';
 import { OfflineBanner } from './OfflineBanner';
 import { PwaInstallHint } from './PwaInstallHint';
 import { ShellTitleContext } from './shellTitle';
 import { WorkplaceSwitcher } from './WorkplaceSwitcher';
+import { isAdminRole, roleLabel as formatRoleLabel } from '../lib/roles';
 import {
   IconAlertTriangle,
   IconBox,
+  IconClipboardList,
   IconChart,
   IconChevronDown,
+  IconHelp,
   IconHome,
   IconLogout,
   IconMore,
@@ -27,86 +32,118 @@ import {
   IconWallet,
 } from './icons';
 
-const ROLE_LABEL: Record<string, string> = {
-  owner: 'Propietaria',
-  branch_manager: 'Encargada de sucursal',
-  seller: 'Vendedora',
-};
-
 type NavItem = {
   to: string;
   label: string;
   icon: typeof IconHome;
+  helpKey: string;
   end?: boolean;
   primary?: boolean;
-  /** Oculto para vendedora; visible a propietaria y encargada. */
-  ownerOnly?: boolean;
+  /** Si falta, lo ven los tres roles de piso. */
+  roles?: Array<'owner' | 'branch_manager' | 'seller'>;
 };
 
-const pinnedNav: NavItem = { to: '/', label: 'Dashboard', icon: IconHome, end: true };
+const adminOnly: NavItem['roles'] = ['owner'];
 
-/** Accesos más usados — siempre primero en el sidebar */
-const primaryNav: NavItem[] = [
-  { to: '/vender', label: 'Caja (POS)', icon: IconPos },
-  { to: '/ingresos', label: 'Ingresos', icon: IconTruck },
-];
+const pinnedNav: NavItem = {
+  to: '/',
+  label: 'Dashboard',
+  icon: IconHome,
+  helpKey: 'nav.dashboard',
+  end: true,
+  roles: adminOnly,
+};
 
-const navSections: { label: string; items: NavItem[] }[] = [
+/**
+ * Sidebar desktop — grupos colapsables.
+ * Piso: cobrar + recepción + mermas juntos (inicio operativo).
+ * Mobile bottom/Más: sin Ventas(/vender), Ingresos, Mermas ni Historial (/ventas).
+ */
+const navSections: { id: string; label: string; items: NavItem[] }[] = [
   {
+    id: 'piso',
+    label: 'Piso',
+    items: [
+      { to: '/vender', label: 'Ventas', icon: IconPos, helpKey: 'nav.caja' },
+      { to: '/ingresos', label: 'Ingresos', icon: IconTruck, helpKey: 'nav.ingresos' },
+      { to: '/mermas', label: 'Mermas y cambios', icon: IconAlertTriangle, helpKey: 'nav.mermas' },
+    ],
+  },
+  {
+    id: 'operacion',
     label: 'Operación',
     items: [
-      { to: '/compras', label: 'Compras', icon: IconReceipt, ownerOnly: true },
-      { to: '/ventas', label: 'Historial de ventas', icon: IconReceipt },
+      { to: '/compras', label: 'Compras', icon: IconReceipt, helpKey: 'nav.compras', roles: adminOnly },
+      { to: '/ventas', label: 'Historial de ventas', icon: IconReceipt, helpKey: 'nav.ventas' },
     ],
   },
   {
+    id: 'inventario',
     label: 'Inventario',
     items: [
-      { to: '/productos', label: 'Productos', icon: IconShirt },
-      { to: '/inventario', label: 'Stock', icon: IconBox },
-      { to: '/movimientos', label: 'Movimientos', icon: IconSwap },
+      { to: '/productos', label: 'Productos', icon: IconShirt, helpKey: 'nav.productos' },
+      { to: '/inventario', label: 'Stock', icon: IconBox, helpKey: 'nav.stock', end: true },
+      { to: '/inventarios', label: 'Inventarios', icon: IconClipboardList, helpKey: 'nav.inventarios' },
+      { to: '/movimientos', label: 'Movimientos', icon: IconSwap, helpKey: 'nav.movimientos' },
     ],
   },
   {
+    id: 'control',
     label: 'Control',
     items: [
-      { to: '/mermas', label: 'Mermas y cambios', icon: IconAlertTriangle },
-      { to: '/gastos', label: 'Gastos', icon: IconWallet, ownerOnly: true },
-      { to: '/reportes', label: 'Reportes', icon: IconChart, ownerOnly: true },
+      { to: '/gastos', label: 'Gastos', icon: IconWallet, helpKey: 'nav.gastos', roles: adminOnly },
+      { to: '/reportes', label: 'Reportes', icon: IconChart, helpKey: 'nav.reportes', roles: adminOnly },
+      { to: '/ayuda', label: 'Ayuda', icon: IconHelp, helpKey: 'nav.ayuda' },
     ],
   },
   {
+    id: 'admin',
     label: 'Administración',
-    /* Todos los roles: vendedora usa Impresoras; dueña ve tabs extra en Admin. */
-    items: [{ to: '/admin', label: 'Ajustes', icon: IconUsers }],
+    items: [{ to: '/admin', label: 'Ajustes', icon: IconUsers, helpKey: 'nav.ajustes' }],
   },
 ];
 
+/** Bottom nav móvil: sin Ventas (POS), Ingresos, Mermas ni historial. */
 const primaryMobile: NavItem[] = [
-  { to: '/', label: 'Inicio', icon: IconHome, end: true },
-  { to: '/ingresos', label: 'Ingresos', icon: IconTruck },
-  { to: '/vender', label: 'Caja', icon: IconPos, primary: true },
-  { to: '/inventario', label: 'Stock', icon: IconBox },
+  { to: '/', label: 'Inicio', icon: IconHome, helpKey: 'nav.dashboard', end: true, roles: adminOnly },
+  { to: '/inventario', label: 'Stock', icon: IconBox, helpKey: 'nav.stock', end: true },
+  { to: '/productos', label: 'Productos', icon: IconShirt, helpKey: 'nav.productos' },
+  { to: '/movimientos', label: 'Movimientos', icon: IconSwap, helpKey: 'nav.movimientos' },
 ];
 
 const moreLinks: NavItem[] = [
-  { to: '/compras', label: 'Compras', icon: IconReceipt, ownerOnly: true },
-  { to: '/ventas', label: 'Historial de ventas', icon: IconReceipt },
-  { to: '/productos', label: 'Productos', icon: IconShirt },
-  { to: '/movimientos', label: 'Movimientos', icon: IconSwap },
-  { to: '/mermas', label: 'Mermas', icon: IconAlertTriangle },
-  { to: '/gastos', label: 'Gastos', icon: IconWallet, ownerOnly: true },
-  { to: '/reportes', label: 'Reportes', icon: IconChart, ownerOnly: true },
-  { to: '/admin', label: 'Ajustes', icon: IconUsers },
+  { to: '/compras', label: 'Compras', icon: IconReceipt, helpKey: 'nav.compras', roles: adminOnly },
+  { to: '/inventarios', label: 'Inventarios', icon: IconClipboardList, helpKey: 'nav.inventarios' },
+  { to: '/gastos', label: 'Gastos', icon: IconWallet, helpKey: 'nav.gastos', roles: adminOnly },
+  { to: '/reportes', label: 'Reportes', icon: IconChart, helpKey: 'nav.reportes', roles: adminOnly },
+  { to: '/ayuda', label: 'Ayuda', icon: IconHelp, helpKey: 'nav.ayuda' },
+  { to: '/admin', label: 'Ajustes', icon: IconUsers, helpKey: 'nav.ajustes' },
 ];
 
-function canSeeOwnerNav(role: string) {
-  return role === 'owner' || role === 'branch_manager';
+const NAV_SECTIONS_LS_KEY = 'lscala-nav-sections-open';
+
+const DEFAULT_OPEN_SECTIONS: Record<string, boolean> = {
+  piso: true,
+  operacion: true,
+  inventario: true,
+  control: false,
+  admin: false,
+};
+
+function canSeeNav(item: NavItem, role: string) {
+  if (!item.roles) return true;
+  return item.roles.includes(role as 'owner' | 'branch_manager' | 'seller');
 }
 
-function navLabel(item: NavItem, isOwnerLike: boolean) {
-  if (item.to === '/admin' && !isOwnerLike) return 'Impresoras';
-  return item.label;
+function readOpenSections(): Record<string, boolean> {
+  try {
+    const raw = localStorage.getItem(NAV_SECTIONS_LS_KEY);
+    if (!raw) return { ...DEFAULT_OPEN_SECTIONS };
+    const parsed = JSON.parse(raw) as Record<string, boolean>;
+    return { ...DEFAULT_OPEN_SECTIONS, ...parsed };
+  } catch {
+    return { ...DEFAULT_OPEN_SECTIONS };
+  }
 }
 
 function initials(name?: string) {
@@ -125,12 +162,12 @@ export function AppShell() {
   const [logoutOpen, setLogoutOpen] = useState(false);
   const [logoutPendingCount, setLogoutPendingCount] = useState(0);
   const [titleOverride, setTitleOverride] = useState<string | null>(null);
+  const [openSections, setOpenSections] = useState<Record<string, boolean>>(readOpenSections);
   const location = useLocation();
   const activeBranch = branches.find((b) => b.id === branchId);
   const role = activeBranch?.role || '';
-  const isOwner = role === 'owner';
-  const ownerNav = canSeeOwnerNav(role);
-  const roleLabel = role ? ROLE_LABEL[role] || role : '';
+  const isOwner = isAdminRole(role);
+  const roleLabel = role ? formatRoleLabel(role) : '';
 
   const openLogout = useCallback(() => {
     setUserMenuOpen(false);
@@ -161,6 +198,18 @@ export function AppShell() {
         } de sincronizar. Al cerrar sesión se quedarán en este equipo hasta que vuelvas a entrar. ¿Seguro que quieres cerrar sesión?`
       : '¿Seguro que quieres cerrar sesión?';
 
+  const toggleSection = useCallback((id: string) => {
+    setOpenSections((prev) => {
+      const next = { ...prev, [id]: !prev[id] };
+      try {
+        localStorage.setItem(NAV_SECTIONS_LS_KEY, JSON.stringify(next));
+      } catch {
+        /* ignore quota */
+      }
+      return next;
+    });
+  }, []);
+
   useEffect(() => {
     setTitleOverride(null);
   }, [location.pathname]);
@@ -183,7 +232,7 @@ export function AppShell() {
 
   const title = useMemo(() => {
     if (titleOverride) return titleOverride;
-    if (location.pathname.startsWith('/vender')) return 'Caja (POS)';
+    if (location.pathname.startsWith('/vender')) return 'Ventas';
     if (location.pathname === '/ventas' || location.pathname.startsWith('/ventas?')) {
       return 'Historial de ventas';
     }
@@ -194,12 +243,14 @@ export function AppShell() {
     if (/^\/ingresos\/[^/]+$/.test(location.pathname)) return 'Recepción de mercadería';
     if (location.pathname === '/ingresos' || location.pathname.startsWith('/ingresos?')) return 'Ingresos';
     if (location.pathname.startsWith('/ingresos')) return 'Ingresos';
+    if (location.pathname.startsWith('/inventarios')) return 'Inventarios';
+    if (location.pathname.startsWith('/ayuda')) return 'Ayuda';
     if (location.pathname.startsWith('/admin')) return 'Ajustes';
-    const hit = [...primaryNav, ...navSections.flatMap((s) => s.items), ...primaryMobile].find((l) =>
+    const hit = [...navSections.flatMap((s) => s.items), ...primaryMobile].find((l) =>
       'end' in l && l.end ? location.pathname === l.to : location.pathname.startsWith(l.to),
     );
-    return hit ? navLabel(hit, ownerNav) : "L'Scala";
-  }, [location.pathname, titleOverride, ownerNav]);
+    return hit ? hit.label : "L'Scala";
+  }, [location.pathname, titleOverride]);
 
   const eyebrow = useMemo(() => {
     if (location.pathname.startsWith('/admin')) return "Boutique L'Scala · administración";
@@ -208,16 +259,40 @@ export function AppShell() {
     return "Boutique L'Scala · piso de venta";
   }, [location.pathname]);
 
-  const visibleSections = navSections
-    .map((s) => ({
-      ...s,
-      items: s.items.filter((l) => !l.ownerOnly || ownerNav),
-    }))
-    .filter((s) => s.items.length > 0);
-  const visibleMoreLinks = moreLinks
-    .filter((l) => !l.ownerOnly || ownerNav)
-    .map((l) => ({ ...l, label: navLabel(l, ownerNav) }));
+  const visibleSections = useMemo(
+    () =>
+      navSections
+        .map((s) => ({
+          ...s,
+          items: s.items.filter((l) => canSeeNav(l, role)),
+        }))
+        .filter((s) => s.items.length > 0),
+    [role],
+  );
+  const visibleMoreLinks = moreLinks.filter((l) => canSeeNav(l, role));
+  const visibleMobile = primaryMobile.filter((l) => canSeeNav(l, role));
+  const showPinned = canSeeNav(pinnedNav, role);
   const moreActive = visibleMoreLinks.some((l) => location.pathname.startsWith(l.to));
+
+  /** Abre la sección que contiene la ruta activa (sin pisar el resto del acordeón). */
+  useEffect(() => {
+    const activeId = visibleSections.find((s) =>
+      s.items.some((l) =>
+        l.end ? location.pathname === l.to : location.pathname.startsWith(l.to),
+      ),
+    )?.id;
+    if (!activeId) return;
+    setOpenSections((prev) => {
+      if (prev[activeId]) return prev;
+      const next = { ...prev, [activeId]: true };
+      try {
+        localStorage.setItem(NAV_SECTIONS_LS_KEY, JSON.stringify(next));
+      } catch {
+        /* ignore */
+      }
+      return next;
+    });
+  }, [location.pathname, visibleSections]);
 
   function offlineNavClass(to: string) {
     return !online && to !== '/vender' ? ' is-nav-offline' : '';
@@ -231,9 +306,11 @@ export function AppShell() {
             <img src="/brand/lscala-logo.png" alt="L'Scala" />
             <strong>L'Scala</strong>
           </div>
+          {showPinned ? (
           <NavLink
             to={pinnedNav.to}
             end={pinnedNav.end}
+            data-help={pinnedNav.helpKey}
             className={({ isActive }) =>
               `nav-pinned${isActive ? ' active' : ''}${offlineNavClass(pinnedNav.to)}`
             }
@@ -242,40 +319,57 @@ export function AppShell() {
             <span className="nav-ico"><pinnedNav.icon size={18} /></span>
             {pinnedNav.label}
           </NavLink>
-          <nav className="nav-primary" aria-label="Accesos frecuentes">
-            {primaryNav.map((l) => (
-              <NavLink
-                key={l.to}
-                to={l.to}
-                className={({ isActive }) =>
-                  `${isActive ? 'active' : ''}${offlineNavClass(l.to)}`.trim()
-                }
-                title={!online && l.to !== '/vender' ? 'Se necesita conexión' : undefined}
-              >
-                <span className="nav-ico"><l.icon size={18} /></span>
-                {l.label}
-              </NavLink>
-            ))}
-          </nav>
-          <nav className="nav-list">
-            {visibleSections.map((section) => (
-              <div className="nav-section" key={section.label}>
-                <span className="nav-section-label">{section.label}</span>
-                {section.items.map((l) => (
-                  <NavLink
-                    key={l.to}
-                    to={l.to}
-                    className={({ isActive }) =>
-                      `${isActive ? 'active' : ''}${offlineNavClass(l.to)}`.trim()
-                    }
-                    title={!online && l.to !== '/vender' ? 'Se necesita conexión' : undefined}
+          ) : null}
+          <nav className="nav-list" aria-label="Menú principal">
+            {visibleSections.map((section) => {
+              const isOpen = openSections[section.id] !== false;
+              const panelId = `nav-section-${section.id}`;
+              return (
+                <div
+                  className={`nav-section${isOpen ? ' is-open' : ''}${
+                    section.id === 'piso' ? ' is-piso' : ''
+                  }`}
+                  key={section.id}
+                >
+                  <button
+                    type="button"
+                    className="nav-section-toggle"
+                    aria-expanded={isOpen}
+                    aria-controls={panelId}
+                    onClick={() => toggleSection(section.id)}
                   >
-                    <span className="nav-ico"><l.icon size={18} /></span>
-                    {navLabel(l, ownerNav)}
-                  </NavLink>
-                ))}
-              </div>
-            ))}
+                    <span className="nav-section-label">{section.label}</span>
+                    <span className="nav-section-chevron" aria-hidden>
+                      <IconChevronDown size={14} />
+                    </span>
+                  </button>
+                  <div
+                    id={panelId}
+                    className="nav-section-panel"
+                    role="region"
+                    hidden={!isOpen}
+                  >
+                    {section.items.map((l) => (
+                      <NavLink
+                        key={l.to}
+                        to={l.to}
+                        end={l.end}
+                        data-help={l.helpKey}
+                        className={({ isActive }) =>
+                          `${isActive ? 'active' : ''}${
+                            section.id === 'piso' ? ' nav-link-piso' : ''
+                          }${offlineNavClass(l.to)}`.trim()
+                        }
+                        title={!online && l.to !== '/vender' ? 'Se necesita conexión' : undefined}
+                      >
+                        <span className="nav-ico"><l.icon size={18} /></span>
+                        {l.label}
+                      </NavLink>
+                    ))}
+                  </div>
+                </div>
+              );
+            })}
           </nav>
         </aside>
 
@@ -289,6 +383,7 @@ export function AppShell() {
               </div>
             </div>
             <div className="mobile-actions">
+              <HelpModeToggle />
               <NotificationBell variant="mobile" />
               <button className="icon-btn" type="button" aria-label="Salir" onClick={openLogout}>
                 <IconLogout size={18} />
@@ -314,18 +409,20 @@ export function AppShell() {
                   <WorkplaceSwitcher compact posOnly />
                 </div>
               )}
+              <HelpModeToggle />
               <NotificationBell />
               <div className="user-menu" ref={userMenuRef}>
                 <button
                   className={`user-chip${userMenuOpen ? ' is-open' : ''}`}
                   type="button"
+                  data-help="header.usuaria"
                   aria-haspopup="menu"
                   aria-expanded={userMenuOpen}
                   onClick={() => setUserMenuOpen((v) => !v)}
                 >
                   <span className="avatar">{initials(user?.fullName)}</span>
                   <span className="user-chip-text">
-                    <strong>{user?.fullName?.split(' ')[0] || 'Usuaria'}</strong>
+                    <strong>{user?.fullName?.split(' ')[0] || 'Usuario'}</strong>
                     <span>{roleLabel}</span>
                   </span>
                   <span className="user-chip-chevron">
@@ -364,17 +461,20 @@ export function AppShell() {
             </div>
           </header>
 
+          <HelpModeBanner />
+
           <div className="main-content">
             <Outlet />
           </div>
         </div>
 
         <nav className="bottom-nav mobile-only" aria-label="Navegación principal">
-          {primaryMobile.map((l) => (
+          {visibleMobile.map((l) => (
             <NavLink
               key={l.to}
               to={l.to}
               end={l.end}
+              data-help={l.helpKey}
               className={({ isActive }) =>
                 `${isActive ? 'active' : ''} ${l.primary ? 'primary' : ''}${offlineNavClass(l.to)}`.trim()
               }
@@ -387,6 +487,7 @@ export function AppShell() {
           <button
             type="button"
             className={`nav-more ${moreActive ? 'active' : ''}${!online ? ' is-nav-offline' : ''}`}
+            data-help="nav.mas"
             onClick={() => setMoreOpen(true)}
           >
             <span className="nav-ico"><IconMore size={20} /></span>
@@ -411,6 +512,8 @@ export function AppShell() {
                 <NavLink
                   key={l.to}
                   to={l.to}
+                  end={l.end}
+                  data-help={l.helpKey}
                   className={offlineNavClass(l.to).trim() || undefined}
                   title={!online && l.to !== '/vender' ? 'Se necesita conexión' : undefined}
                   onClick={() => setMoreOpen(false)}

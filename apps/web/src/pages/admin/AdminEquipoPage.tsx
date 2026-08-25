@@ -11,7 +11,7 @@ export function AdminEquipoPage() {
       <PrinterPrefsCard />
       {!isOwner ? (
         <p className="muted admin-role-note">
-          Sucursales, cajas y usuarias las gestiona la propietaria.
+          Sucursales, cajas y usuarios las gestiona Administrador/a.
         </p>
       ) : null}
     </div>

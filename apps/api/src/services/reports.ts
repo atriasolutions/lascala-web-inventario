@@ -2,8 +2,9 @@ import { query } from '../db/pool.js';
 import { HttpError } from '../utils/errors.js';
 import { CHILE_TZ, buildChartBuckets } from '../utils/chileDate.js';
 import { parsePagination } from '../utils/pagination.js';
+import { stocktakeAppliedVariance } from './stocktakes.js';
 
-export const REPORT_VISTAS = ['ventas', 'stock', 'ingresos', 'gastos', 'mermas'] as const;
+export const REPORT_VISTAS = ['ventas', 'stock', 'ingresos', 'gastos', 'mermas', 'inventarios'] as const;
 export type ReportVista = (typeof REPORT_VISTAS)[number];
 
 export const EXPORT_ROW_CAP = 5000;
@@ -56,6 +57,7 @@ export function reportMeta(
  * - Ingresos: Σ Precio costo × ud. pedidas (reinversión), no gasto operativo.
  * - Gastos: categoría × mes + ratio gastos/ventas del rango.
  * - Mermas: uds + impacto Precio costo; vouchers por estado (issued_at del rango).
+ * - Inventarios: pérdida/ganancia de tomas aplicadas; valor a p. venta; Neto = sobrante − faltante.
  */
 
 export type ReportSeriesPoint = {
@@ -686,4 +688,195 @@ export async function exportMermasItems(branchId: string, from: string, to: stri
      LIMIT $4`,
     [branchId, from, to, EXPORT_ROW_CAP],
   );
+}
+
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+export function parseStocktakeIdQuery(raw: unknown): string | null {
+  const s = String(raw || '').trim();
+  if (!s) return null;
+  if (!UUID_RE.test(s)) throw new HttpError(400, 'Toma inválida');
+  return s;
+}
+
+function decisionLabel(decision: string | null) {
+  if (decision === 'use_physical') return 'Conservar inventario';
+  if (decision === 'adjust') return 'Ajustar';
+  if (decision === 'keep_system') return 'Conservar stock anterior';
+  return decision || '—';
+}
+
+export async function getInventariosReport(
+  branchId: string,
+  from: string,
+  to: string,
+  stocktakeId: string | null,
+) {
+  if (stocktakeId) {
+    const ok = await query<{ id: string }>(
+      `SELECT id FROM stocktakes
+       WHERE id = $1 AND branch_id = $2 AND status = 'completed'`,
+      [stocktakeId, branchId],
+    );
+    if (!ok.rows[0]) throw new HttpError(404, 'No hay una toma aplicada con ese número');
+  }
+
+  const takes = await query<{
+    id: string;
+    take_label: string;
+    applied_at_cl: string | null;
+    applied_by_name: string | null;
+  }>(
+    `SELECT s.id, s.take_label,
+            timezone('${CHILE_TZ}', s.applied_at)::text AS applied_at_cl,
+            u.full_name AS applied_by_name
+     FROM stocktakes s
+     LEFT JOIN users u ON u.id = s.applied_by
+     WHERE s.branch_id = $1
+       AND s.status = 'completed'
+       AND s.applied_at IS NOT NULL
+       AND (
+         $2::uuid IS NOT NULL
+         OR (
+           (timezone('${CHILE_TZ}', s.applied_at))::date >= $3::date
+           AND (timezone('${CHILE_TZ}', s.applied_at))::date <= $4::date
+         )
+       )
+       AND ($2::uuid IS NULL OR s.id = $2::uuid)
+     ORDER BY s.applied_at DESC`,
+    [branchId, stocktakeId, from, to],
+  );
+
+  const takesForSelect = stocktakeId
+    ? await query<{
+        id: string;
+        take_label: string;
+        applied_at_cl: string | null;
+        applied_by_name: string | null;
+      }>(
+        `SELECT s.id, s.take_label,
+                timezone('${CHILE_TZ}', s.applied_at)::text AS applied_at_cl,
+                u.full_name AS applied_by_name
+         FROM stocktakes s
+         LEFT JOIN users u ON u.id = s.applied_by
+         WHERE s.branch_id = $1
+           AND s.status = 'completed'
+           AND s.applied_at IS NOT NULL
+           AND (timezone('${CHILE_TZ}', s.applied_at))::date >= $2::date
+           AND (timezone('${CHILE_TZ}', s.applied_at))::date <= $3::date
+         ORDER BY s.applied_at DESC`,
+        [branchId, from, to],
+      )
+    : takes;
+
+  const lines = await query<{
+    stocktake_id: string;
+    take_label: string;
+    product_id: string;
+    product_name: string;
+    internal_code: string;
+    sale_price: string;
+    qty_counted: number;
+    qty_system_at_close: number;
+    qty_override: number | null;
+    decision: string | null;
+  }>(
+    `SELECT s.id AS stocktake_id, s.take_label,
+            l.product_id, p.name AS product_name, p.internal_code,
+            COALESCE(p.sale_price, 0)::text AS sale_price,
+            l.qty_counted, l.qty_system_at_close, l.qty_override, l.decision
+     FROM stocktake_lines l
+     JOIN stocktakes s ON s.id = l.stocktake_id
+     JOIN products p ON p.id = l.product_id
+     WHERE s.branch_id = $1
+       AND s.status = 'completed'
+       AND s.applied_at IS NOT NULL
+       AND ($2::uuid IS NOT NULL OR (
+         (timezone('${CHILE_TZ}', s.applied_at))::date >= $3::date
+         AND (timezone('${CHILE_TZ}', s.applied_at))::date <= $4::date
+       ))
+       AND ($2::uuid IS NULL OR s.id = $2::uuid)
+     ORDER BY s.applied_at DESC, p.name`,
+    [branchId, stocktakeId, from, to],
+  );
+
+  let faltanteUnits = 0;
+  let sobranteUnits = 0;
+  let faltanteValue = 0;
+  let sobranteValue = 0;
+  const items: {
+    stocktake_id: string;
+    take_label: string;
+    product_name: string;
+    internal_code: string;
+    decision: string | null;
+    decision_label: string;
+    qty_system: number;
+    qty_final: number;
+    kind: 'faltante' | 'sobrante';
+    units: number;
+    sale_price: string;
+    sale_value: string;
+  }[] = [];
+
+  for (const row of lines.rows) {
+    const v = stocktakeAppliedVariance({
+      decision: row.decision,
+      qtyCounted: Number(row.qty_counted || 0),
+      qtySystem: Number(row.qty_system_at_close || 0),
+      qtyOverride: row.qty_override == null ? null : Number(row.qty_override),
+    });
+    if (v.kind === 'ok' || v.units === 0) continue;
+    const price = Number(row.sale_price || 0);
+    const value = v.units * price;
+    if (v.kind === 'faltante') {
+      faltanteUnits += v.units;
+      faltanteValue += value;
+    } else {
+      sobranteUnits += v.units;
+      sobranteValue += value;
+    }
+    items.push({
+      stocktake_id: row.stocktake_id,
+      take_label: row.take_label,
+      product_name: row.product_name,
+      internal_code: row.internal_code,
+      decision: row.decision,
+      decision_label: decisionLabel(row.decision),
+      qty_system: Number(row.qty_system_at_close || 0),
+      qty_final: v.qtyFinal,
+      kind: v.kind,
+      units: v.units,
+      sale_price: String(price),
+      sale_value: String(value),
+    });
+  }
+
+  const netoValue = sobranteValue - faltanteValue;
+  let selectTakes = takesForSelect.rows;
+  if (stocktakeId && !selectTakes.some((t) => t.id === stocktakeId) && takes.rows[0]) {
+    selectTakes = [takes.rows[0], ...selectTakes];
+  }
+
+  return {
+    takes: selectTakes,
+    selected_stocktake_id: stocktakeId,
+    totals: {
+      takes_count: stocktakeId ? 1 : selectTakes.length,
+      faltante_units: faltanteUnits,
+      sobrante_units: sobranteUnits,
+      faltante_value: String(faltanteValue),
+      sobrante_value: String(sobranteValue),
+      neto_value: String(netoValue),
+    },
+    items: items.slice(0, 2000),
+    notes: {
+      valuation:
+        'Valorado a precio de venta de sala (el de la ficha). El Precio costo vive en Ingresos, no se usa acá.',
+      neto: 'Neto = valor sobrante − valor faltante. Positivo = ganancia neta; negativo = pérdida neta.',
+      movements:
+        'Cada prenda que movió stock dejó un ajuste en Movimientos con el n° INV-…. Conservar stock anterior no genera movimiento.',
+    },
+  };
 }

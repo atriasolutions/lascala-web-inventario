@@ -1,4 +1,5 @@
 import { useEffect, useId, useRef } from 'react';
+import { ModalOverlayClose } from './ModalOverlayClose';
 
 type Props = {
   open: boolean;
@@ -55,6 +56,7 @@ export function ConfirmDialog({
         if (e.target === e.currentTarget) onCancel();
       }}
     >
+      <ModalOverlayClose onClose={onCancel}>
       <div
         className="pos-modal-panel confirm-dialog-panel"
         role="alertdialog"
@@ -65,9 +67,6 @@ export function ConfirmDialog({
       >
         <div className="pos-modal-head">
           <h3 id={titleId}>{title}</h3>
-          <button type="button" className="btn ghost" onClick={onCancel} aria-label="Cerrar">
-            Cerrar
-          </button>
         </div>
         <p id={descId} className="confirm-dialog-message">
           {message}
@@ -89,7 +88,7 @@ export function ConfirmDialog({
             {confirmLabel}
           </button>
         </div>
-      </div>
+      </div></ModalOverlayClose>
     </div>
   );
 }

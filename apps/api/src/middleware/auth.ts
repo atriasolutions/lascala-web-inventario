@@ -27,11 +27,25 @@ declare global {
 
 type JwtPayload = { sub: string; organizationId: string };
 
-export function signToken(user: { id: string; organizationId: string }) {
+export function resolveSessionTtl(input: { client?: unknown; persistent?: unknown }): {
+  persistent: boolean;
+  expiresIn: string;
+} {
+  const persistent = input.persistent === true || input.client === 'pwa';
+  return {
+    persistent,
+    expiresIn: persistent ? env.jwtPersistentExpiresIn : env.jwtExpiresIn,
+  };
+}
+
+export function signToken(
+  user: { id: string; organizationId: string },
+  opts?: { expiresIn?: string },
+) {
   return jwt.sign(
     { sub: user.id, organizationId: user.organizationId } satisfies JwtPayload,
     env.jwtSecret,
-    { expiresIn: env.jwtExpiresIn } as jwt.SignOptions,
+    { expiresIn: opts?.expiresIn ?? env.jwtExpiresIn } as jwt.SignOptions,
   );
 }
 
@@ -139,7 +153,7 @@ export async function isPosAllowedForUser(user: AuthUser, posId: string, branchI
   return Boolean(assigned.rowCount);
 }
 
-/** Caja válida en la sucursal y habilitada para la usuaria (propietaria: todas). */
+/** Caja válida en la sucursal y habilitada para la usuaria (Administrador/a: todas). */
 export async function assertUserCanUsePos(user: AuthUser, posId: string, branchId: string) {
   await assertPosInBranch(posId, branchId);
   if (isOrgOwner(user)) return;

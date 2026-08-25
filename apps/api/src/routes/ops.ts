@@ -2,16 +2,22 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { pool, query } from '../db/pool.js';
 import { requireAuth, requireBranch, requireRoles } from '../middleware/auth.js';
-import { applyStockDeltaWithClient, expandProductCodeVariants } from '../services/inventory.js';
+import { applyStockDeltaWithClient, expandProductCodeVariants, expandSaleDocNumberVariants, saleDocLookupKind } from '../services/inventory.js';
+import { ensureEligibleSaleVouchers } from '../services/sales.js';
 import {
   composeMermaReason,
   fulfillBodySchema,
   fulfillVoucherWithClient,
   chileTodayWithClient,
-  isPartyDress,
   mermaKindLabel,
   type MermaKind,
 } from '../services/voucherFulfill.js';
+import {
+  pickVoucherForSaleLookup,
+  saleLookupClosedMessage,
+  saleLookupGarmentUsedMessage,
+  voucherApiPayload,
+} from '../services/voucherLookup.js';
 import { asyncHandler, HttpError } from '../utils/errors.js';
 import { CHILE_TZ, chileToday } from '../utils/chileDate.js';
 import { fetchLimit, parsePagination, slicePage } from '../utils/pagination.js';
@@ -354,10 +360,32 @@ opsRouter.get(
 opsRouter.get(
   '/vouchers/by-number/:number',
   asyncHandler(async (req, res) => {
-    const number = String(req.params.number || '').trim().toUpperCase();
-    if (!number) throw new HttpError(400, 'Indica el número de ticket');
+    const rawNumber = String(req.params.number || '');
+    const variants = expandSaleDocNumberVariants(rawNumber);
+    if (!variants.length) throw new HttpError(400, 'Indica el número de ticket o de venta');
 
-    const found = await query<{
+    const orgId = req.user!.organizationId;
+    const lookupKind = saleDocLookupKind(rawNumber);
+    const garmentRaw = String(req.query.garment || '').trim();
+    const garmentVariants = expandProductCodeVariants(garmentRaw);
+
+    const voucherSelect = `SELECT v.id, v.status, v.voucher_number, v.issued_at::text, v.expires_at::text, v.conditions,
+              v.product_id, v.sale_id, v.sale_item_id, v.branch_id,
+              b.name AS branch_name, b.code AS branch_code,
+              p.name AS product_name, p.internal_code, p.barcode, p.size_label, p.color, p.allows_exchange, p.allows_return,
+              p.sale_price::text AS sale_price,
+              c.slug AS category_slug,
+              (SELECT url FROM product_photos ph WHERE ph.product_id = p.id ORDER BY sort_order LIMIT 1) AS photo_url,
+              s.receipt_number, s.sold_at::text AS sold_at,
+              si.line_total::text AS line_total, si.unit_price::text AS unit_price, si.quantity AS line_qty
+       FROM change_vouchers v
+       JOIN branches b ON b.id = v.branch_id
+       JOIN products p ON p.id = v.product_id
+       LEFT JOIN categories c ON c.id = p.category_id
+       LEFT JOIN sales s ON s.id = v.sale_id
+       LEFT JOIN sale_items si ON si.id = v.sale_item_id`;
+
+    type VoucherLookupRow = {
       id: string;
       status: string;
       voucher_number: string;
@@ -385,84 +413,140 @@ opsRouter.get(
       line_total: string | null;
       unit_price: string | null;
       line_qty: number | null;
-    }>(
-      `SELECT v.id, v.status, v.voucher_number, v.issued_at::text, v.expires_at::text, v.conditions,
-              v.product_id, v.sale_id, v.sale_item_id, v.branch_id,
-              b.name AS branch_name, b.code AS branch_code,
-              p.name AS product_name, p.internal_code, p.barcode, p.size_label, p.color, p.allows_exchange, p.allows_return,
-              p.sale_price::text AS sale_price,
-              c.slug AS category_slug,
-              (SELECT url FROM product_photos ph WHERE ph.product_id = p.id ORDER BY sort_order LIMIT 1) AS photo_url,
-              s.receipt_number, s.sold_at::text AS sold_at,
-              si.line_total::text AS line_total, si.unit_price::text AS unit_price, si.quantity AS line_qty
-       FROM change_vouchers v
-       JOIN branches b ON b.id = v.branch_id
-       JOIN products p ON p.id = v.product_id
-       LEFT JOIN categories c ON c.id = p.category_id
-       LEFT JOIN sales s ON s.id = v.sale_id
-       LEFT JOIN sale_items si ON si.id = v.sale_item_id
-       WHERE v.organization_id = $1 AND UPPER(v.voucher_number) = $2
-       LIMIT 1`,
-      [req.user!.organizationId, number],
-    );
+    };
 
-    const row = found.rows[0];
-    if (!row) throw new HttpError(404, 'Ticket no encontrado');
-    if (row.branch_id !== req.activeBranchId) {
-      throw new HttpError(404, `Este ticket es de otra tienda (${row.branch_name})`);
+    async function loadByVoucherNumber() {
+      return query<VoucherLookupRow>(
+        `${voucherSelect}
+         WHERE v.organization_id = $1 AND UPPER(v.voucher_number) = ANY($2::text[])
+         LIMIT 1`,
+        [orgId, variants],
+      );
+    }
+
+    async function loadBySaleId(saleId: string) {
+      return query<VoucherLookupRow>(
+        `${voucherSelect}
+         WHERE v.organization_id = $1 AND v.sale_id = $2
+         ORDER BY v.voucher_number`,
+        [orgId, saleId],
+      );
+    }
+
+    async function findSale() {
+      return query<{
+        id: string;
+        branch_id: string;
+        branch_name: string;
+        receipt_number: string;
+      }>(
+        `SELECT s.id, s.branch_id, b.name AS branch_name, s.receipt_number
+         FROM sales s
+         JOIN branches b ON b.id = s.branch_id
+         WHERE s.organization_id = $1 AND UPPER(s.receipt_number) = ANY($2::text[])
+         LIMIT 1`,
+        [orgId, variants],
+      );
+    }
+
+    async function ensureSaleTickets(saleId: string) {
+      const client = await pool.connect();
+      try {
+        await client.query('BEGIN');
+        const created = await ensureEligibleSaleVouchers(client, {
+          organizationId: orgId,
+          saleId,
+          createdBy: req.user!.id,
+        });
+        await client.query('COMMIT');
+        return created;
+      } catch (e) {
+        try {
+          await client.query('ROLLBACK');
+        } catch {
+          /* ignore */
+        }
+        throw e;
+      } finally {
+        client.release();
+      }
     }
 
     const today = await chileToday();
-    const expired =
-      row.expires_at < today || row.status === 'expired';
-    const warnPartyDress = isPartyDress({
-      allows_exchange: row.allows_exchange,
-      category_slug: row.category_slug,
-    });
-    let blockedReason: string | null = null;
-    if (row.status === 'used') blockedReason = 'Este ticket ya fue usado';
-    else if (row.status === 'cancelled') blockedReason = 'Este ticket está anulado';
 
-    res.json({
-      voucher: {
-        id: row.id,
-        voucher_number: row.voucher_number,
-        status: row.status,
-        issued_at: row.issued_at,
-        expires_at: row.expires_at,
-        expired,
-        days_left: Math.round(
-          (new Date(row.expires_at + 'T12:00:00').getTime() - new Date(today + 'T12:00:00').getTime()) /
-            86_400_000,
-        ),
-        conditions: row.conditions,
-        branch: { id: row.branch_id, name: row.branch_name, code: row.branch_code },
-        product: {
-          id: row.product_id,
-          name: row.product_name,
-          internal_code: row.internal_code,
-          barcode: row.barcode,
-          photo_url: row.photo_url,
-          sale_price: row.sale_price,
-          allows_exchange: row.allows_exchange,
-          allows_return: row.allows_return,
-          size_label: row.size_label,
-          color: row.color,
+    if (lookupKind === 'voucher') {
+      const found = await loadByVoucherNumber();
+      const row = found.rows[0];
+      if (!row) throw new HttpError(404, 'No hay un ticket con ese número.');
+      if (row.branch_id !== req.activeBranchId) {
+        throw new HttpError(404, `Este ticket es de otra tienda (${row.branch_name})`);
+      }
+      res.json({ voucher: voucherApiPayload(row, today), saleLookup: null });
+      return;
+    }
+
+    const sale = await findSale();
+    const saleRow = sale.rows[0];
+    if (!saleRow) {
+      throw new HttpError(404, 'No hay un ticket ni una venta con ese número.');
+    }
+    if (saleRow.branch_id !== req.activeBranchId) {
+      throw new HttpError(404, `Esta venta es de otra tienda (${saleRow.branch_name})`);
+    }
+
+    const created = await ensureSaleTickets(saleRow.id);
+    let rows = (await loadBySaleId(saleRow.id)).rows;
+    if (!rows.length) {
+      throw new HttpError(
+        404,
+        created
+          ? 'Esta venta no tiene ticket de cambio.'
+          : 'Esta venta no tiene ticket de cambio: la prenda no admite cambio ni devolución.',
+      );
+    }
+
+    if (rows.some((r) => r.branch_id !== req.activeBranchId)) {
+      throw new HttpError(404, `Este ticket es de otra tienda (${rows[0].branch_name})`);
+    }
+
+    const pick = pickVoucherForSaleLookup(rows, garmentVariants);
+    const saleLookupBase = {
+      kind: 'sale' as const,
+      receiptNumber: saleRow.receipt_number,
+      openCount: rows.filter((r) => r.status === 'open' || r.status === 'expired').length,
+      usedCount: rows.filter((r) => r.status === 'used').length,
+      totalCount: rows.length,
+      needsProductScan: false,
+    };
+
+    if (pick.result === 'need_garment') {
+      res.json({
+        voucher: null,
+        saleLookup: {
+          ...saleLookupBase,
+          needsProductScan: true,
+          openCount: pick.openCount,
         },
-        sale: row.sale_id
-          ? {
-              id: row.sale_id,
-              receipt_number: row.receipt_number,
-              sold_at: row.sold_at,
-              line_total: row.line_total,
-              unit_price: row.unit_price,
-              quantity: row.line_qty,
-            }
-          : null,
-        warnPartyDress,
-        canFulfill: row.status === 'open' || row.status === 'expired',
-        blockedReason,
-      },
+      });
+      return;
+    }
+    if (pick.result === 'all_closed') {
+      throw new HttpError(404, saleLookupClosedMessage());
+    }
+    if (pick.result === 'garment_unknown') {
+      throw new HttpError(404, 'Esa prenda no corresponde a un ticket de esta venta.');
+    }
+    if (pick.result === 'garment_used') {
+      throw new HttpError(400, saleLookupGarmentUsedMessage(pick.openSiblings));
+    }
+    if (pick.result === 'empty') {
+      throw new HttpError(404, 'Esta venta no tiene ticket de cambio.');
+    }
+
+    const row = rows[pick.index];
+    res.json({
+      voucher: voucherApiPayload(row, today),
+      saleLookup: saleLookupBase,
     });
   }),
 );
@@ -659,6 +743,7 @@ opsRouter.post(
 
 opsRouter.get(
   '/expenses',
+  requireRoles('owner'),
   asyncHandler(async (req, res) => {
     const q = String(req.query.q || '').trim();
     const category = String(req.query.category || '').trim();
@@ -742,7 +827,7 @@ opsRouter.get(
 
 opsRouter.post(
   '/expenses',
-  requireRoles('owner', 'branch_manager'),
+  requireRoles('owner'),
   asyncHandler(async (req, res) => {
     const body = z
       .object({

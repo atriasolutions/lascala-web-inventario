@@ -24,7 +24,7 @@ VALUES (
 )
 ON CONFLICT (branch_id, code) DO NOTHING;
 
--- passwords: Admin123! / Vendedor123!
+-- passwords: Admin123! / Vendedor123! (encargada y vendedora)
 INSERT INTO users (id, organization_id, email, password_hash, full_name)
 VALUES
   (
@@ -40,13 +40,21 @@ VALUES
     'vendedor@lscala.cl',
     '$2b$10$IGJHrZ7wgaOlNN.sFmPA.ebBrh2us4wfr.A3AamLneE6GwWIOVbWe',
     'Vendedora L''Scala'
+  ),
+  (
+    'dddddddd-dddd-dddd-dddd-ddddddddddd4',
+    'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+    'encargada@lscala.cl',
+    '$2b$10$IGJHrZ7wgaOlNN.sFmPA.ebBrh2us4wfr.A3AamLneE6GwWIOVbWe',
+    'Encargada L''Scala'
   )
 ON CONFLICT (email) DO NOTHING;
 
 INSERT INTO user_branches (user_id, branch_id, role)
 VALUES
   ('dddddddd-dddd-dddd-dddd-ddddddddddd1', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'owner'),
-  ('dddddddd-dddd-dddd-dddd-ddddddddddd2', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'seller')
+  ('dddddddd-dddd-dddd-dddd-ddddddddddd2', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'seller'),
+  ('dddddddd-dddd-dddd-dddd-ddddddddddd4', 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'branch_manager')
 ON CONFLICT (user_id, branch_id) DO NOTHING;
 
 INSERT INTO categories (organization_id, name, slug, allows_exchange_default, sort_order)

@@ -35,7 +35,7 @@ async function assertOrgKeepsOwner(opts: {
   const others = await countOtherActiveOwners(opts.organizationId, opts.targetUserId);
   const selfCounts = opts.nextIsActive && opts.nextHasOwnerRole;
   if (others + (selfCounts ? 1 : 0) < 1) {
-    throw new HttpError(400, 'Debe quedar al menos una propietaria activa');
+    throw new HttpError(400, 'Debe quedar al menos una persona con rol Administrador/a activa');
   }
 }
 
@@ -239,7 +239,7 @@ usersRouter.patch(
       [id, req.user!.organizationId],
     );
     const row = exists.rows[0] as { id: string; is_active: boolean; is_owner: boolean } | undefined;
-    if (!row) throw new HttpError(404, 'Usuaria no encontrada');
+    if (!row) throw new HttpError(404, 'Usuario no encontrado');
 
     if (body.isActive === false) {
       await assertOrgKeepsOwner({
@@ -287,7 +287,7 @@ usersRouter.delete(
   asyncHandler(async (req, res) => {
     const id = z.string().uuid().parse(req.params.id);
     if (id === req.user!.id) {
-      throw new HttpError(400, 'No puedes eliminarte a ti misma');
+      throw new HttpError(400, 'No puedes eliminar tu propia cuenta');
     }
     const exists = await query<{ id: string; is_owner: boolean }>(
       `SELECT u.id,
@@ -299,7 +299,7 @@ usersRouter.delete(
        WHERE u.id = $1 AND u.organization_id = $2`,
       [id, req.user!.organizationId],
     );
-    if (!exists.rows[0]) throw new HttpError(404, 'Usuaria no encontrada');
+    if (!exists.rows[0]) throw new HttpError(404, 'Usuario no encontrado');
     await assertOrgKeepsOwner({
       organizationId: req.user!.organizationId,
       targetUserId: id,
@@ -326,11 +326,11 @@ usersRouter.put(
       `SELECT id, is_active FROM users WHERE id = $1 AND organization_id = $2`,
       [id, req.user!.organizationId],
     );
-    if (!exists.rows[0]) throw new HttpError(404, 'Usuaria no encontrada');
+    if (!exists.rows[0]) throw new HttpError(404, 'Usuario no encontrado');
 
     const nextHasOwnerRole = body.assignments.some((a) => a.role === 'owner');
     if (id === req.user!.id && !nextHasOwnerRole) {
-      throw new HttpError(400, 'No puedes quitarte el rol de propietaria');
+      throw new HttpError(400, 'No puedes quitarte el rol de Administrador/a');
     }
     await assertOrgKeepsOwner({
       organizationId: req.user!.organizationId,
@@ -358,7 +358,7 @@ usersRouter.post(
       'SELECT id, is_active FROM users WHERE id = $1 AND organization_id = $2',
       [userId, req.user!.organizationId],
     );
-    if (!exists.rows[0]) throw new HttpError(404, 'Usuaria no encontrada');
+    if (!exists.rows[0]) throw new HttpError(404, 'Usuario no encontrado');
 
     const branch = await query<{ id: string }>(
       `SELECT id FROM branches WHERE id = $1 AND organization_id = $2`,
@@ -372,7 +372,7 @@ usersRouter.post(
         [userId, body.branchId],
       );
       if (current.rows[0]?.role === 'owner') {
-        throw new HttpError(400, 'No puedes quitarte el rol de propietaria');
+        throw new HttpError(400, 'No puedes quitarte el rol de Administrador/a');
       }
     }
 

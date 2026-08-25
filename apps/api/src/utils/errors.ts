@@ -35,10 +35,10 @@ export function uniqueViolationMessage(err: unknown): string {
     return 'El email ya está registrado';
   }
   if (c === 'uq_products_org_barcode' || c.includes('barcode') || /Key \(.*barcode/i.test(detail)) {
-    return 'El código de barras ya existe';
+    return 'Ese código ya está en uso';
   }
   if (c.includes('internal_code') || /Key \(.*internal_code/i.test(detail)) {
-    return 'El código interno ya existe';
+    return 'Ese código ya está en uso';
   }
   return 'Ya existe un registro con esos datos';
 }

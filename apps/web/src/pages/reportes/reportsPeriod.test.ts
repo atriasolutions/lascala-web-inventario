@@ -5,6 +5,7 @@ import { resolvePeriod, type ReportsPeriodState } from './reportsPeriod.ts';
 function base(partial: Partial<ReportsPeriodState>): ReportsPeriodState {
   return {
     preset: 'this_month',
+    day: '2026-08-17',
     month: '2026-08',
     year: '2026',
     from: '2026-08-01',
@@ -32,5 +33,11 @@ describe('resolvePeriod', () => {
     );
     assert.equal(r.from, '2026-06-10');
     assert.equal(r.to, '2026-08-17');
+  });
+
+  it('Día usa from=to', () => {
+    const r = resolvePeriod(base({ preset: 'day', day: '2026-07-04' }));
+    assert.equal(r.from, '2026-07-04');
+    assert.equal(r.to, '2026-07-04');
   });
 });

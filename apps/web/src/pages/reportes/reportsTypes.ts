@@ -1,7 +1,7 @@
 /** Payloads GET /api/reports/:vista — TZ America/Santiago, sucursal X-Branch-Id. */
 
 export type ReportMeta = {
-  vista: 'ventas' | 'stock' | 'ingresos' | 'gastos' | 'mermas';
+  vista: 'ventas' | 'stock' | 'ingresos' | 'gastos' | 'mermas' | 'inventarios';
   timezone: string;
   from: string;
   to: string;
@@ -187,4 +187,41 @@ export type MermasReport = ReportMeta & {
   vouchers: { open: number; used: number; expired: number; cancelled: number };
   items: MermasItem[];
   notes?: { cost_impact?: string };
+};
+
+export type InventariosTake = {
+  id: string;
+  take_label: string;
+  applied_at_cl: string | null;
+  applied_by_name: string | null;
+};
+
+export type InventariosItem = {
+  stocktake_id: string;
+  take_label: string;
+  product_name: string;
+  internal_code: string;
+  decision: string | null;
+  decision_label: string;
+  qty_system: number;
+  qty_final: number;
+  kind: 'faltante' | 'sobrante';
+  units: number;
+  sale_price: string;
+  sale_value: string;
+};
+
+export type InventariosReport = ReportMeta & {
+  takes: InventariosTake[];
+  selected_stocktake_id: string | null;
+  totals: {
+    takes_count: number;
+    faltante_units: number;
+    sobrante_units: number;
+    faltante_value: string;
+    sobrante_value: string;
+    neto_value: string;
+  };
+  items: InventariosItem[];
+  notes?: { valuation?: string; neto?: string; movements?: string };
 };

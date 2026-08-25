@@ -6,7 +6,12 @@
 ;   win-payload\atria-print-agent.cmd
 ;   win-payload\runtime\node.exe
 ;   win-payload\runtime\bundle.cjs
+;   win-payload\runtime\node_modules\tray-hook\...
+;   win-payload\runtime\node_modules\@phtdacosta\tray-hook-win32-x64\tray-hook.exe
+;   win-payload\runtime\assets\tray-icon.png
 ;   atria-logo.png
+;
+; Sin tray-hook.exe el HTTP en :9876 sigue, pero no hay ícono en la bandeja.
 
 #define MyAppName "Atria Print Agent"
 #define MyAppVersion "0.1.0"

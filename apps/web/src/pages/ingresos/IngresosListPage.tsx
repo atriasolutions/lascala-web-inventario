@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { InfiniteListFooter } from '../../components/InfiniteListFooter';
+import { ModalOverlayClose } from '../../components/ModalOverlayClose';
 import { SortableTh } from '../../components/SortableTh';
 import { useInfiniteList } from '../../hooks/useInfiniteList';
 import { api } from '../../lib/api';
@@ -198,11 +199,12 @@ export function IngresosListPage() {
           type="button"
           className={`ing-chip${filters.status === 'pending_reception' ? ' is-active' : ''}`}
           aria-pressed={filters.status === 'pending_reception'}
+          data-help="cta.ingresos.pendiente"
           onClick={activatePending}
         >
           Pendiente
         </button>
-        <button type="button" className="btn secondary ing-filters-btn" onClick={openDrawer}>
+        <button type="button" className="btn secondary ing-filters-btn" data-help="cta.ingresos.filtros" onClick={openDrawer}>
           Filtros
         </button>
       </div>
@@ -396,6 +398,10 @@ export function IngresosListPage() {
             className="ing-list-figure-img"
             src="/brand/vendedora-pistola.png"
             alt=""
+            width={1024}
+            height={1536}
+            decoding="async"
+            loading="lazy"
           />
         </aside>
       </div>
@@ -408,6 +414,7 @@ export function IngresosListPage() {
             if (e.target === e.currentTarget) closeDrawer();
           }}
         >
+          <ModalOverlayClose onClose={closeDrawer}>
           <div
             className="pos-modal-panel ing-filters-sheet"
             ref={modalRef}
@@ -417,9 +424,6 @@ export function IngresosListPage() {
           >
             <div className="pos-modal-head">
               <h3 id={filtersTitleId}>Filtros</h3>
-              <button className="btn ghost" type="button" onClick={closeDrawer} aria-label="Cerrar">
-                Cerrar
-              </button>
             </div>
 
             <div className="ing-filters-sheet-body">
@@ -477,7 +481,7 @@ export function IngresosListPage() {
                 Aplicar
               </button>
             </div>
-          </div>
+          </div></ModalOverlayClose>
         </div>
       )}
     </div>

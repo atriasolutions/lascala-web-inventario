@@ -9,11 +9,14 @@ import {
 } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { NoBarcodeModal } from '../../components/NoBarcodeModal';
+import { ModalOverlayClose } from '../../components/ModalOverlayClose';
 import { PrintReminderModal } from '../../components/PrintReminderModal';
 import { ProductPhotoPlaceholder } from '../../components/ProductPhotoPlaceholder';
 import { useShellTitle } from '../../components/shellTitle';
 import { ThermalBarcode } from '../../components/ThermalBarcode';
 import { api, mediaUrl, money } from '../../lib/api';
+import { useAuth } from '../../lib/auth';
+import { canRegisterProductCode, CODE_REGISTER_FORBIDDEN } from '../../lib/roles';
 import { useToast } from '../../lib/toast';
 import { printLabelJob } from '../../services/printing';
 import {
@@ -108,6 +111,9 @@ export function IngresoDetailPage() {
   const navigate = useNavigate();
   const toast = useToast();
   const setShellTitle = useShellTitle();
+  const { branches, branchId } = useAuth();
+  const role = branches.find((b) => b.id === branchId)?.role || '';
+  const canCreateProduct = canRegisterProductCode(role);
   const scanRef = useRef<HTMLInputElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
   const createTitleId = useId();
@@ -126,7 +132,7 @@ export function IngresoDetailPage() {
   const [stage, setStage] = useState<StageItem | null>(null);
   const [stagePulse, setStagePulse] = useState(false);
   const [noBarcodeOpen, setNoBarcodeOpen] = useState(false);
-  const [suggestedBarcode, setSuggestedBarcode] = useState('LS-000001');
+  const [suggestedBarcode, setSuggestedBarcode] = useState('LS000001');
   const [noBarcodeBusy, setNoBarcodeBusy] = useState(false);
   const [printLabel, setPrintLabel] = useState<{ name: string; code: string; copies: number } | null>(
     null,
@@ -476,6 +482,14 @@ export function IngresoDetailPage() {
           focusScan();
           return;
         }
+        if (!canCreateProduct) {
+          toast.error(CODE_REGISTER_FORBIDDEN);
+          setError(CODE_REGISTER_FORBIDDEN);
+          setLiveMsg('Código no registrado');
+          setCode('');
+          focusScan();
+          return;
+        }
         openCreateModal(raw);
         setLiveMsg('Código no registrado');
         setCode('');
@@ -490,11 +504,13 @@ export function IngresoDetailPage() {
   async function openNoBarcode() {
     setNoBarcodeBusy(true);
     try {
-      const data = await api<{ nextBarcode: string }>('/api/products/next-barcode');
-      setSuggestedBarcode(data.nextBarcode);
+      if (canCreateProduct) {
+        const data = await api<{ nextBarcode: string }>('/api/products/next-barcode');
+        setSuggestedBarcode(data.nextBarcode);
+      }
       setNoBarcodeOpen(true);
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'No se pudo generar código');
+      toast.error(err instanceof Error ? err.message : 'No se pudo abrir el asistente');
     } finally {
       setNoBarcodeBusy(false);
     }
@@ -1018,6 +1034,7 @@ export function IngresoDetailPage() {
         lines={unlinkedPending}
         categories={categories}
         suggestedBarcode={suggestedBarcode}
+        canCreateProduct={canCreateProduct}
         onClose={closeNoBarcode}
         onCreateAndReceive={createFromNoBarcode}
         onLinkExisting={linkExistingFromNoBarcode}
@@ -1032,8 +1049,10 @@ export function IngresoDetailPage() {
             if (e.target === e.currentTarget) closeModal();
           }}
         >
+          <ModalOverlayClose onClose={closeModal}>
+          <div className="ing-line-modal-shell">
           <div
-            className="pos-modal-panel"
+            className="pos-modal-panel ing-line-modal ing-link-modal"
             role="dialog"
             aria-modal="true"
             aria-labelledby={createTitleId}
@@ -1043,103 +1062,104 @@ export function IngresoDetailPage() {
               <h3 id={createTitleId}>
                 {modal.kind === 'create' ? 'Crear prenda y vincular' : 'Vincular prenda existente'}
               </h3>
-              <button type="button" className="btn ghost" onClick={closeModal} aria-label="Cerrar">
-                ×
-              </button>
             </div>
 
-            <p className="ing-barcode-fixed">Código: {modal.barcode}</p>
-            <p className="ing-hint">Es el código de la etiqueta y de la pistola. Elige la línea de este ingreso.</p>
-
-            <div className="ing-line-picks" role="radiogroup" aria-label="Líneas pendientes">
-              {unlinkedPending.map((l) => (
-                <button
-                  key={l.id}
-                  type="button"
-                  role="radio"
-                  aria-checked={pickLineId === l.id}
-                  className={`ing-line-pick${pickLineId === l.id ? ' is-selected' : ''}`}
-                  onClick={() => setPickLineId(l.id)}
-                >
-                  <strong>{l.description}</strong>
-                  <span>
-                    Recibido {l.draftReceived}/{l.quantity_ordered} · Pendiente{' '}
-                    {Number(l.quantity_ordered) - l.draftReceived}
-                    {lineFloorSalePrice(l) > 0
-                      ? ` · P. venta ${money(lineFloorSalePrice(l))}`
-                      : ''}
-                  </span>
-                </button>
-              ))}
-            </div>
-
-            {modal.kind === 'create' && (
-              <>
-                <div className="field">
-                  <label htmlFor="ing-new-name">Nombre</label>
-                  <input
-                    id="ing-new-name"
-                    value={newName}
-                    onChange={(e) => setNewName(e.target.value)}
-                  />
-                </div>
-                <div className="field">
-                  <label htmlFor="ing-sale">Precio de venta</label>
-                  <input
-                    id="ing-sale"
-                    value={modalSaleDisplay > 0 ? money(modalSaleDisplay) : '—'}
-                    disabled
-                    readOnly
-                    aria-readonly="true"
-                  />
-                  <span className="ing-hint">Fijado en la compra · no editable en recepción</span>
-                </div>
-              </>
-            )}
-
-            {modal.kind === 'link' && (
-              <p className="meta">
-                Prenda: <strong>{modal.product.name}</strong> · {modal.product.internal_code}
+            <div className="ing-line-modal-body">
+              <p className="ing-barcode-fixed">Código: {modal.barcode}</p>
+              <p className="ing-hint">
+                Es el código de la etiqueta y de la pistola. Elige la línea de este ingreso.
               </p>
-            )}
 
-            <div className="ing-nb-grid" style={{ marginTop: '0.65rem' }}>
-              <div className="field">
-                <label htmlFor="ing-modal-qty">Cantidad recibida</label>
-                <input
-                  id="ing-modal-qty"
-                  type="number"
-                  min={1}
-                  max={Math.max(1, modalPending)}
-                  value={receiveQty}
-                  onChange={(e) => {
-                    const v = Number(e.target.value);
-                    setReceiveQty(v);
-                    if (Number.isFinite(v) && v >= 1) setLabelCopies(v);
-                  }}
-                />
-                <span className="ing-hint">Pendiente en la línea: {modalPending}</span>
+              <div className="ing-line-picks" role="radiogroup" aria-label="Líneas pendientes">
+                {unlinkedPending.map((l) => (
+                  <button
+                    key={l.id}
+                    type="button"
+                    role="radio"
+                    aria-checked={pickLineId === l.id}
+                    className={`ing-line-pick${pickLineId === l.id ? ' is-selected' : ''}`}
+                    onClick={() => setPickLineId(l.id)}
+                  >
+                    <strong>{l.description}</strong>
+                    <span>
+                      Recibido {l.draftReceived}/{l.quantity_ordered} · Pendiente{' '}
+                      {Number(l.quantity_ordered) - l.draftReceived}
+                      {lineFloorSalePrice(l) > 0
+                        ? ` · P. venta ${money(lineFloorSalePrice(l))}`
+                        : ''}
+                    </span>
+                  </button>
+                ))}
               </div>
-              <div className="field">
-                <label htmlFor="ing-modal-labels">Imprimir N etiquetas</label>
-                <input
-                  id="ing-modal-labels"
-                  type="number"
-                  min={1}
-                  max={999}
-                  value={labelCopies}
-                  onChange={(e) => setLabelCopies(Number(e.target.value))}
-                />
+
+              {modal.kind === 'create' && (
+                <>
+                  <div className="field">
+                    <label htmlFor="ing-new-name">Nombre</label>
+                    <input
+                      id="ing-new-name"
+                      value={newName}
+                      onChange={(e) => setNewName(e.target.value)}
+                    />
+                  </div>
+                  <div className="field">
+                    <label htmlFor="ing-sale">Precio de venta</label>
+                    <input
+                      id="ing-sale"
+                      value={modalSaleDisplay > 0 ? money(modalSaleDisplay) : '—'}
+                      disabled
+                      readOnly
+                      aria-readonly="true"
+                    />
+                    <span className="ing-hint">Fijado en la compra · no editable en recepción</span>
+                  </div>
+                </>
+              )}
+
+              {modal.kind === 'link' && (
+                <p className="meta">
+                  Prenda: <strong>{modal.product.name}</strong> · {modal.product.internal_code}
+                </p>
+              )}
+
+              <div className="ing-nb-grid" style={{ marginTop: '0.65rem' }}>
+                <div className="field">
+                  <label htmlFor="ing-modal-qty">Cantidad recibida</label>
+                  <input
+                    id="ing-modal-qty"
+                    type="number"
+                    min={1}
+                    max={Math.max(1, modalPending)}
+                    value={receiveQty}
+                    onChange={(e) => {
+                      const v = Number(e.target.value);
+                      setReceiveQty(v);
+                      if (Number.isFinite(v) && v >= 1) setLabelCopies(v);
+                    }}
+                  />
+                  <span className="ing-hint">Pendiente en la línea: {modalPending}</span>
+                </div>
+                <div className="field">
+                  <label htmlFor="ing-modal-labels">Imprimir N etiquetas</label>
+                  <input
+                    id="ing-modal-labels"
+                    type="number"
+                    min={1}
+                    max={999}
+                    value={labelCopies}
+                    onChange={(e) => setLabelCopies(Number(e.target.value))}
+                  />
+                </div>
               </div>
+
+              {modal.kind === 'create' ? (
+                <p className="ing-hint">La foto se agrega después en Productos</p>
+              ) : null}
+
+              {modalError && <p className="error">{modalError}</p>}
             </div>
 
-            {modal.kind === 'create' ? (
-              <p className="ing-hint">La foto se agrega después en Productos</p>
-            ) : null}
-
-            {modalError && <p className="error">{modalError}</p>}
-
-            <div className="btn-row" style={{ marginTop: '0.85rem' }}>
+            <div className="btn-row ing-line-modal-actions">
               <button type="button" className="btn secondary" onClick={closeModal} disabled={busy}>
                 Cancelar
               </button>
@@ -1153,6 +1173,7 @@ export function IngresoDetailPage() {
               </button>
             </div>
           </div>
+          </div></ModalOverlayClose>
         </div>
       )}
 
@@ -1166,24 +1187,17 @@ export function IngresoDetailPage() {
             if (e.target === e.currentTarget) closePhotoPreview();
           }}
         >
+          <ModalOverlayClose onClose={closePhotoPreview}>
           <div className="ing-photo-lightbox-panel">
             <div className="ing-photo-lightbox-head">
               <h3>{photoPreview.name}</h3>
-              <button
-                type="button"
-                className="btn ghost"
-                onClick={closePhotoPreview}
-                aria-label="Cerrar"
-              >
-                ×
-              </button>
             </div>
             <img
               src={mediaUrl(photoPreview.url)}
               alt={photoPreview.name}
               className="ing-photo-lightbox-img"
             />
-          </div>
+          </div></ModalOverlayClose>
         </div>
       )}
 

@@ -10,11 +10,14 @@ import {
 } from 'react';
 import { Link, useBlocker, useNavigate } from 'react-router-dom';
 import { BoutiqueMood } from '../../components/BoutiqueMood';
+import { ChileMoneyInput } from '../../components/ChileMoneyInput';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
-import { IconClose } from '../../components/icons';
+import { MarginHint } from '../../components/MarginHint';
+import { ModalOverlayClose } from '../../components/ModalOverlayClose';
 import { ProductPhotoPlaceholder } from '../../components/ProductPhotoPlaceholder';
 import { SupplierLookup } from '../../components/SupplierLookup';
 import { api, mediaUrl, money } from '../../lib/api';
+import { parseChileMoney } from '../../lib/chileMoney';
 import { useAuth } from '../../lib/auth';
 import { toast } from '../../lib/toast';
 import {
@@ -186,7 +189,7 @@ export function PurchaseDocumentForm({
     () =>
       lines.reduce((sum, l) => {
         const q = Number(l.quantity) || 0;
-        const c = Number(l.unitCost) || 0;
+        const c = parseChileMoney(l.unitCost) || 0;
         return sum + q * c;
       }, 0),
     [lines],
@@ -552,7 +555,7 @@ export function PurchaseDocumentForm({
           {lines.length > 0 && (
             <ul className="ing-compact-list" aria-label="Líneas del documento">
               {lines.map((line, idx) => {
-                const sub = (Number(line.quantity) || 0) * (Number(line.unitCost) || 0);
+                const sub = (Number(line.quantity) || 0) * (parseChileMoney(line.unitCost) || 0);
                 return (
                   <li key={line.key} className="ing-compact-row">
                     {readOnly ? (
@@ -567,8 +570,8 @@ export function PurchaseDocumentForm({
                         <span className="ing-compact-body">
                           <strong>{line.description}</strong>
                           <span className="meta">
-                            {line.quantity} ud · Precio costo {money(line.unitCost)} · Venta{' '}
-                            {money(line.salePrice)}
+                            {line.quantity} ud · Precio costo {money(parseChileMoney(line.unitCost) ?? 0)} · Venta{' '}
+                            {money(parseChileMoney(line.salePrice) ?? 0)}
                           </span>
                         </span>
                         <span className="ing-compact-side">
@@ -593,8 +596,8 @@ export function PurchaseDocumentForm({
                           <span className="ing-compact-body">
                             <strong>{line.description}</strong>
                             <span className="meta">
-                              {line.quantity} ud · Precio costo {money(line.unitCost)} · Venta{' '}
-                              {money(line.salePrice)}
+                              {line.quantity} ud · Precio costo {money(parseChileMoney(line.unitCost) ?? 0)} · Venta{' '}
+                              {money(parseChileMoney(line.salePrice) ?? 0)}
                             </span>
                           </span>
                           <span className="ing-compact-side">
@@ -684,15 +687,8 @@ export function PurchaseDocumentForm({
 
       {editor && !readOnly && (
         <div className="pos-modal open" role="presentation">
+          <ModalOverlayClose onClose={closeEditor}>
           <div className="ing-line-modal-shell">
-            <button
-              type="button"
-              className="ing-line-modal-close"
-              onClick={closeEditor}
-              aria-label="Cerrar"
-            >
-              <IconClose size={18} />
-            </button>
             <div
               className="pos-modal-panel ing-line-modal"
               role="dialog"
@@ -771,35 +767,29 @@ export function PurchaseDocumentForm({
                     </div>
                     <div className="field">
                       <label htmlFor="compra-modal-cost">Precio costo</label>
-                      <input
+                      <ChileMoneyInput
                         id="compra-modal-cost"
-                        type="number"
-                        min={0}
-                        step={1}
-                        inputMode="numeric"
                         value={editor.unitCost}
-                        onChange={(e) => setEditorCost(e.target.value)}
+                        onChange={(unitCost) => setEditorCost(unitCost)}
                         placeholder="0"
                       />
                     </div>
                     <div className="field">
                       <label htmlFor="compra-modal-sale">Venta</label>
-                      <input
+                      <ChileMoneyInput
                         id="compra-modal-sale"
-                        type="number"
-                        min={1}
-                        step={1}
-                        inputMode="numeric"
                         value={editor.salePrice}
-                        onChange={(e) =>
-                          patchEditor({ salePrice: e.target.value, saleTouched: true })
+                        onChange={(salePrice) =>
+                          patchEditor({ salePrice, saleTouched: true })
                         }
+                        placeholder="0"
                       />
                     </div>
                   </div>
-                  <p className="ing-hint">
-                    La venta parte en el doble del costo; puedes cambiarla.
-                  </p>
+                  <MarginHint
+                    cost={parseChileMoney(editor.unitCost)}
+                    sale={parseChileMoney(editor.salePrice)}
+                  />
                 </div>
               </div>
 
@@ -819,7 +809,7 @@ export function PurchaseDocumentForm({
                 </button>
               </div>
             </div>
-          </div>
+          </div></ModalOverlayClose>
         </div>
       )}
 

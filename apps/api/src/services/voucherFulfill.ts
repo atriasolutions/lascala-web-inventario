@@ -149,6 +149,22 @@ export async function fulfillVoucherWithClient(
     throw new HttpError(400, 'Este ticket no está disponible');
   }
 
+  if (voucher.sale_id) {
+    const cap = await client.query<{ used: string; eligible: string }>(
+      `SELECT
+         (SELECT COUNT(*)::int FROM change_vouchers WHERE sale_id = $1 AND status = 'used') AS used,
+         (SELECT COUNT(*)::int FROM sale_items si
+            JOIN products p ON p.id = si.product_id
+          WHERE si.sale_id = $1 AND (p.allows_exchange OR p.allows_return)) AS eligible`,
+      [voucher.sale_id],
+    );
+    const used = Number(cap.rows[0]?.used || 0);
+    const eligible = Number(cap.rows[0]?.eligible || 0);
+    if (eligible > 0 && used >= eligible) {
+      throw new HttpError(400, 'Esta venta ya usó todos sus tickets de cambio.');
+    }
+  }
+
   if (expired && !body.overrideExpired) {
     throw new HttpError(
       400,

@@ -1,4 +1,5 @@
 import { type FormEvent, useEffect, useId, useState } from 'react';
+import { ModalOverlayClose } from '../../components/ModalOverlayClose';
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { toast } from '../../lib/toast';
@@ -165,6 +166,7 @@ export function AdminSucursalesPage() {
             if (e.target === e.currentTarget) closeSheet();
           }}
         >
+          <ModalOverlayClose onClose={closeSheet}>
           <div
             className="pos-modal-panel admin-sheet"
             role="dialog"
@@ -174,9 +176,6 @@ export function AdminSucursalesPage() {
           >
             <div className="pos-modal-head">
               <h3 id={titleId}>{sheet.mode === 'edit' ? 'Editar sucursal' : 'Nueva sucursal'}</h3>
-              <button type="button" className="btn ghost" onClick={closeSheet} aria-label="Cerrar">
-                Cerrar
-              </button>
             </div>
             <form className="admin-sheet-form" onSubmit={onSubmit}>
               <div className="field">
@@ -237,7 +236,7 @@ export function AdminSucursalesPage() {
                 </button>
               </div>
             </form>
-          </div>
+          </div></ModalOverlayClose>
         </div>
       ) : null}
     </div>

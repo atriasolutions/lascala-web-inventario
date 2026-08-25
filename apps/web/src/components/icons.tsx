@@ -37,6 +37,16 @@ export function IconBox({ size = 20 }: IconProps) {
   );
 }
 
+export function IconClipboardList({ size = 20 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...base} aria-hidden="true">
+      <path d="M9 4h6v2H9z" />
+      <path d="M8 5H6a1 1 0 0 0-1 1v14a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-2" />
+      <path d="M9 11h6M9 15h4" />
+    </svg>
+  );
+}
+
 export function IconReceipt({ size = 20 }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" {...base} aria-hidden="true">
@@ -163,6 +173,19 @@ export function IconCamera({ size = 18 }: IconProps) {
     <svg width={size} height={size} viewBox="0 0 24 24" {...base} aria-hidden="true">
       <path d="M4 8h3l1.5-2h7L17 8h3v11H4z" />
       <circle cx="12" cy="13.5" r="3.2" />
+    </svg>
+  );
+}
+
+export function IconHelp({ size = 20 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="12" cy="12" r="10" fill="currentColor" />
+      <path
+        fill="#fff"
+        d="M12.05 6.15c-1.92 0-3.28 1.22-3.28 3.02h1.78c0-.88.58-1.42 1.42-1.42.82 0 1.38.5 1.38 1.28 0 .72-.4 1.12-1.12 1.62-1.02.7-1.68 1.42-1.68 2.58v.32h1.82v-.22c0-.72.32-1.18 1.22-1.82 1.02-.72 1.82-1.52 1.82-2.78 0-1.92-1.48-3.58-3.36-3.58z"
+      />
+      <circle cx="12.05" cy="17.15" r="1.15" fill="#fff" />
     </svg>
   );
 }

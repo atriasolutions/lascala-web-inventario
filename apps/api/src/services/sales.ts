@@ -4,8 +4,10 @@ import {
   getSettingNumber,
   getSettingText,
   nextReceiptNumber,
+  nextVoucherNumberWithClient,
 } from './inventory.js';
 import { HttpError } from '../utils/errors.js';
+import { CHILE_TZ } from '../utils/chileDate.js';
 
 export type CreateSaleItemInput = {
   productId: string;
@@ -128,11 +130,6 @@ export async function createSaleWithClient(
   );
   const sale = saleRes.rows[0];
   const vouchers: Record<string, unknown>[] = [];
-  const baseVoucherCount = await client.query<{ count: string }>(
-    'SELECT COUNT(*)::text AS count FROM change_vouchers WHERE organization_id = $1',
-    [params.organizationId],
-  );
-  let voucherN = Number(baseVoucherCount.rows[0]?.count || 0);
 
   for (const line of lineData) {
     const itemRes = await client.query(
@@ -161,8 +158,7 @@ export async function createSaleWithClient(
     ]);
 
     if (line.allowsExchange) {
-      voucherN += 1;
-      const voucherNumber = `VC-${String(voucherN).padStart(6, '0')}`;
+      const voucherNumber = await nextVoucherNumberWithClient(client, params.organizationId);
       const expires = new Date();
       expires.setDate(expires.getDate() + voucherDays);
       const v = await client.query(
@@ -200,4 +196,66 @@ export async function findSaleByClientSaleId(
     [organizationId, clientSaleId],
   );
   return res.rows[0] ?? null;
+}
+
+/**
+ * Crea tickets VC- faltantes para líneas elegibles (cambio/devolución) de una venta ya grabada.
+ * No inventa vouchers si la prenda no admite cambio ni devolución.
+ */
+export async function ensureEligibleSaleVouchers(
+  client: PoolClient,
+  params: { organizationId: string; saleId: string; createdBy: string },
+): Promise<number> {
+  const voucherDays = await getSettingNumber(params.organizationId, 'change_voucher_days', 7);
+  const conditions = await getSettingText(
+    params.organizationId,
+    'change_conditions',
+    "Condiciones de cambio L'Scala",
+  );
+
+  const missing = await client.query<{
+    sale_item_id: string;
+    product_id: string;
+    branch_id: string;
+    issued_at: string;
+  }>(
+    `SELECT si.id AS sale_item_id,
+            si.product_id,
+            s.branch_id,
+            (timezone($3, s.sold_at))::date::text AS issued_at
+     FROM sale_items si
+     JOIN sales s ON s.id = si.sale_id
+     JOIN products p ON p.id = si.product_id
+     WHERE s.id = $1
+       AND s.organization_id = $2
+       AND (p.allows_exchange OR p.allows_return)
+       AND NOT EXISTS (
+         SELECT 1 FROM change_vouchers v WHERE v.sale_item_id = si.id
+       )
+     ORDER BY si.created_at, si.id`,
+    [params.saleId, params.organizationId, CHILE_TZ],
+  );
+
+  for (const row of missing.rows) {
+    const voucherNumber = await nextVoucherNumberWithClient(client, params.organizationId);
+    await client.query(
+      `INSERT INTO change_vouchers
+        (organization_id, branch_id, sale_id, sale_item_id, product_id,
+         voucher_number, issued_at, expires_at, conditions, created_by)
+       VALUES ($1,$2,$3,$4,$5,$6,$7::date, ($7::date + $8::int), $9,$10)`,
+      [
+        params.organizationId,
+        row.branch_id,
+        params.saleId,
+        row.sale_item_id,
+        row.product_id,
+        voucherNumber,
+        row.issued_at,
+        voucherDays,
+        conditions,
+        params.createdBy,
+      ],
+    );
+  }
+  return missing.rows.length;
 }

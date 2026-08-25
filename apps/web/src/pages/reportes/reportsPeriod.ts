@@ -1,11 +1,13 @@
 /** Fechas civiles America/Santiago para filtros de Reportes. */
 
-export type ReportsVista = 'ventas' | 'stock' | 'ingresos' | 'gastos' | 'mermas';
+export type ReportsVista = 'ventas' | 'stock' | 'ingresos' | 'gastos' | 'mermas' | 'inventarios';
 
-export type PeriodPreset = 'this_month' | 'this_year' | 'month' | 'year' | 'range';
+export type PeriodPreset = 'this_month' | 'this_year' | 'day' | 'month' | 'year' | 'range';
 
 export type ReportsPeriodState = {
   preset: PeriodPreset;
+  /** YYYY-MM-DD cuando preset = day */
+  day: string;
   /** YYYY-MM cuando preset = month */
   month: string;
   /** YYYY cuando preset = year */
@@ -40,10 +42,12 @@ function lastDayOfMonth(year: number, month1to12: number): string {
 
 export function defaultPeriodState(): ReportsPeriodState {
   const { year, month } = chileYearMonth();
+  const today = chileIsoDate();
   const y = Number(month.slice(0, 4));
   const m = Number(month.slice(5, 7));
   return {
     preset: 'this_month',
+    day: today,
     month,
     year,
     from: `${month}-01`,
@@ -63,6 +67,10 @@ export function resolvePeriod(state: ReportsPeriodState): { from: string; to: st
     }
     case 'this_year':
       return { from: `${cy}-01-01`, to: today };
+    case 'day': {
+      const d = state.day || today;
+      return { from: d, to: d };
+    }
     case 'month': {
       const ym = state.month || cm;
       const y = Number(ym.slice(0, 4));
@@ -88,6 +96,7 @@ export function resolvePeriod(state: ReportsPeriodState): { from: string; to: st
 export const PERIOD_CHIPS: { id: PeriodPreset; label: string }[] = [
   { id: 'this_month', label: 'Este mes' },
   { id: 'this_year', label: 'Este año' },
+  { id: 'day', label: 'Día' },
   { id: 'month', label: 'Mes' },
   { id: 'year', label: 'Año' },
   { id: 'range', label: 'Rango' },
@@ -99,6 +108,7 @@ export const REPORTS_TABS: { to: ReportsVista; label: string }[] = [
   { to: 'ingresos', label: 'Ingresos' },
   { to: 'gastos', label: 'Gastos' },
   { to: 'mermas', label: 'Mermas' },
+  { to: 'inventarios', label: 'Pérdida/Ganancia' },
 ];
 
 export function vistaLabel(vista: ReportsVista): string {

@@ -11,6 +11,8 @@ export const env = {
   databaseUrl: process.env.DATABASE_URL || 'postgresql://lscala:lscala@localhost:5432/lscala',
   jwtSecret: process.env.JWT_SECRET || 'change-me-lscala-atria-dev-secret',
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '12h',
+  /** PWA instalada (standalone móvil). Escritorio / Chrome normal usa jwtExpiresIn. */
+  jwtPersistentExpiresIn: process.env.JWT_PERSISTENT_EXPIRES_IN || '10y',
   corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:5173',
   /** Origen del SPA para armar links de reset (fallback: CORS_ORIGIN). */
   webOrigin: process.env.WEB_ORIGIN || process.env.CORS_ORIGIN || 'http://localhost:5173',

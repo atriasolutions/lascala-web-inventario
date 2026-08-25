@@ -8,6 +8,7 @@ import {
   exportVentasTickets,
   getGastosReport,
   getIngresosReport,
+  getInventariosReport,
   getMermasReport,
   getStockReport,
   getVentasReport,
@@ -31,6 +32,7 @@ export function reportExcelFilename(meta: ReportMeta) {
     ingresos: 'Ingresos',
     gastos: 'Gastos',
     mermas: 'Mermas',
+    inventarios: 'Inventarios',
   };
   const branch = slugPart(meta.branch.code || meta.branch.name) || 'Sucursal';
   const sameMonth = meta.from.slice(0, 7) === meta.to.slice(0, 7);
@@ -58,7 +60,12 @@ function moneyCol(sheet: ExcelJS.Worksheet, col: number) {
   sheet.getColumn(col).numFmt = '#,##0';
 }
 
-export async function buildReportWorkbook(vista: ReportVista, branchId: string, meta: ReportMeta) {
+export async function buildReportWorkbook(
+  vista: ReportVista,
+  branchId: string,
+  meta: ReportMeta,
+  opts: { stocktakeId?: string | null } = {},
+) {
   const wb = new ExcelJS.Workbook();
   wb.creator = "Atria Solutions SpA · L'Scala";
   wb.created = new Date();
@@ -261,6 +268,72 @@ export async function buildReportWorkbook(vista: ReportVista, branchId: string, 
     for (const [status, count] of Object.entries(data.vouchers)) {
       s3.addRow([status, count]);
     }
+  }
+
+  if (vista === 'inventarios') {
+    const data = await getInventariosReport(branchId, meta.from, meta.to, opts.stocktakeId ?? null);
+    const s1 = wb.addWorksheet('Resumen');
+    titleBlock(s1, "Pérdida/Ganancia por inventario · Boutique L'Scala", meta);
+    s1.addRow(['Valoración', data.notes.valuation]);
+    s1.addRow(['Neto', data.notes.neto]);
+    s1.addRow([]);
+    headerRow(s1, ['Concepto', 'Unidades', 'Valor a p. venta']);
+    s1.addRow(['Faltante', data.totals.faltante_units, Number(data.totals.faltante_value)]);
+    s1.addRow(['Sobrante', data.totals.sobrante_units, Number(data.totals.sobrante_value)]);
+    s1.addRow(['Neto (sobrante − faltante)', '', Number(data.totals.neto_value)]);
+    moneyCol(s1, 3);
+    s1.columns = [{ width: 32 }, { width: 14 }, { width: 20 }];
+
+    const s2 = wb.addWorksheet('Líneas');
+    titleBlock(s2, 'Diferencias aplicadas (físico o ajuste)', meta);
+    headerRow(s2, [
+      'Toma',
+      'Código',
+      'Prenda',
+      'Decisión',
+      'Tipo',
+      'Stock al cerrar',
+      'Queda',
+      'Ud.',
+      'P. venta',
+      'Valor',
+    ]);
+    for (const r of data.items) {
+      s2.addRow([
+        r.take_label,
+        r.internal_code,
+        r.product_name,
+        r.decision_label,
+        r.kind,
+        r.qty_system,
+        r.qty_final,
+        r.units,
+        Number(r.sale_price),
+        Number(r.sale_value),
+      ]);
+    }
+    moneyCol(s2, 9);
+    moneyCol(s2, 10);
+    s2.columns = [
+      { width: 14 },
+      { width: 14 },
+      { width: 32 },
+      { width: 22 },
+      { width: 12 },
+      { width: 14 },
+      { width: 10 },
+      { width: 8 },
+      { width: 12 },
+      { width: 14 },
+    ];
+
+    const s3 = wb.addWorksheet('Tomas');
+    titleBlock(s3, 'Tomas aplicadas (selector)', meta);
+    headerRow(s3, ['N°', 'Aplicada', 'Usuario']);
+    for (const t of data.takes) {
+      s3.addRow([t.take_label, t.applied_at_cl, t.applied_by_name]);
+    }
+    s3.columns = [{ width: 14 }, { width: 24 }, { width: 24 }];
   }
 
   return wb;

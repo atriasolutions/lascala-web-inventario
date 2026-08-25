@@ -6,10 +6,11 @@ import { requireAuth, requireBranch, requireRoles } from '../middleware/auth.js'
 import {
   applyStockDeltaWithClient,
   assertBarcodeAvailable,
+  canonicalizeStoredProductCode,
   getSettingNumber,
   nextInternalCodeWithClient,
-  normalizeBarcode,
 } from '../services/inventory.js';
+import { assertCanRegisterProductCode } from '../auth/roles.js';
 import { asyncHandler, HttpError } from '../utils/errors.js';
 import { fetchLimit, parsePagination, slicePage } from '../utils/pagination.js';
 
@@ -84,7 +85,10 @@ async function createProductFromPurchaseItem(
     params.create.salePrice ??
     params.suggestedSalePrice ??
     Number((costPrice * params.priceMultiplier).toFixed(2));
-  const requestedCode = normalizeBarcode(params.create.barcode);
+  const requestedCode = canonicalizeStoredProductCode(params.create.barcode);
+  if (params.create.barcode?.trim() && !requestedCode) {
+    throw new HttpError(400, 'Ingresa un código válido o deja vacío para autogenerar');
+  }
   if (requestedCode) {
     await assertBarcodeAvailable(params.organizationId, requestedCode, { client });
   }
@@ -524,6 +528,7 @@ purchasesRouter.post(
         let productId: string | null = item.productId || pi.product_id || null;
 
         if (item.createProduct) {
+          assertCanRegisterProductCode(req.activeRole);
           if (pi.product_id) {
             throw new HttpError(400, 'La línea ya tiene producto vinculado');
           }

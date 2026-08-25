@@ -136,7 +136,9 @@ export function PrinterPrefsCard() {
     try {
       const result = await refreshAgent();
       if (!result.ok) {
-        toast.error('No encontramos Atria Print Agent. Ábrelo en la barra de menú e intenta de nuevo.');
+        toast.error(
+          'No encontramos Atria Print Agent en este computador. Se instala aquí (DMG), no en la nube. Ábrelo en la barra de menú e intenta de nuevo.',
+        );
         setHelpOpen(true);
         return;
       }
@@ -203,7 +205,7 @@ export function PrinterPrefsCard() {
         : 'Conectado, sin impresoras. Revisa el cable o pulsa Detectar.'
       : agentStatus === 'connecting'
         ? 'Revisamos si está abierto en este computador.'
-        : 'Ábrelo en la barra de menú (arriba a la derecha) y pulsa Detectar.';
+        : 'El Agent corre en este computador, no en la nube. Ábrelo en la barra de menú y pulsa Detectar.';
 
   const statusClass =
     agentStatus === 'connected' ? 'is-ok' : agentStatus === 'unavailable' ? 'is-bad' : 'is-idle';
@@ -248,19 +250,23 @@ export function PrinterPrefsCard() {
       {agentStatus === 'unavailable' || helpOpen ? (
         <div className="print-agent-missing" role="region" aria-label="Cómo abrir Atria Print Agent">
           <p>
-            <strong>Atria Print Agent</strong> conecta L&apos;Scala con las impresoras de este
-            computador. Debe quedar abierto: en Mac, un ícono Atria en la barra de menú; en
-            Windows, junto al reloj.
+            <strong>Atria Print Agent</strong> se instala en <strong>este computador</strong> (archivo
+            DMG de Atria), no en la nube ni en el servidor de inventario. Conecta L&apos;Scala con las
+            impresoras USB de esta caja. Debe quedar abierto: en Mac, un ícono Atria en la barra de
+            menú; en Windows, junto al reloj.
           </p>
           <ol className="print-agent-steps">
-            <li>Ábrelo desde Aplicaciones (Mac) o el menú Inicio (Windows).</li>
+            <li>
+              Instálalo y ábrelo desde Aplicaciones (Mac) o el menú Inicio (Windows). En el menú del
+              Agent, pulsa <strong>Encender</strong>.
+            </li>
             <li>Pulsa <strong>Detectar</strong> en esta pantalla.</li>
             <li>Elige una impresora para etiquetas y otra para comprobantes, y guarda.</li>
           </ol>
           {agentStatus === 'unavailable' ? (
             <p className="muted" style={{ marginBottom: 0 }}>
-              Si aún no lo tienes, instálalo en este computador (Atria te entrega el instalador) y
-              vuelve a Detectar.
+              Si aún no lo tienes, pide el instalador DMG a Atria, instálalo en esta caja y vuelve a
+              Detectar. No se instala en DigitalOcean.
             </p>
           ) : (
             <p className="muted" style={{ marginBottom: 0 }}>

@@ -16,7 +16,6 @@ import {
   IconAlertTriangle,
   IconBox,
   IconCamera,
-  IconPos,
   IconReceipt,
   IconSwap,
   IconTruck,
@@ -262,15 +261,7 @@ export function DashboardPage() {
         </div>
       </section>
 
-      <nav className="dash-action-strip" aria-label="Acciones rápidas">
-        <Link to="/vender" className="btn primary dash-action-btn">
-          <IconPos size={18} />
-          Ventas
-        </Link>
-        <Link to="/ingresos" className="btn secondary dash-action-btn">
-          <IconTruck size={18} />
-          Ingresos
-        </Link>
+      <nav className="dash-action-strip desktop-only" aria-label="Acciones rápidas">
         <Link to="/gastos" className="btn secondary dash-action-btn">
           <IconWallet size={18} />
           Gastos
@@ -432,20 +423,31 @@ export function DashboardPage() {
           </div>
         </header>
         <div className="dash-attention">
-          {attention.map((item) => (
-            <Link key={item.to + item.label} to={item.to} className={`dash-chip tone-${item.tone}`}>
-              <span className="dash-chip-ico">
-                <item.icon size={16} />
-              </span>
-              <span className="dash-chip-body">
-                <em>{item.label}</em>
-                <strong>{item.value}</strong>
-              </span>
-              <span className="dash-chip-go" aria-hidden>
-                →
-              </span>
-            </Link>
-          ))}
+          {attention.map((item) => {
+            const hideOnMobile =
+              item.to === '/ingresos' ||
+              item.to.startsWith('/ingresos?') ||
+              item.to === '/ventas' ||
+              item.to.startsWith('/ventas?');
+            return (
+              <Link
+                key={item.to + item.label}
+                to={item.to}
+                className={`dash-chip tone-${item.tone}${hideOnMobile ? ' desktop-only' : ''}`}
+              >
+                <span className="dash-chip-ico">
+                  <item.icon size={16} />
+                </span>
+                <span className="dash-chip-body">
+                  <em>{item.label}</em>
+                  <strong>{item.value}</strong>
+                </span>
+                <span className="dash-chip-go" aria-hidden>
+                  →
+                </span>
+              </Link>
+            );
+          })}
         </div>
       </section>
 

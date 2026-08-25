@@ -2,15 +2,9 @@ import express from 'express';
 import type { AgentConfig } from '../config/index.js';
 import { logger } from '../logging/logger.js';
 import type { PrinterAdapter } from '../printer/index.js';
+import { applyAgentCors } from '../security/cors.js';
 import { requirePrintToken } from '../security/token.js';
 import { createRoutes } from './routes.js';
-
-const CORS_ORIGINS = new Set([
-  'http://localhost:5173',
-  'http://127.0.0.1:5173',
-  'http://localhost:4173',
-  'http://127.0.0.1:4173',
-]);
 
 export function createApp(config: AgentConfig, printer: PrinterAdapter) {
   const app = express();
@@ -18,13 +12,7 @@ export function createApp(config: AgentConfig, printer: PrinterAdapter) {
   app.use(express.json({ limit: '2mb' }));
 
   app.use((req, res, next) => {
-    const origin = req.header('Origin');
-    if (origin && CORS_ORIGINS.has(origin)) {
-      res.setHeader('Access-Control-Allow-Origin', origin);
-      res.setHeader('Vary', 'Origin');
-      res.setHeader('Access-Control-Allow-Headers', 'Content-Type, X-Atria-Print-Token');
-      res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
-    }
+    applyAgentCors(req, res);
     if (req.method === 'OPTIONS') {
       res.status(204).end();
       return;

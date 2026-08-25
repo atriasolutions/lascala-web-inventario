@@ -52,13 +52,15 @@ Generación sugerida (implementación posterior): `crypto.randomBytes(32).toStri
 
 ## 4. CORS y orígenes permitidos
 
-Solo orígenes de desarrollo / SPA local conocidos. Ejemplos:
+Solo orígenes de la SPA conocidos (dev + inventario en HTTPS). El Agent **no** se publica en el droplet.
 
 ```ts
 const ALLOWED_ORIGINS = [
-  'http://localhost:5173',   // Vite default
+  'http://localhost:5173',
   'http://127.0.0.1:5173',
-  // Añadir puerto preview / build local si aplica, p.ej. 4173
+  'http://localhost:4173',
+  'http://127.0.0.1:4173',
+  'https://inventario.lscala.cl',
 ];
 ```
 
@@ -67,6 +69,7 @@ Reglas:
 - Responder `Access-Control-Allow-Origin` solo si `Origin` ∈ allowlist (no `*`).
 - Permitir header `X-Atria-Print-Token`, `Content-Type`.
 - Métodos: `GET`, `POST`, `OPTIONS`.
+- Preflight: `Access-Control-Allow-Private-Network: true` (Chrome, SPA HTTPS → loopback).
 - Requests sin `Origin` (curl, health local) OK en loopback.
 
 Si la SPA se sirve desde otro puerto en el futuro, actualizar allowlist y documentar en este archivo.

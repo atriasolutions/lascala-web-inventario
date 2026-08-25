@@ -1,3 +1,5 @@
+import { chileMoneyFromNumber, parseChileMoney } from '../../lib/chileMoney';
+
 export type DocType = 'factura' | 'boleta' | 'guia' | 'otro';
 
 export type LineDraft = {
@@ -34,17 +36,14 @@ export const DOC_TYPES: { id: DocType; label: string }[] = [
 ];
 
 export function suggestSale(cost: string) {
-  const n = Number(cost);
-  if (!Number.isFinite(n) || n <= 0) return '';
-  return String(Math.round(n * 2));
+  const n = parseChileMoney(cost);
+  if (n == null || n <= 0) return '';
+  return chileMoneyFromNumber(Math.round(n * 2));
 }
 
-/** Enteros limpios para inputs (evita "1000.0"). */
+/** Enteros con miles Chile para inputs. */
 export function moneyInput(value: string | number | null | undefined) {
-  if (value === null || value === undefined || value === '') return '';
-  const n = Number(value);
-  if (!Number.isFinite(n)) return String(value);
-  return String(Math.round(n));
+  return chileMoneyFromNumber(value);
 }
 
 export function blankEditor(key?: string): LineEditor {
@@ -68,10 +67,10 @@ export function validateEditor(ed: LineEditor): string | null {
   if (!ed.description.trim()) return 'Ingresa la descripción de la prenda';
   const qty = Number(ed.quantity);
   if (!Number.isFinite(qty) || qty < 1) return 'La cantidad debe ser al menos 1';
-  const cost = Number(ed.unitCost);
-  if (!Number.isFinite(cost) || cost <= 0) return 'El precio de costo es obligatorio';
-  const sale = Number(ed.salePrice);
-  if (!Number.isFinite(sale) || sale <= 0) return 'El precio de venta sugerido es obligatorio';
+  const cost = parseChileMoney(ed.unitCost);
+  if (cost == null || cost <= 0) return 'El precio de costo es obligatorio';
+  const sale = parseChileMoney(ed.salePrice);
+  if (sale == null || sale <= 0) return 'El precio de venta sugerido es obligatorio';
   if (ed.photoBusy) return 'Espera a que termine de subir la foto';
   return null;
 }
@@ -103,8 +102,8 @@ export function toApiPayload(values: PurchaseFormValues) {
     items: values.lines.map((l) => ({
       description: l.description,
       quantityOrdered: Number(l.quantity),
-      unitCost: Number(l.unitCost),
-      suggestedSalePrice: Number(l.salePrice),
+      unitCost: parseChileMoney(l.unitCost) ?? 0,
+      suggestedSalePrice: parseChileMoney(l.salePrice) ?? 0,
       photoUrl: l.photoUrl,
     })),
   };

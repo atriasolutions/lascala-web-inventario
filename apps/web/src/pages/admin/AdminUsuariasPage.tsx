@@ -1,5 +1,6 @@
 import { type FormEvent, useEffect, useId, useMemo, useState } from 'react';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { ModalOverlayClose } from '../../components/ModalOverlayClose';
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { toast } from '../../lib/toast';
@@ -28,9 +29,9 @@ type CatalogBranch = {
 type Assignment = { enabled: boolean; role: string; posIds: string[] };
 
 const ROLE_CHIPS: { id: 'seller' | 'branch_manager' | 'owner'; label: string }[] = [
-  { id: 'seller', label: 'Vendedora' },
-  { id: 'branch_manager', label: 'Encargada' },
-  { id: 'owner', label: 'Propietaria' },
+  { id: 'seller', label: 'Vendedor/a' },
+  { id: 'branch_manager', label: 'Encargado/a' },
+  { id: 'owner', label: 'Administrador/a' },
 ];
 
 function roleLabel(role: string) {
@@ -135,7 +136,7 @@ export function AdminUsuariasPage() {
       setUsers(usersData.users);
       setCatalog(branchData.branches.filter((b) => b.is_active !== false));
     } catch (e) {
-      toast.error(e instanceof Error ? e.message : 'No se pudo cargar el listado de usuarias');
+      toast.error(e instanceof Error ? e.message : 'No se pudo cargar el listado de usuarios');
     } finally {
       setUsersLoading(false);
     }
@@ -214,7 +215,7 @@ export function AdminUsuariasPage() {
           method: 'PUT',
           body: { assignments: access },
         });
-        toast.success('Usuaria actualizada');
+        toast.success('Usuario actualizado');
         if (editing.id === user?.id) {
           await refreshUser();
           await refreshBranches();
@@ -229,12 +230,12 @@ export function AdminUsuariasPage() {
             assignments: access,
           },
         });
-        toast.success(`${form.fullName.trim() || 'Usuaria'} creada`);
+        toast.success(`${form.fullName.trim() || 'Usuario'} creado`);
       }
       closeSheet();
       await loadUsers();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'No se pudo guardar la usuaria');
+      toast.error(err instanceof Error ? err.message : 'No se pudo guardar el usuario');
     } finally {
       setSavingUser(false);
     }
@@ -244,10 +245,10 @@ export function AdminUsuariasPage() {
     setBusyUserId(u.id);
     try {
       await api(`/api/users/${u.id}`, { method: 'PATCH', body: { isActive } });
-      toast.success(isActive ? 'Usuaria reactivada' : 'Usuaria desactivada');
+      toast.success(isActive ? 'Usuario reactivado' : 'Usuario desactivado');
       await loadUsers();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'No se pudo actualizar la usuaria');
+      toast.error(err instanceof Error ? err.message : 'No se pudo actualizar el usuario');
     } finally {
       setBusyUserId(null);
       setDeactivateTarget(null);
@@ -258,10 +259,10 @@ export function AdminUsuariasPage() {
     setBusyUserId(u.id);
     try {
       await api(`/api/users/${u.id}`, { method: 'DELETE' });
-      toast.success('Usuaria desactivada');
+      toast.success('Usuario desactivado');
       await loadUsers();
     } catch (err) {
-      toast.error(err instanceof Error ? err.message : 'No se pudo eliminar la usuaria');
+      toast.error(err instanceof Error ? err.message : 'No se pudo eliminar el usuario');
     } finally {
       setBusyUserId(null);
       setDeleteTarget(null);
@@ -272,21 +273,21 @@ export function AdminUsuariasPage() {
     <div className="admin-panel" role="tabpanel">
       <div className="section-title admin-toolbar">
         <p className="muted admin-toolbar-hint">
-          Cada usuaria solo ve las sucursales y cajas que le marques aquí.
+          Cada usuario solo ve las sucursales y cajas que le marques aquí.
         </p>
         <button type="button" className="btn" onClick={openCreate} disabled={usersLoading}>
-          Nueva usuaria
+          Nuevo usuario
         </button>
       </div>
 
       {usersLoading ? (
-        <p className="muted">Cargando usuarias…</p>
+        <p className="muted">Cargando usuarios…</p>
       ) : !users.length ? (
         <div className="admin-empty-dashed" role="status">
-          <strong>Sin usuarias</strong>
-          <p>Crea la primera para dar acceso a la tienda.</p>
+          <strong>Sin usuarios</strong>
+          <p>Crea el primero para dar acceso a la tienda.</p>
           <button type="button" className="btn" onClick={openCreate}>
-            Nueva usuaria
+            Nuevo usuario
           </button>
         </div>
       ) : (
@@ -308,7 +309,7 @@ export function AdminUsuariasPage() {
                     <p className="admin-boutique-meta">{u.email}</p>
                   </div>
                   <span className={`admin-chip${u.is_active ? ' is-ok' : ' is-off'}`}>
-                    {u.is_active ? 'Activa' : 'Inactiva'}
+                    {u.is_active ? 'Activo' : 'Inactivo'}
                   </span>
                 </div>
                 <p className="admin-chip-label">Sucursales</p>
@@ -325,7 +326,7 @@ export function AdminUsuariasPage() {
                 )}
                 <p className="admin-chip-label">Cajas</p>
                 {isOwnerUser ? (
-                  <p className="muted admin-pos-empty">Propietaria: todas las cajas</p>
+                  <p className="muted admin-pos-empty">Administrador/a: todas las cajas</p>
                 ) : posBits.length ? (
                   <ul className="admin-chip-row admin-pos-chips">
                     {posBits.map((t) => (
@@ -365,7 +366,7 @@ export function AdminUsuariasPage() {
                     type="button"
                     className="btn ghost admin-btn-danger"
                     disabled={busy || isSelf}
-                    title={isSelf ? 'No puedes eliminarte a ti misma' : undefined}
+                    title={isSelf ? 'No puedes eliminar tu propia cuenta' : undefined}
                     onClick={() => setDeleteTarget(u)}
                   >
                     Eliminar
@@ -390,6 +391,7 @@ export function AdminUsuariasPage() {
             if (e.target === e.currentTarget) closeSheet();
           }}
         >
+          <ModalOverlayClose onClose={closeSheet}>
           <div
             className="pos-modal-panel admin-sheet admin-sheet-wide"
             role="dialog"
@@ -398,10 +400,7 @@ export function AdminUsuariasPage() {
             onClick={(e) => e.stopPropagation()}
           >
             <div className="pos-modal-head">
-              <h3 id={formTitleId}>{editing ? 'Editar usuaria' : 'Nueva usuaria'}</h3>
-              <button type="button" className="btn ghost" onClick={closeSheet} aria-label="Cerrar">
-                Cerrar
-              </button>
+              <h3 id={formTitleId}>{editing ? 'Editar usuario' : 'Nuevo usuario'}</h3>
             </div>
             <form className="admin-sheet-form" onSubmit={saveUser}>
               <div className="field">
@@ -488,7 +487,7 @@ export function AdminUsuariasPage() {
                           />
                           {a.role === 'owner' ? (
                             <p className="muted admin-field-hint">
-                              La propietaria opera todas las cajas de esta sucursal.
+                              Quien administra opera todas las cajas de esta sucursal.
                             </p>
                           ) : (
                             <>
@@ -525,20 +524,20 @@ export function AdminUsuariasPage() {
                   Cancelar
                 </button>
                 <button className="btn" type="submit" disabled={savingUser}>
-                  {savingUser ? 'Guardando…' : editing ? 'Guardar' : 'Crear usuaria'}
+                  {savingUser ? 'Guardando…' : editing ? 'Guardar' : 'Crear usuario'}
                 </button>
               </div>
             </form>
-          </div>
+          </div></ModalOverlayClose>
         </div>
       ) : null}
 
       <ConfirmDialog
         open={Boolean(deactivateTarget)}
-        title="Desactivar usuaria"
+        title="Desactivar usuario"
         message={
           deactivateTarget
-            ? `${deactivateTarget.full_name} no podrá iniciar sesión hasta que la reactives.`
+            ? `${deactivateTarget.full_name} no podrá iniciar sesión hasta que lo reactives.`
             : ''
         }
         confirmLabel="Desactivar"
@@ -551,10 +550,10 @@ export function AdminUsuariasPage() {
       />
       <ConfirmDialog
         open={Boolean(deleteTarget)}
-        title="Eliminar usuaria"
+        title="Eliminar usuario"
         message={
           deleteTarget
-            ? `Vas a dejar sin acceso a ${deleteTarget.full_name}. No puedes hacer esto contigo misma.`
+            ? `Vas a dejar sin acceso a ${deleteTarget.full_name}.`
             : ''
         }
         confirmLabel="Eliminar"

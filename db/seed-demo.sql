@@ -19,6 +19,7 @@ WHERE internal_code IS NOT NULL
   AND barcode IS DISTINCT FROM internal_code;
 
 -- Caja 2 + vendedora de piso (login: camila@lscala.cl / Vendedor123!)
+-- Encargada: encargada@lscala.cl / Vendedor123! (si no vino en 010)
 INSERT INTO pos_terminals (id, branch_id, code, name, status)
 VALUES (
   'cccccccc-cccc-cccc-cccc-ccccccccccc2',
@@ -45,6 +46,22 @@ FROM users u
 WHERE u.email = 'camila@lscala.cl'
 ON CONFLICT (user_id, branch_id) DO NOTHING;
 
+INSERT INTO users (id, organization_id, email, password_hash, full_name)
+VALUES (
+  'dddddddd-dddd-dddd-dddd-ddddddddddd4',
+  'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa',
+  'encargada@lscala.cl',
+  '$2b$10$IGJHrZ7wgaOlNN.sFmPA.ebBrh2us4wfr.A3AamLneE6GwWIOVbWe',
+  'Encargada L''Scala'
+)
+ON CONFLICT (email) DO NOTHING;
+
+INSERT INTO user_branches (user_id, branch_id, role)
+SELECT u.id, 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb', 'branch_manager'
+FROM users u
+WHERE u.email = 'encargada@lscala.cl'
+ON CONFLICT (user_id, branch_id) DO UPDATE SET role = EXCLUDED.role;
+
 -- Vendedoras de piso: solo Caja 1 (Caja 2 existe, la propietaria la ve).
 INSERT INTO user_pos (user_id, pos_id)
 SELECT u.id, 'cccccccc-cccc-cccc-cccc-cccccccccccc'
@@ -57,6 +74,14 @@ USING users u
 WHERE up.user_id = u.id
   AND u.email IN ('camila@lscala.cl', 'vendedor@lscala.cl')
   AND up.pos_id <> 'cccccccc-cccc-cccc-cccc-cccccccccccc';
+
+INSERT INTO user_pos (user_id, pos_id)
+SELECT u.id, p.id
+FROM users u
+CROSS JOIN pos_terminals p
+WHERE u.email = 'encargada@lscala.cl'
+  AND p.branch_id = 'bbbbbbbb-bbbb-bbbb-bbbb-bbbbbbbbbbbb'
+ON CONFLICT (user_id, pos_id) DO NOTHING;
 
 INSERT INTO suppliers (id, organization_id, name, contact_name, phone, notes)
 VALUES (
@@ -91,18 +116,6 @@ WHERE organization_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
   );
 
 -- Quitar set demo anterior (orden FKs).
-DELETE FROM sale_items
-WHERE sale_id IN (
-    SELECT id FROM sales
-    WHERE organization_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
-      AND receipt_number LIKE 'V-D%'
-  )
-  OR product_id IN (
-    SELECT id FROM products
-    WHERE organization_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
-      AND internal_code ~ '^LS-1000'
-  );
-
 DELETE FROM exchange_returns
 WHERE original_product_id IN (SELECT id FROM products WHERE internal_code ~ '^LS-1000')
    OR new_product_id IN (SELECT id FROM products WHERE internal_code ~ '^LS-1000')
@@ -115,6 +128,18 @@ WHERE original_product_id IN (SELECT id FROM products WHERE internal_code ~ '^LS
 DELETE FROM change_vouchers
 WHERE product_id IN (SELECT id FROM products WHERE internal_code ~ '^LS-1000')
    OR sale_id IN (SELECT id FROM sales WHERE receipt_number LIKE 'V-D%');
+
+DELETE FROM sale_items
+WHERE sale_id IN (
+    SELECT id FROM sales
+    WHERE organization_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+      AND receipt_number LIKE 'V-D%'
+  )
+  OR product_id IN (
+    SELECT id FROM products
+    WHERE organization_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+      AND internal_code ~ '^LS-1000'
+  );
 
 DELETE FROM sales
 WHERE organization_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
@@ -495,6 +520,41 @@ JOIN sales s
 JOIN products p
   ON p.internal_code = d.code
  AND p.organization_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
+
+-- Tickets de cambio (VC-…) para prendas elegibles de las ventas demo V-D…
+INSERT INTO change_vouchers (
+  organization_id, branch_id, sale_id, sale_item_id, product_id,
+  voucher_number, issued_at, expires_at, conditions, created_by, created_at
+)
+SELECT
+  s.organization_id,
+  s.branch_id,
+  s.id,
+  si.id,
+  si.product_id,
+  'VC-' || LPAD((
+    (
+      SELECT COALESCE(MAX(
+        CASE WHEN cv.voucher_number ~ '^VC-?[0-9]+$'
+          THEN SUBSTRING(cv.voucher_number FROM '[0-9]+$')::int
+        END
+      ), 0)
+      FROM change_vouchers cv
+      WHERE cv.organization_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
+    )
+    + ROW_NUMBER() OVER (ORDER BY s.receipt_number, si.id)
+  )::text, 6, '0'),
+  (timezone('America/Santiago', s.sold_at))::date,
+  (timezone('America/Santiago', s.sold_at))::date + 7,
+  'No se aceptan prendas manchadas, con olor a cigarro o dañadas. Vestidos de fiesta no admiten cambios.',
+  s.seller_user_id,
+  s.sold_at
+FROM sale_items si
+JOIN sales s ON s.id = si.sale_id
+JOIN products p ON p.id = si.product_id
+WHERE s.receipt_number LIKE 'V-D%'
+  AND (p.allows_exchange OR p.allows_return)
+  AND NOT EXISTS (SELECT 1 FROM change_vouchers v WHERE v.sale_item_id = si.id);
 
 INSERT INTO inventory_movements (
   organization_id, branch_id, product_id, movement_type, quantity_delta, quantity_after,

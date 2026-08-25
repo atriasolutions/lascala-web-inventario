@@ -4,7 +4,7 @@ import bcrypt from 'bcryptjs';
 import { z } from 'zod';
 import { env } from '../config.js';
 import { query } from '../db/pool.js';
-import { loadUser, requireAuth, signToken, isOrgOwner } from '../middleware/auth.js';
+import { loadUser, requireAuth, signToken, resolveSessionTtl, isOrgOwner } from '../middleware/auth.js';
 import { asyncHandler, HttpError } from '../utils/errors.js';
 
 export const authRouter = Router();
@@ -20,10 +20,28 @@ function sleep(ms: number) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
+const sessionClientSchema = z.object({
+  /** App instalada (standalone móvil). El web no debe enviar esto en Chrome de escritorio. */
+  client: z.enum(['pwa', 'web']).optional(),
+  persistent: z.boolean().optional(),
+});
+
+function issueSession(user: { id: string; organizationId: string }, hints: z.infer<typeof sessionClientSchema>) {
+  const { persistent, expiresIn } = resolveSessionTtl(hints);
+  const token = signToken({ id: user.id, organizationId: user.organizationId }, { expiresIn });
+  return { token, persistent, expiresIn };
+}
+
 authRouter.post(
   '/login',
   asyncHandler(async (req, res) => {
-    const body = z.object({ email: z.string().email(), password: z.string().min(1) }).parse(req.body);
+    const body = z
+      .object({
+        email: z.string().email(),
+        password: z.string().min(1),
+      })
+      .merge(sessionClientSchema)
+      .parse(req.body);
     const result = await query<{ id: string; password_hash: string; organization_id: string }>(
       'SELECT id, password_hash, organization_id FROM users WHERE email = $1 AND is_active = true',
       [body.email.toLowerCase()],
@@ -34,8 +52,20 @@ authRouter.post(
     }
     const user = await loadUser(row.id);
     if (!user) throw new HttpError(401, 'Usuario inválido');
-    const token = signToken({ id: user.id, organizationId: user.organizationId });
-    res.json({ token, user });
+    const session = issueSession(user, body);
+    res.json({ ...session, user });
+  }),
+);
+
+/** Reemite JWT. PWA envía client/persistent; escritorio no (sigue 12 h). */
+authRouter.post(
+  '/refresh',
+  requireAuth,
+  asyncHandler(async (req, res) => {
+    const body = sessionClientSchema.parse(req.body ?? {});
+    const user = req.user!;
+    const session = issueSession(user, body);
+    res.json({ ...session, user });
   }),
 );
 

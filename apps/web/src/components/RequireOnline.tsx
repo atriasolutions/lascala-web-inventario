@@ -7,7 +7,7 @@ type Props = {
 };
 
 /**
- * Bloquea módulos que exigen red (todo excepto Caja / login).
+ * Bloquea módulos que exigen red (todo excepto Ventas / login).
  */
 export function RequireOnline({ children }: Props) {
   const { online, checking, refresh } = useNetworkStatus();
@@ -26,11 +26,11 @@ export function RequireOnline({ children }: Props) {
         <h2 className="net-blocked-title">Se necesita conexión</h2>
         <p className="net-blocked-copy">
           Este módulo solo funciona con internet. Mientras tanto puedes seguir en{' '}
-          <strong>Caja</strong> con el catálogo guardado en este equipo.
+          <strong>Ventas</strong> con el catálogo guardado en este equipo.
         </p>
         <div className="net-blocked-actions">
           <Link to="/vender" className="btn">
-            Ir a Caja
+            Ir a Ventas
           </Link>
           <button type="button" className="btn secondary" onClick={() => void refresh()}>
             Reintentar

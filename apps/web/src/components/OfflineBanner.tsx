@@ -94,8 +94,8 @@ export function OfflineBanner() {
             : pending > 0
               ? `Este módulo necesita internet. Hay ${pending} venta${pending === 1 ? '' : 's'} pendiente${
                   pending === 1 ? '' : 's'
-                } — ve a Caja o reconecta.`
-              : 'Este módulo necesita internet. Puedes ir a Caja con el catálogo de este equipo.'}
+                } — ve a Ventas o reconecta.`
+              : 'Este módulo necesita internet. Puedes ir a Ventas con el catálogo de este equipo.'}
       </p>
       <button
         type="button"

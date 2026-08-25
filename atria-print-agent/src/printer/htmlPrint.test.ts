@@ -101,6 +101,29 @@ describe('escposReceipt', () => {
     assert.equal(escBang, false);
   });
 
+  it('emits two Code128 commands for voucher access + product', () => {
+    const buf = htmlToEscPosReceipt(`<div>
+      <p>Venta V-000077</p>
+      <p>Cód: LS-100007 · Hasta: 24-08-2026</p>
+      <p>Ticket</p>
+      <p>[[[BARCODE:VC-000095]]]</p>
+      <p>Prenda</p>
+      <p>[[[BARCODE:LS-100007]]]</p>
+    </div>`);
+    const asStr = buf.toString('latin1');
+    assert.match(asStr, /Venta V-000077/);
+    assert.match(asStr, /Ticket/);
+    assert.match(asStr, /Prenda/);
+    assert.match(asStr, /VC-000095/);
+    assert.match(asStr, /LS-100007/);
+    assert.doesNotMatch(asStr, /\[\[\[BARCODE/);
+    let n = 0;
+    for (let i = 0; i < buf.length - 3; i++) {
+      if (buf[i] === 0x1d && buf[i + 1] === 0x6b && buf[i + 2] === 73) n += 1;
+    }
+    assert.equal(n, 2, 'expected two GS k 73 Code128');
+  });
+
   it('emits Code128 command from barcode marker', () => {
     assert.ok(BARCODE_LINE_RE.test('[[[BARCODE:BC000016]]]'));
     const buf = buildEscPosFromLines(['[[[BARCODE:BC000016]]]']);

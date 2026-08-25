@@ -10,11 +10,13 @@ import {
 import { Link, useSearchParams } from 'react-router-dom';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { InfiniteListFooter } from '../components/InfiniteListFooter';
+import { ModalOverlayClose } from '../components/ModalOverlayClose';
 import { ProductPhotoPlaceholder } from '../components/ProductPhotoPlaceholder';
 import { SortableTh } from '../components/SortableTh';
 import { useInfiniteList } from '../hooks/useInfiniteList';
 import { api, mediaUrl, money } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { isLeadRole } from '../lib/roles';
 import { loadListFilters, saveListFilters } from '../lib/listFiltersPersist';
 import {
   nextInventorySort,
@@ -83,7 +85,6 @@ type Balance = {
 };
 
 type Category = { id: string; name: string };
-type AdjustMode = 'absolute' | 'delta';
 type PhotoFilter = '' | '1' | '0';
 type TracksFilter = '' | '1' | '0';
 type StockPresence = '' | 'in' | 'zero';
@@ -148,6 +149,8 @@ function buildBalancesQuery(f: ListFilters, offset: number, limit: number) {
 
 export function InventoryPage() {
   const { branches, branchId } = useAuth();
+  const role = branches.find((b) => b.id === branchId)?.role || '';
+  const canAdjust = isLeadRole(role);
   const [searchParams] = useSearchParams();
   const branchName = branches.find((b) => b.id === branchId)?.name || 'sucursal activa';
 
@@ -177,9 +180,8 @@ export function InventoryPage() {
   const filtersTitleId = useId();
 
   const [adjusting, setAdjusting] = useState<Balance | null>(null);
-  const [adjustMode, setAdjustMode] = useState<AdjustMode>('absolute');
-  const [newQty, setNewQty] = useState('');
   const [deltaQty, setDeltaQty] = useState('');
+  const [deltaSign, setDeltaSign] = useState<'up' | 'down'>('up');
   const [reason, setReason] = useState('');
   const [adjustBusy, setAdjustBusy] = useState(false);
   const [adjustError, setAdjustError] = useState('');
@@ -336,9 +338,8 @@ export function InventoryPage() {
   function openAdjust(b: Balance, trigger?: HTMLElement | null) {
     triggerRef.current = trigger ?? null;
     setAdjusting(b);
-    setAdjustMode('absolute');
-    setNewQty(String(qtyOf(b)));
-    setDeltaQty('');
+    setDeltaQty('1');
+    setDeltaSign('down');
     setReason('');
     setAdjustError('');
     setAdjustBusy(false);
@@ -370,15 +371,16 @@ export function InventoryPage() {
   const previewAfter = useMemo(() => {
     if (!adjusting) return null;
     const current = qtyOf(adjusting);
-    if (adjustMode === 'absolute') {
-      const n = Number(newQty);
-      if (!Number.isFinite(n) || n < 0 || !Number.isInteger(n)) return null;
-      return n;
-    }
-    const d = Number(deltaQty);
-    if (!Number.isFinite(d) || !Number.isInteger(d) || d === 0) return null;
+    const n = Number(deltaQty);
+    if (!Number.isFinite(n) || !Number.isInteger(n) || n <= 0) return null;
+    const d = deltaSign === 'up' ? n : -n;
     return current + d;
-  }, [adjusting, adjustMode, newQty, deltaQty]);
+  }, [adjusting, deltaQty, deltaSign]);
+
+  const previewDelta = useMemo(() => {
+    if (!adjusting || previewAfter == null) return null;
+    return previewAfter - qtyOf(adjusting);
+  }, [adjusting, previewAfter]);
 
   async function submitAdjust(e: FormEvent) {
     e.preventDefault();
@@ -388,36 +390,23 @@ export function InventoryPage() {
       setAdjustError('El motivo es obligatorio');
       return;
     }
-    const body: Record<string, unknown> = {
-      productId: adjusting.product_id,
-      notes,
-    };
-    if (adjustMode === 'absolute') {
-      const n = Number(newQty);
-      if (!Number.isFinite(n) || n < 0 || !Number.isInteger(n)) {
-        setAdjustError('Ingresa una cantidad entera válida (≥ 0)');
-        return;
-      }
-      if (n === qtyOf(adjusting)) {
-        setAdjustError('La cantidad nueva es igual al stock actual');
-        return;
-      }
-      body.newQuantity = n;
-    } else {
-      const d = Number(deltaQty);
-      if (!Number.isFinite(d) || !Number.isInteger(d) || d === 0) {
-        setAdjustError('Ingresa un ajuste entero distinto de cero (ej. -1 o +2)');
-        return;
-      }
-      if (qtyOf(adjusting) + d < 0) {
-        setAdjustError('El stock no puede quedar negativo');
-        return;
-      }
-      body.delta = d;
+    const n = Number(deltaQty);
+    if (!Number.isFinite(n) || !Number.isInteger(n) || n <= 0) {
+      setAdjustError('Ingresa cuántas unidades (entero mayor a 0)');
+      return;
+    }
+    const d = deltaSign === 'up' ? n : -n;
+    if (qtyOf(adjusting) + d < 0) {
+      setAdjustError('El stock no puede quedar negativo');
+      return;
     }
 
     setAdjustError('');
-    setPendingAdjustBody(body);
+    setPendingAdjustBody({
+      productId: adjusting.product_id,
+      notes,
+      delta: d,
+    });
     setConfirmAdjustOpen(true);
   }
 
@@ -458,7 +447,7 @@ export function InventoryPage() {
                 <span className="inv-intro-extra"> · valor a precio de venta</span>
               </p>
             </div>
-            <Link className="btn secondary inv-mov-btn" to="/movimientos">
+            <Link className="btn secondary inv-mov-btn" to="/movimientos" data-help="cta.stock.movimientos">
               Movimientos
             </Link>
           </div>
@@ -662,7 +651,7 @@ export function InventoryPage() {
               <div className="sales-empty">
                 <h3>Sin stock en esta sucursal</h3>
                 <p className="muted">Recibe mercadería para ver saldos acá.</p>
-                <Link to="/ingresos" className="btn secondary" style={{ marginTop: '0.75rem' }}>
+                <Link to="/ingresos" className="btn secondary desktop-only" style={{ marginTop: '0.75rem' }}>
                   Ir a Ingresos
                 </Link>
               </div>
@@ -733,13 +722,22 @@ export function InventoryPage() {
                             <span className="inv-card-price">{money(b.sale_price)}</span>
                           </div>
                           <p className="inv-card-room muted">{money(lineValue)} en sala</p>
+                          {canAdjust ? (
                           <button
                             type="button"
                             className="btn secondary inv-adjust-btn"
+                            data-help="cta.stock.ajustar"
                             onClick={(e) => openAdjust(b, e.currentTarget)}
                           >
                             Ajustar
                           </button>
+                          ) : null}
+                          <Link
+                            className="btn ghost inv-mov-link"
+                            to={`/movimientos?productId=${encodeURIComponent(b.product_id)}&productLabel=${encodeURIComponent(`${b.internal_code} · ${b.name}`)}`}
+                          >
+                            Ver movimientos
+                          </Link>
                         </div>
                       </article>
                     );
@@ -787,7 +785,7 @@ export function InventoryPage() {
                           onSort={toggleSort}
                         />
                         <th className="inv-actions-col">
-                          <span className="sr-only">Acciones</span>
+                          <span className="sr-only">{canAdjust ? 'Acciones' : ''}</span>
                         </th>
                       </tr>
                     </thead>
@@ -836,13 +834,24 @@ export function InventoryPage() {
                             <td className="inv-num">{money(b.sale_price)}</td>
                             <td className="inv-num">{money(lineValue)}</td>
                             <td className="inv-actions-col">
-                              <button
-                                type="button"
-                                className="btn secondary inv-adjust-btn"
-                                onClick={(e) => openAdjust(b, e.currentTarget)}
-                              >
-                                Ajustar
-                              </button>
+                              <div className="inv-row-actions">
+                                {canAdjust ? (
+                                <button
+                                  type="button"
+                                  className="btn secondary inv-adjust-btn"
+                                  data-help="cta.stock.ajustar"
+                                  onClick={(e) => openAdjust(b, e.currentTarget)}
+                                >
+                                  Ajustar
+                                </button>
+                                ) : null}
+                                <Link
+                                  className="btn ghost"
+                                  to={`/movimientos?productId=${encodeURIComponent(b.product_id)}&productLabel=${encodeURIComponent(`${b.internal_code} · ${b.name}`)}`}
+                                >
+                                  Movimientos
+                                </Link>
+                              </div>
                             </td>
                           </tr>
                         );
@@ -866,6 +875,10 @@ export function InventoryPage() {
             className="ing-list-figure-img"
             src="/brand/inventario-modelo.png"
             alt=""
+            width={1024}
+            height={1536}
+            decoding="async"
+            loading="lazy"
           />
         </aside>
       </div>
@@ -878,6 +891,7 @@ export function InventoryPage() {
             if (e.target === e.currentTarget) setFiltersOpen(false);
           }}
         >
+          <ModalOverlayClose onClose={() => setFiltersOpen(false)}>
           <div
             id="inv-filters-sheet"
             className="pos-modal-panel prod-filters-sheet inv-filters-sheet"
@@ -888,14 +902,6 @@ export function InventoryPage() {
           >
             <div className="pos-modal-head">
               <h3 id={filtersTitleId}>Filtros</h3>
-              <button
-                type="button"
-                className="btn ghost"
-                onClick={() => setFiltersOpen(false)}
-                aria-label="Cerrar"
-              >
-                Cerrar
-              </button>
             </div>
 
             <div className="prod-filter-fields">
@@ -1029,6 +1035,7 @@ export function InventoryPage() {
               </button>
             </div>
           </div>
+          </ModalOverlayClose>
         </div>
       )}
 
@@ -1040,6 +1047,7 @@ export function InventoryPage() {
             if (e.target === e.currentTarget && !adjustBusy) closeAdjust();
           }}
         >
+          <ModalOverlayClose onClose={closeAdjust} disabled={adjustBusy}>
           <form
             className="pos-modal-panel inv-adjust-modal"
             role="dialog"
@@ -1050,15 +1058,6 @@ export function InventoryPage() {
           >
             <div className="pos-modal-head">
               <h3 id={modalTitleId}>Ajustar stock</h3>
-              <button
-                type="button"
-                className="btn ghost"
-                onClick={closeAdjust}
-                disabled={adjustBusy}
-                aria-label="Cerrar"
-              >
-                Cerrar
-              </button>
             </div>
 
             <p className="inv-adjust-product">
@@ -1073,67 +1072,51 @@ export function InventoryPage() {
               Stock actual: <strong>{qtyOf(adjusting)} un.</strong>
             </p>
 
-            <div className="ing-mode-toggle inv-adjust-mode" role="group" aria-label="Modo de ajuste">
+            <div className="ing-mode-toggle inv-adjust-mode" role="group" aria-label="Subir o bajar">
               <button
                 type="button"
-                className={adjustMode === 'absolute' ? 'is-active' : ''}
-                aria-pressed={adjustMode === 'absolute'}
+                className={deltaSign === 'up' ? 'is-active' : ''}
+                aria-pressed={deltaSign === 'up'}
                 disabled={adjustBusy}
-                onClick={() => setAdjustMode('absolute')}
+                onClick={() => setDeltaSign('up')}
               >
-                Nueva cantidad
+                Subir (+)
               </button>
               <button
                 type="button"
-                className={adjustMode === 'delta' ? 'is-active' : ''}
-                aria-pressed={adjustMode === 'delta'}
+                className={deltaSign === 'down' ? 'is-active' : ''}
+                aria-pressed={deltaSign === 'down'}
                 disabled={adjustBusy}
-                onClick={() => setAdjustMode('delta')}
+                onClick={() => setDeltaSign('down')}
               >
-                Diferencia (±)
+                Bajar (−)
               </button>
             </div>
 
-            {adjustMode === 'absolute' ? (
-              <div className="field">
-                <label htmlFor="inv-adjust-qty">Nueva cantidad</label>
-                <input
-                  id="inv-adjust-qty"
-                  ref={qtyRef}
-                  type="number"
-                  min={0}
-                  step={1}
-                  inputMode="numeric"
-                  required
-                  value={newQty}
-                  disabled={adjustBusy}
-                  onChange={(e) => setNewQty(e.target.value)}
-                />
-              </div>
-            ) : (
-              <div className="field">
-                <label htmlFor="inv-adjust-delta">Ajuste (ej. -1 o 2)</label>
-                <input
-                  id="inv-adjust-delta"
-                  ref={qtyRef}
-                  type="number"
-                  step={1}
-                  inputMode="numeric"
-                  required
-                  value={deltaQty}
-                  disabled={adjustBusy}
-                  onChange={(e) => setDeltaQty(e.target.value)}
-                  placeholder="0"
-                />
-              </div>
-            )}
+            <div className="field">
+              <label htmlFor="inv-adjust-delta">
+                Unidades a {deltaSign === 'up' ? 'sumar' : 'restar'}
+              </label>
+              <input
+                id="inv-adjust-delta"
+                ref={qtyRef}
+                type="number"
+                min={1}
+                step={1}
+                inputMode="numeric"
+                required
+                value={deltaQty}
+                disabled={adjustBusy}
+                onChange={(e) => setDeltaQty(e.target.value)}
+              />
+            </div>
 
-            {previewAfter != null && previewAfter !== qtyOf(adjusting) && (
-              <p className="ing-hint">
-                Quedará en <strong>{previewAfter} un.</strong>
-                {previewAfter < 0 ? ' (inválido)' : ''}
+            {previewAfter != null && previewDelta != null ? (
+              <p className="ing-hint" role="status">
+                Quedará en <strong>{previewAfter} un.</strong> ({previewDelta > 0 ? '+' : ''}
+                {previewDelta})
               </p>
-            )}
+            ) : null}
 
             <div className="field">
               <label htmlFor="inv-adjust-reason">Motivo</label>
@@ -1163,7 +1146,7 @@ export function InventoryPage() {
                 {adjustBusy ? 'Guardando…' : 'Continuar'}
               </button>
             </div>
-          </form>
+          </form></ModalOverlayClose>
         </div>
       )}
 
@@ -1171,8 +1154,8 @@ export function InventoryPage() {
         open={confirmAdjustOpen}
         title="Confirmar ajuste de stock"
         message={
-          adjusting && previewAfter != null
-            ? `${adjusting.name}: de ${qtyOf(adjusting)} a ${previewAfter} un. ¿Confirmas el ajuste?`
+          adjusting && previewAfter != null && previewDelta != null
+            ? `${adjusting.name}: ${previewDelta > 0 ? 'sumar' : 'restar'} ${Math.abs(previewDelta)} un. (${qtyOf(adjusting)} → ${previewAfter}). ¿Confirmas?`
             : '¿Confirmas el ajuste de stock?'
         }
         cancelLabel="Volver"

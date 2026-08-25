@@ -13,7 +13,7 @@
     "start": "node dist/main.js",
     "build": "tsc -p tsconfig.json",
     "typecheck": "tsc -p tsconfig.json --noEmit",
-    "test": "tsx --test src/jobs/*.test.ts src/printer/*.test.ts src/printer/macos/*.test.ts src/printer/windows/*.test.ts src/macos/*.test.ts",
+    "test": "tsx --test src/jobs/*.test.ts src/printer/*.test.ts src/printer/macos/*.test.ts src/printer/windows/*.test.ts src/macos/*.test.ts src/server/*.test.ts",
     "pack:mac": "node packaging/scripts/pack-mac.mjs",
     "pack:win": "node packaging/scripts/pack-win.mjs",
     "pack": "npm run pack:mac"

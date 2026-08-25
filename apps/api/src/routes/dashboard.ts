@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { query } from '../db/pool.js';
-import { requireAuth, requireBranch } from '../middleware/auth.js';
+import { requireAuth, requireBranch, requireRoles } from '../middleware/auth.js';
 import { getExpiringVouchers, getLowStockAlerts, getNoMovementAlerts } from '../services/inventory.js';
 import { asyncHandler } from '../utils/errors.js';
 
@@ -22,6 +22,7 @@ const TZ = 'America/Santiago';
  */
 dashboardRouter.get(
   '/summary',
+  requireRoles('owner'),
   asyncHandler(async (req, res) => {
     const branchId = req.activeBranchId!;
     const consolidated = req.query.consolidated === '1' && req.activeRole === 'owner';

@@ -26,6 +26,8 @@ type MovementRow = {
   merma_id: string | null;
   merma_reason: string | null;
   sale_voucher_count: number | null;
+  stocktake_id: string | null;
+  stocktake_label: string | null;
 };
 
 function purchaseDocLabel(docType: string | null | undefined, invoice: string | null | undefined) {
@@ -106,8 +108,14 @@ function enrichMovement(row: MovementRow) {
       reasonLabel = row.notes?.trim()
         ? `Ajuste de inventario · ${row.notes.trim()}`
         : 'Ajuste manual de stock';
-      webPath = `/inventario?q=${encodeURIComponent(row.internal_code || '')}`;
-      linkLabel = 'Ver inventario';
+      if (row.stocktake_id && row.stocktake_label) {
+        webPath = `/inventarios/${row.stocktake_id}`;
+        linkLabel = `Ver toma ${row.stocktake_label}`;
+        referenceCode = row.stocktake_label;
+      } else {
+        webPath = `/inventario?q=${encodeURIComponent(row.internal_code || '')}`;
+        linkLabel = 'Ver stock';
+      }
       break;
     }
     case 'RETURN_IN': {
@@ -257,13 +265,50 @@ inventoryRouter.get(
   }),
 );
 
+const UUID_RE =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
+
+function optionalUuid(raw: unknown, label: string): string | null {
+  const s = String(raw || '').trim();
+  if (!s) return null;
+  if (!UUID_RE.test(s)) throw new HttpError(400, `${label}: valor inválido`);
+  return s;
+}
+
+inventoryRouter.get(
+  '/movements/users',
+  asyncHandler(async (req, res) => {
+    const result = await query<{ id: string; full_name: string }>(
+      `SELECT u.id, u.full_name
+       FROM users u
+       WHERE u.organization_id = $2
+         AND (
+           EXISTS (
+             SELECT 1 FROM user_branches ub
+             WHERE ub.user_id = u.id AND ub.branch_id = $1
+           )
+           OR EXISTS (
+             SELECT 1 FROM inventory_movements m
+             WHERE m.created_by = u.id AND m.branch_id = $1
+           )
+         )
+       ORDER BY u.full_name`,
+      [req.activeBranchId, req.user!.organizationId],
+    );
+    res.json({ users: result.rows });
+  }),
+);
+
 inventoryRouter.get(
   '/movements',
   asyncHandler(async (req, res) => {
     const typeRaw = String(req.query.type || '').trim();
     const q = String(req.query.q || '').trim();
+    const productQ = String(req.query.productQ || '').trim();
     const dateFrom = String(req.query.dateFrom || '').trim();
     const dateTo = String(req.query.dateTo || '').trim();
+    const userId = optionalUuid(req.query.userId, 'Usuario');
+    const productId = optionalUuid(req.query.productId, 'Producto');
 
     const params: unknown[] = [req.activeBranchId];
     let sql = `
@@ -281,7 +326,9 @@ inventoryRouter.get(
              (
                SELECT COUNT(*)::int FROM change_vouchers cv
                WHERE cv.sale_id = s.id
-             ) AS sale_voucher_count
+             ) AS sale_voucher_count,
+             st.id AS stocktake_id,
+             st.take_label AS stocktake_label
       FROM inventory_movements m
       JOIN products p ON p.id = m.product_id
       LEFT JOIN users u ON u.id = m.created_by
@@ -291,6 +338,8 @@ inventoryRouter.get(
         ON m.reference_type = 'sale' AND s.id = m.reference_id
       LEFT JOIN mermas mer
         ON m.reference_type = 'merma' AND mer.id = m.reference_id
+      LEFT JOIN stocktakes st
+        ON m.reference_type = 'stocktake' AND st.id = m.reference_id
       WHERE m.branch_id = $1`;
 
     if (typeRaw && typeRaw !== 'all') {
@@ -305,6 +354,21 @@ inventoryRouter.get(
       params.push(dateTo);
       sql += ` AND m.created_at::date <= $${params.length}::date`;
     }
+    if (userId) {
+      params.push(userId);
+      sql += ` AND m.created_by = $${params.length}::uuid`;
+    }
+    if (productId) {
+      params.push(productId);
+      sql += ` AND m.product_id = $${params.length}::uuid`;
+    } else if (productQ) {
+      params.push(`%${productQ}%`);
+      sql += ` AND (
+        p.name ILIKE $${params.length}
+        OR p.internal_code ILIKE $${params.length}
+        OR COALESCE(p.barcode,'') ILIKE $${params.length}
+      )`;
+    }
     if (q) {
       params.push(`%${q}%`);
       sql += ` AND (
@@ -315,6 +379,7 @@ inventoryRouter.get(
         OR COALESCE(pu.invoice_number,'') ILIKE $${params.length}
         OR COALESCE(s.receipt_number,'') ILIKE $${params.length}
         OR COALESCE(mer.reason,'') ILIKE $${params.length}
+        OR COALESCE(st.take_label,'') ILIKE $${params.length}
       )`;
     }
 
@@ -351,7 +416,7 @@ inventoryRouter.get(
  */
 inventoryRouter.post(
   '/adjust',
-  requireRoles('owner', 'branch_manager', 'seller'),
+  requireRoles('owner', 'branch_manager'),
   asyncHandler(async (req, res) => {
     const body = z
       .object({

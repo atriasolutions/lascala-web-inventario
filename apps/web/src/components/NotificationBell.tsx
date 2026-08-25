@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useId, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { Link } from 'react-router-dom';
 import { useAlerts } from '../lib/alerts';
 import { IconAlertTriangle, IconBell, IconClose, IconSwap } from './icons';
@@ -13,6 +14,7 @@ export function NotificationBell({ variant = 'desktop' }: { variant?: 'desktop' 
   const { items, unreadCount, loading, error, markRead, markAllRead, dismiss } = useAlerts();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const titleId = useId();
 
   useEffect(() => {
     if (variant !== 'desktop') return;
@@ -23,10 +25,24 @@ export function NotificationBell({ variant = 'desktop' }: { variant?: 'desktop' 
     return () => document.removeEventListener('mousedown', onClick);
   }, [variant]);
 
+  useEffect(() => {
+    if (variant !== 'mobile' || !open) return;
+    function onKey(e: KeyboardEvent) {
+      if (e.key === 'Escape') setOpen(false);
+    }
+    const prev = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.body.style.overflow = prev;
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [variant, open]);
+
   const panel = (
     <>
       <div className="notif-panel-head">
-        <h3>Alertas de la tienda</h3>
+        <h3 id={titleId}>Alertas de la tienda</h3>
         <div className="notif-panel-actions">
           {unreadCount > 0 ? (
             <button type="button" className="btn ghost notif-mark-all" onClick={() => markAllRead()}>
@@ -89,12 +105,36 @@ export function NotificationBell({ variant = 'desktop' }: { variant?: 'desktop' 
   );
 
   if (variant === 'mobile') {
+    const sheet =
+      open && typeof document !== 'undefined'
+        ? createPortal(
+            <div
+              className="notif-sheet mobile-only open"
+              onClick={() => setOpen(false)}
+              role="presentation"
+            >
+              <div
+                className="notif-sheet-panel"
+                role="dialog"
+                aria-modal="true"
+                aria-labelledby={titleId}
+                onClick={(e) => e.stopPropagation()}
+              >
+                {panel}
+              </div>
+            </div>,
+            document.body,
+          )
+        : null;
+
     return (
       <>
         <button
           className="icon-btn"
           type="button"
+          data-help="header.campana"
           aria-label={unreadCount ? `Notificaciones, ${unreadCount} sin leer` : 'Notificaciones'}
+          aria-expanded={open}
           onClick={() => setOpen(true)}
         >
           <IconBell />
@@ -102,15 +142,7 @@ export function NotificationBell({ variant = 'desktop' }: { variant?: 'desktop' 
             <span className="notif-badge">{unreadCount > 9 ? '9+' : unreadCount}</span>
           )}
         </button>
-        <div
-          className={`notif-sheet mobile-only ${open ? 'open' : ''}`}
-          onClick={() => setOpen(false)}
-          role="presentation"
-        >
-          <div className="notif-sheet-panel" onClick={(e) => e.stopPropagation()}>
-            {panel}
-          </div>
-        </div>
+        {sheet}
       </>
     );
   }
@@ -120,6 +152,7 @@ export function NotificationBell({ variant = 'desktop' }: { variant?: 'desktop' 
       <button
         className="icon-btn"
         type="button"
+        data-help="header.campana"
         aria-label={unreadCount ? `Notificaciones, ${unreadCount} sin leer` : 'Notificaciones'}
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}

@@ -102,9 +102,9 @@ export const ROUTES: RouteCase[] = [
   },
   {
     slug: 'admin-usuarias',
-    name: 'Ajustes · Usuarias',
+    name: 'Ajustes · Usuarios',
     path: () => '/admin/usuarias',
     ready: '.admin-tabs',
-    cta: { mobile: 'text=Nueva usuaria', desktop: 'text=Nueva usuaria' },
+    cta: { mobile: 'text=Nuevo usuario', desktop: 'text=Nuevo usuario' },
   },
 ];

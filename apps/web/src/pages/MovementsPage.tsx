@@ -1,7 +1,9 @@
-import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react';
-import { Link } from 'react-router-dom';
+import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { InfiniteListFooter } from '../components/InfiniteListFooter';
 import { IconChevronDown } from '../components/icons';
+import { ModalOverlayClose } from '../components/ModalOverlayClose';
 import { SortableTh } from '../components/SortableTh';
 import { useInfiniteList } from '../hooks/useInfiniteList';
 import { api } from '../lib/api';
@@ -42,6 +44,12 @@ type AppliedFilters = {
   type: TypeFilter;
   dateFrom: string;
   dateTo: string;
+  userId: string;
+  userName: string;
+  productId: string;
+  productQ: string;
+  productLabel: string;
+  /** Búsqueda de documento / toma (p. ej. INV-… desde Reportes). */
   q: string;
 };
 
@@ -51,6 +59,11 @@ const DEFAULT_FILTERS: AppliedFilters = {
   type: 'all',
   dateFrom: '',
   dateTo: '',
+  userId: '',
+  userName: '',
+  productId: '',
+  productQ: '',
+  productLabel: '',
   q: '',
 };
 
@@ -76,9 +89,172 @@ function buildQuery(f: AppliedFilters, offset: number, limit: number) {
   if (f.type !== 'all') params.set('type', f.type);
   if (f.dateFrom) params.set('dateFrom', f.dateFrom);
   if (f.dateTo) params.set('dateTo', f.dateTo);
+  if (f.userId) params.set('userId', f.userId);
+  if (f.productId) params.set('productId', f.productId);
+  else if (f.productQ.trim()) params.set('productQ', f.productQ.trim());
   if (f.q.trim()) params.set('q', f.q.trim());
   withPagination(params, offset, limit);
   return `/api/inventory/movements?${params.toString()}`;
+}
+
+function legacySearchSplit(q: string): Pick<AppliedFilters, 'q' | 'productQ' | 'productLabel'> {
+  const t = q.trim();
+  if (!t) return { q: '', productQ: '', productLabel: '' };
+  if (/^(INV|V|VC)-/i.test(t)) return { q: t, productQ: '', productLabel: '' };
+  return { q: '', productQ: t, productLabel: t };
+}
+
+type ProductHit = { id: string; name: string; internal_code: string };
+
+function ProductFilterField({
+  id,
+  productId,
+  text,
+  onChange,
+}: {
+  id: string;
+  productId: string;
+  text: string;
+  onChange: (next: { productId: string; text: string }) => void;
+}) {
+  const listId = useId();
+  const wrapRef = useRef<HTMLDivElement>(null);
+  const menuRef = useRef<HTMLUListElement>(null);
+  const [open, setOpen] = useState(false);
+  const [hits, setHits] = useState<ProductHit[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [menuBox, setMenuBox] = useState<{ top: number; left: number; width: number } | null>(null);
+
+  const updateMenuBox = useCallback(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+    const r = el.getBoundingClientRect();
+    setMenuBox({
+      top: r.bottom + 6,
+      left: r.left,
+      width: r.width,
+    });
+  }, []);
+
+  useEffect(() => {
+    const q = text.trim();
+    if (!open || q.length < 1) {
+      setHits([]);
+      return;
+    }
+    let cancelled = false;
+    const t = window.setTimeout(() => {
+      setBusy(true);
+      void api<{ products: ProductHit[] }>(`/api/products?q=${encodeURIComponent(q)}`)
+        .then((data) => {
+          if (!cancelled) setHits((data.products || []).slice(0, 8));
+        })
+        .catch(() => {
+          if (!cancelled) setHits([]);
+        })
+        .finally(() => {
+          if (!cancelled) setBusy(false);
+        });
+    }, 220);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(t);
+    };
+  }, [text, open]);
+
+  useLayoutEffect(() => {
+    if (!open || !text.trim()) {
+      setMenuBox(null);
+      return;
+    }
+    updateMenuBox();
+    window.addEventListener('resize', updateMenuBox);
+    window.addEventListener('scroll', updateMenuBox, true);
+    return () => {
+      window.removeEventListener('resize', updateMenuBox);
+      window.removeEventListener('scroll', updateMenuBox, true);
+    };
+  }, [open, text, updateMenuBox]);
+
+  useEffect(() => {
+    if (!open) return;
+    function onDoc(e: MouseEvent) {
+      const t = e.target as Node;
+      if (wrapRef.current?.contains(t) || menuRef.current?.contains(t)) return;
+      setOpen(false);
+    }
+    document.addEventListener('mousedown', onDoc);
+    return () => document.removeEventListener('mousedown', onDoc);
+  }, [open]);
+
+  function pick(p: ProductHit) {
+    onChange({ productId: p.id, text: `${p.internal_code} · ${p.name}` });
+    setOpen(false);
+  }
+
+  return (
+    <div className="lookup" ref={wrapRef}>
+      <div className="lookup-control">
+        <input
+          id={id}
+          role="combobox"
+          aria-expanded={open}
+          aria-controls={listId}
+          aria-autocomplete="list"
+          autoComplete="off"
+          placeholder="Código LS… o nombre"
+          value={text}
+          onChange={(e) => {
+            onChange({ productId: '', text: e.target.value });
+            setOpen(true);
+          }}
+          onFocus={() => setOpen(true)}
+        />
+        {text ? (
+          <button
+            type="button"
+            className="lookup-clear"
+            aria-label="Limpiar producto"
+            onClick={() => {
+              onChange({ productId: '', text: '' });
+              setHits([]);
+            }}
+          >
+            ×
+          </button>
+        ) : null}
+      </div>
+      {open && text.trim() && menuBox
+        ? createPortal(
+            <ul
+              id={listId}
+              ref={menuRef}
+              className="lookup-menu is-overlay"
+              role="listbox"
+              style={{ top: menuBox.top, left: menuBox.left, width: menuBox.width }}
+            >
+              {busy && !hits.length ? <li className="lookup-empty muted">Buscando…</li> : null}
+              {!busy && !hits.length ? (
+                <li className="lookup-empty muted">Sin coincidencias. Puedes aplicar el texto igual.</li>
+              ) : null}
+              {hits.map((p) => (
+                <li key={p.id}>
+                  <button
+                    type="button"
+                    className={`lookup-option${p.id === productId ? ' is-active' : ''}`}
+                    onClick={() => pick(p)}
+                  >
+                    <strong>{p.name}</strong>
+                    <span className="muted"> {p.internal_code}</span>
+                  </button>
+                </li>
+              ))}
+            </ul>,
+            document.body,
+          )
+        : null}
+    </div>
+  );
 }
 
 function fmtDate(d: string) {
@@ -144,6 +320,11 @@ function deltaClass(delta: number) {
 
 export function MovementsPage() {
   const { branchId } = useAuth();
+  const [searchParams] = useSearchParams();
+  const urlQ = searchParams.get('q')?.trim() || '';
+  const urlType = searchParams.get('type')?.trim() || '';
+  const urlProductId = searchParams.get('productId')?.trim() || '';
+  const urlProductLabel = searchParams.get('productLabel')?.trim() || '';
   const [filters, setFilters] = useState<AppliedFilters>(() =>
     loadListFilters('movimientos', branchId, DEFAULT_FILTERS),
   );
@@ -154,7 +335,10 @@ export function MovementsPage() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [draftDateFrom, setDraftDateFrom] = useState('');
   const [draftDateTo, setDraftDateTo] = useState('');
-  const [draftQ, setDraftQ] = useState('');
+  const [draftUserId, setDraftUserId] = useState('');
+  const [draftProductId, setDraftProductId] = useState('');
+  const [draftProductText, setDraftProductText] = useState('');
+  const [branchUsers, setBranchUsers] = useState<{ id: string; full_name: string }[]>([]);
   const filtersTitleId = useId();
   const modalRef = useRef<HTMLDivElement>(null);
 
@@ -164,8 +348,23 @@ export function MovementsPage() {
   );
 
   useEffect(() => {
-    setFilters(loadListFilters('movimientos', branchId, DEFAULT_FILTERS));
-  }, [branchId]);
+    const persisted = loadListFilters('movimientos', branchId, DEFAULT_FILTERS);
+    const fromLegacy = !persisted.productQ && !persisted.userId && persisted.q && !urlQ
+      ? legacySearchSplit(persisted.q)
+      : null;
+    setFilters({
+      ...DEFAULT_FILTERS,
+      ...persisted,
+      userId: persisted.userId || '',
+      userName: persisted.userName || '',
+      productId: urlProductId || persisted.productId || '',
+      productQ: fromLegacy?.productQ || persisted.productQ || '',
+      productLabel:
+        urlProductLabel || fromLegacy?.productLabel || persisted.productLabel || '',
+      q: urlQ || fromLegacy?.q || persisted.q || '',
+      ...(urlType ? { type: urlType } : {}),
+    });
+  }, [branchId, urlQ, urlType, urlProductId, urlProductLabel]);
 
   useEffect(() => {
     saveListFilters('movimientos', branchId, filters);
@@ -233,12 +432,28 @@ export function MovementsPage() {
     [movements, sortKey, sortDir],
   );
 
-  const hasExtraFilters = Boolean(filters.dateFrom || filters.dateTo || filters.q.trim());
+  const hasExtraFilters = Boolean(
+    filters.dateFrom ||
+      filters.dateTo ||
+      filters.userId ||
+      filters.productId ||
+      filters.productQ.trim() ||
+      filters.q.trim(),
+  );
 
   const summaryChips = useMemo(() => {
     const chips: { key: string; label: string }[] = [];
     if (filters.dateFrom) chips.push({ key: 'from', label: `Desde ${fmtDay(filters.dateFrom)}` });
     if (filters.dateTo) chips.push({ key: 'to', label: `Hasta ${fmtDay(filters.dateTo)}` });
+    if (filters.userId) {
+      chips.push({ key: 'user', label: `Usuario: ${filters.userName || 'elegido'}` });
+    }
+    if (filters.productId || filters.productQ.trim()) {
+      chips.push({
+        key: 'product',
+        label: `Producto: ${filters.productLabel || filters.productQ.trim()}`,
+      });
+    }
     if (filters.q.trim()) chips.push({ key: 'q', label: filters.q.trim() });
     return chips;
   }, [filters]);
@@ -263,8 +478,13 @@ export function MovementsPage() {
   function openDrawer() {
     setDraftDateFrom(filters.dateFrom);
     setDraftDateTo(filters.dateTo);
-    setDraftQ(filters.q);
+    setDraftUserId(filters.userId);
+    setDraftProductId(filters.productId);
+    setDraftProductText(filters.productLabel || filters.productQ);
     setDrawerOpen(true);
+    void api<{ users: { id: string; full_name: string }[] }>('/api/inventory/movements/users')
+      .then((data) => setBranchUsers(data.users || []))
+      .catch(() => setBranchUsers([]));
   }
 
   function closeDrawer() {
@@ -272,11 +492,17 @@ export function MovementsPage() {
   }
 
   function applyDrawer() {
+    const user = branchUsers.find((u) => u.id === draftUserId);
+    const productText = draftProductText.trim();
     setFilters((prev) => ({
       ...prev,
       dateFrom: draftDateFrom,
       dateTo: draftDateTo,
-      q: draftQ,
+      userId: draftUserId,
+      userName: user?.full_name || (draftUserId ? prev.userName : ''),
+      productId: draftProductId,
+      productQ: draftProductId ? '' : productText,
+      productLabel: productText,
     }));
     setDrawerOpen(false);
   }
@@ -408,7 +634,7 @@ export function MovementsPage() {
                 <h3>Sin movimientos</h3>
                 <p className="muted">Ventas, ingresos y ajustes dejan la trazabilidad acá.</p>
                 <Link to="/inventario" className="btn secondary" style={{ marginTop: '0.75rem' }}>
-                  Ir a inventario
+                  Ir a Stock
                 </Link>
               </div>
             )}
@@ -591,6 +817,7 @@ export function MovementsPage() {
             if (e.target === e.currentTarget) closeDrawer();
           }}
         >
+          <ModalOverlayClose onClose={closeDrawer}>
           <div
             className="pos-modal-panel ing-filters-sheet"
             ref={modalRef}
@@ -600,9 +827,6 @@ export function MovementsPage() {
           >
             <div className="pos-modal-head">
               <h3 id={filtersTitleId}>Filtros</h3>
-              <button className="btn ghost" type="button" onClick={closeDrawer} aria-label="Cerrar">
-                Cerrar
-              </button>
             </div>
 
             <div className="ing-filters-sheet-body">
@@ -626,13 +850,33 @@ export function MovementsPage() {
                 />
               </div>
               <div className="field">
-                <label htmlFor="mov-f-q">Buscar</label>
-                <input
-                  id="mov-f-q"
-                  value={draftQ}
-                  onChange={(e) => setDraftQ(e.target.value)}
-                  placeholder="Producto, código, usuaria, doc…"
-                  autoComplete="off"
+                <label htmlFor="mov-f-user">Usuario</label>
+                <select
+                  id="mov-f-user"
+                  value={draftUserId}
+                  onChange={(e) => setDraftUserId(e.target.value)}
+                >
+                  <option value="">Todas</option>
+                  {draftUserId && !branchUsers.some((u) => u.id === draftUserId) && filters.userName ? (
+                    <option value={draftUserId}>{filters.userName}</option>
+                  ) : null}
+                  {branchUsers.map((u) => (
+                    <option key={u.id} value={u.id}>
+                      {u.full_name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+              <div className="field">
+                <label htmlFor="mov-f-product">Producto</label>
+                <ProductFilterField
+                  id="mov-f-product"
+                  productId={draftProductId}
+                  text={draftProductText}
+                  onChange={(next) => {
+                    setDraftProductId(next.productId);
+                    setDraftProductText(next.text);
+                  }}
                 />
               </div>
             </div>
@@ -646,7 +890,7 @@ export function MovementsPage() {
                 Aplicar
               </button>
             </div>
-          </div>
+          </div></ModalOverlayClose>
         </div>
       )}
     </div>

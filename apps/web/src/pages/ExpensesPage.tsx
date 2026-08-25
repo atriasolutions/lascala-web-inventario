@@ -9,6 +9,7 @@ import {
 } from 'react';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { InfiniteListFooter } from '../components/InfiniteListFooter';
+import { ModalOverlayClose } from '../components/ModalOverlayClose';
 import { SortableTh } from '../components/SortableTh';
 import { useInfiniteList } from '../hooks/useInfiniteList';
 import { api, money } from '../lib/api';
@@ -22,6 +23,18 @@ import {
 import { loadListFilters, saveListFilters } from '../lib/listFiltersPersist';
 import { withPagination } from '../lib/pagination';
 import { toast } from '../lib/toast';
+import {
+  PERIOD_CHIPS,
+  chileIsoDate,
+  chileYearMonth,
+  defaultPeriodState,
+  resolvePeriod,
+  yearOptions,
+  type PeriodPreset,
+  type ReportsPeriodState,
+} from './reportes/reportsPeriod';
+import { parseChileMoney } from '../lib/chileMoney';
+import { ChileMoneyInput } from '../components/ChileMoneyInput';
 
 /** Categorías del diagnóstico ATR-DIAG-001 §8.6 */
 const CATEGORIES = [
@@ -50,6 +63,11 @@ type Filters = {
   dateFrom: string;
   dateTo: string;
   q: string;
+  /** 'all' = sin filtro de fecha; resto = presets de Reportes. */
+  periodPreset: PeriodPreset | 'all';
+  periodDay: string;
+  periodMonth: string;
+  periodYear: string;
 };
 
 type ListFilters = Filters & { branchId: string };
@@ -59,14 +77,71 @@ const DEFAULT_FILTERS: Filters = {
   dateFrom: '',
   dateTo: '',
   q: '',
+  periodPreset: 'all',
+  periodDay: chileIsoDate(),
+  periodMonth: chileYearMonth().month,
+  periodYear: chileYearMonth().year,
 };
+
+function applyPeriodPreset(
+  prev: Filters,
+  preset: PeriodPreset | 'all',
+  patch?: Partial<Pick<Filters, 'periodDay' | 'periodMonth' | 'periodYear' | 'dateFrom' | 'dateTo'>>,
+): Filters {
+  if (preset === 'all') {
+    return {
+      ...prev,
+      periodPreset: 'all',
+      dateFrom: '',
+      dateTo: '',
+    };
+  }
+  const defaults = defaultPeriodState();
+  const state: ReportsPeriodState = {
+    ...defaults,
+    preset,
+    day: patch?.periodDay ?? prev.periodDay ?? defaults.day,
+    month: patch?.periodMonth ?? prev.periodMonth ?? defaults.month,
+    year: patch?.periodYear ?? prev.periodYear ?? defaults.year,
+    from: patch?.dateFrom ?? prev.dateFrom ?? defaults.from,
+    to: patch?.dateTo ?? prev.dateTo ?? defaults.to,
+  };
+  const { from, to } = resolvePeriod(state);
+  return {
+    ...prev,
+    periodPreset: preset,
+    periodDay: state.day,
+    periodMonth: state.month,
+    periodYear: state.year,
+    dateFrom: from,
+    dateTo: to,
+  };
+}
+
+function normalizeExpenseFilters(raw: Filters): Filters {
+  const merged = { ...DEFAULT_FILTERS, ...raw };
+  if (!merged.periodPreset) {
+    if (merged.dateFrom || merged.dateTo) {
+      return applyPeriodPreset(
+        { ...merged, periodPreset: 'range' },
+        'range',
+        { dateFrom: merged.dateFrom, dateTo: merged.dateTo },
+      );
+    }
+    return { ...merged, periodPreset: 'all' };
+  }
+  if (merged.periodPreset !== 'all' && (!merged.dateFrom || !merged.dateTo)) {
+    return applyPeriodPreset(merged, merged.periodPreset);
+  }
+  return merged;
+}
 
 const SORT_OPTIONS: { key: ExpenseSortKey; label: string }[] = [
   { key: 'date', label: 'Fecha' },
   { key: 'category', label: 'Categoría' },
   { key: 'description', label: 'Descripción' },
   { key: 'amount', label: 'Monto' },
-  { key: 'user', label: 'Usuaria' },
+  { key: 'user', label: 'Usuario' },
 ];
 
 function todayISO() {
@@ -106,10 +181,10 @@ export function ExpensesPage() {
   const activeBranch = branches.find((b) => b.id === branchId);
   const role = activeBranch?.role;
   const branchName = activeBranch?.name || 'sucursal activa';
-  const canCreate = role === 'owner' || role === 'branch_manager';
+  const canCreate = role === 'owner';
 
   const [filters, setFilters] = useState<Filters>(() =>
-    loadListFilters('gastos', branchId, DEFAULT_FILTERS),
+    normalizeExpenseFilters(loadListFilters('gastos', branchId, DEFAULT_FILTERS)),
   );
   const [sortKey, setSortKey] = useState<ExpenseSortKey>('date');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
@@ -144,7 +219,7 @@ export function ExpensesPage() {
   );
 
   useEffect(() => {
-    setFilters(loadListFilters('gastos', branchId, DEFAULT_FILTERS));
+    setFilters(normalizeExpenseFilters(loadListFilters('gastos', branchId, DEFAULT_FILTERS)));
   }, [branchId]);
 
   useEffect(() => {
@@ -191,6 +266,8 @@ export function ExpensesPage() {
     [expenses, sortKey, sortDir],
   );
 
+  const years = useMemo(() => yearOptions(), []);
+
   const hasExtraFilters = Boolean(
     filters.dateFrom || filters.dateTo || filters.q.trim() || filters.category !== 'all',
   );
@@ -198,8 +275,16 @@ export function ExpensesPage() {
   const summaryChips = useMemo(() => {
     const chips: { key: string; label: string }[] = [];
     if (filters.category !== 'all') chips.push({ key: 'cat', label: filters.category });
-    if (filters.dateFrom) chips.push({ key: 'from', label: `Desde ${fmtDay(filters.dateFrom)}` });
-    if (filters.dateTo) chips.push({ key: 'to', label: `Hasta ${fmtDay(filters.dateTo)}` });
+    if (filters.periodPreset !== 'all' && filters.dateFrom && filters.dateTo) {
+      const label =
+        filters.dateFrom === filters.dateTo
+          ? fmtDay(filters.dateFrom)
+          : `${fmtDay(filters.dateFrom)} – ${fmtDay(filters.dateTo)}`;
+      chips.push({ key: 'period', label });
+    } else {
+      if (filters.dateFrom) chips.push({ key: 'from', label: `Desde ${fmtDay(filters.dateFrom)}` });
+      if (filters.dateTo) chips.push({ key: 'to', label: `Hasta ${fmtDay(filters.dateTo)}` });
+    }
     if (filters.q.trim()) chips.push({ key: 'q', label: filters.q.trim() });
     return chips;
   }, [filters]);
@@ -217,12 +302,17 @@ export function ExpensesPage() {
   }
 
   function applyDrawer() {
-    setFilters({
-      category: draftCategory,
-      dateFrom: draftDateFrom,
-      dateTo: draftDateTo,
-      q: draftQ,
-    });
+    setFilters((prev) =>
+      applyPeriodPreset(
+        {
+          ...prev,
+          category: draftCategory,
+          q: draftQ,
+        },
+        'range',
+        { dateFrom: draftDateFrom, dateTo: draftDateTo },
+      ),
+    );
     setDrawerOpen(false);
   }
 
@@ -290,8 +380,8 @@ export function ExpensesPage() {
 
   function onSubmitForm(e: FormEvent) {
     e.preventDefault();
-    const n = Number(amount);
-    if (!Number.isFinite(n) || n < 0) {
+    const n = parseChileMoney(amount);
+    if (n == null || n < 0) {
       toast.error('Ingresa un monto válido');
       return;
     }
@@ -305,12 +395,17 @@ export function ExpensesPage() {
   async function doRegister() {
     setSaving(true);
     try {
+      const n = parseChileMoney(amount);
+      if (n == null) {
+        toast.error('Ingresa un monto válido');
+        return;
+      }
       await api('/api/ops/expenses', {
         method: 'POST',
         body: {
           category,
           description: description.trim(),
-          amount: Number(amount),
+          amount: n,
           incurredOn: incurredOn || undefined,
         },
       });
@@ -334,7 +429,7 @@ export function ExpensesPage() {
               <p>Gastos operativos de la sucursal activa (arriendo, sueldos, servicios…)</p>
             </div>
             {canCreate ? (
-              <button type="button" className="btn gasto-register-btn" onClick={openForm}>
+              <button type="button" className="btn gasto-register-btn" data-help="cta.gastos.nuevo" onClick={openForm}>
                 Nuevo gasto
               </button>
             ) : null}
@@ -361,6 +456,106 @@ export function ExpensesPage() {
           </div>
 
           <div className="ing-filters gasto-filters" role="toolbar" aria-label="Filtros de gastos">
+            <button
+              type="button"
+              className={`ing-chip${filters.periodPreset === 'all' ? ' is-active' : ''}`}
+              aria-pressed={filters.periodPreset === 'all'}
+              onClick={() => setFilters((prev) => applyPeriodPreset(prev, 'all'))}
+            >
+              Todo
+            </button>
+            {PERIOD_CHIPS.map((chip) => (
+              <button
+                key={chip.id}
+                type="button"
+                className={`ing-chip${filters.periodPreset === chip.id ? ' is-active' : ''}`}
+                aria-pressed={filters.periodPreset === chip.id}
+                onClick={() => setFilters((prev) => applyPeriodPreset(prev, chip.id))}
+              >
+                {chip.label}
+              </button>
+            ))}
+            {filters.periodPreset === 'day' ? (
+              <label className="field gasto-period-field">
+                <span className="sr-only">Día</span>
+                <input
+                  type="date"
+                  value={filters.periodDay}
+                  onChange={(e) =>
+                    setFilters((prev) =>
+                      applyPeriodPreset(prev, 'day', { periodDay: e.target.value }),
+                    )
+                  }
+                />
+              </label>
+            ) : null}
+            {filters.periodPreset === 'month' ? (
+              <label className="field gasto-period-field">
+                <span className="sr-only">Mes</span>
+                <input
+                  type="month"
+                  value={filters.periodMonth}
+                  onChange={(e) =>
+                    setFilters((prev) =>
+                      applyPeriodPreset(prev, 'month', { periodMonth: e.target.value }),
+                    )
+                  }
+                />
+              </label>
+            ) : null}
+            {filters.periodPreset === 'year' ? (
+              <label className="field gasto-period-field">
+                <span className="sr-only">Año</span>
+                <select
+                  value={filters.periodYear}
+                  onChange={(e) =>
+                    setFilters((prev) =>
+                      applyPeriodPreset(prev, 'year', { periodYear: e.target.value }),
+                    )
+                  }
+                >
+                  {years.map((y) => (
+                    <option key={y} value={y}>
+                      {y}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
+            {filters.periodPreset === 'range' ? (
+              <>
+                <label className="field gasto-period-field">
+                  <span className="sr-only">Desde</span>
+                  <input
+                    type="date"
+                    value={filters.dateFrom}
+                    onChange={(e) =>
+                      setFilters((prev) =>
+                        applyPeriodPreset(prev, 'range', {
+                          dateFrom: e.target.value,
+                          dateTo: prev.dateTo || e.target.value,
+                        }),
+                      )
+                    }
+                  />
+                </label>
+                <label className="field gasto-period-field">
+                  <span className="sr-only">Hasta</span>
+                  <input
+                    type="date"
+                    value={filters.dateTo}
+                    onChange={(e) =>
+                      setFilters((prev) =>
+                        applyPeriodPreset(prev, 'range', {
+                          dateFrom: prev.dateFrom || e.target.value,
+                          dateTo: e.target.value,
+                        }),
+                      )
+                    }
+                  />
+                </label>
+              </>
+            ) : null}
             <button
               type="button"
               className={`ing-chip${filters.category === 'all' ? ' is-active' : ''}`}
@@ -543,7 +738,7 @@ export function ExpensesPage() {
                           className="gasto-col-num"
                         />
                         <SortableTh
-                          label="Usuaria"
+                          label="Usuario"
                           column="user"
                           sortKey={sortKey}
                           sortDir={sortDir}
@@ -593,6 +788,7 @@ export function ExpensesPage() {
             if (e.target === e.currentTarget) closeDrawer();
           }}
         >
+          <ModalOverlayClose onClose={closeDrawer}>
           <div
             className="pos-modal-panel ing-filters-sheet"
             ref={modalRef}
@@ -602,9 +798,6 @@ export function ExpensesPage() {
           >
             <div className="pos-modal-head">
               <h3 id={filtersTitleId}>Filtros</h3>
-              <button className="btn ghost" type="button" onClick={closeDrawer} aria-label="Cerrar">
-                Cerrar
-              </button>
             </div>
             <div className="ing-filters-sheet-body">
               <div className="ing-filter-fields">
@@ -647,7 +840,7 @@ export function ExpensesPage() {
                     id="gasto-f-q"
                     value={draftQ}
                     onChange={(e) => setDraftQ(e.target.value)}
-                    placeholder="Descripción, categoría, usuaria…"
+                    placeholder="Descripción, categoría, usuario…"
                     autoComplete="off"
                   />
                 </div>
@@ -661,7 +854,7 @@ export function ExpensesPage() {
                 Aplicar
               </button>
             </div>
-          </div>
+          </div></ModalOverlayClose>
         </div>
       )}
 
@@ -673,6 +866,7 @@ export function ExpensesPage() {
             if (e.target === e.currentTarget) closeForm();
           }}
         >
+          <ModalOverlayClose onClose={closeForm}>
           <div
             className="pos-modal-panel gasto-form-sheet"
             ref={formRef}
@@ -682,9 +876,6 @@ export function ExpensesPage() {
           >
             <div className="pos-modal-head">
               <h3 id={formTitleId}>Nuevo gasto</h3>
-              <button className="btn ghost" type="button" onClick={closeForm} aria-label="Cerrar">
-                Cerrar
-              </button>
             </div>
             <form className="gasto-form-body" onSubmit={onSubmitForm}>
               <span className="ing-chip is-active ing-chip-static form-branch-chip" role="status">
@@ -726,15 +917,11 @@ export function ExpensesPage() {
               <div className="gasto-form-row">
                 <div className="field">
                   <label htmlFor="gasto-amount">Monto</label>
-                  <input
+                  <ChileMoneyInput
                     id="gasto-amount"
                     required
-                    type="number"
-                    min={0}
-                    step="1"
-                    inputMode="decimal"
                     value={amount}
-                    onChange={(e) => setAmount(e.target.value)}
+                    onChange={setAmount}
                     placeholder="0"
                   />
                 </div>
@@ -759,14 +946,14 @@ export function ExpensesPage() {
                 </button>
               </div>
             </form>
-          </div>
+          </div></ModalOverlayClose>
         </div>
       )}
 
       <ConfirmDialog
         open={confirmOpen}
         title="Confirmar gasto"
-        message={`Se registrará ${money(Number(amount) || 0)} en «${category}»: ${description.trim() || '—'}.`}
+        message={`Se registrará ${money(parseChileMoney(amount) ?? 0)} en «${category}»: ${description.trim() || '—'}.`}
         confirmLabel="Registrar"
         cancelLabel="Volver"
         onCancel={() => {
