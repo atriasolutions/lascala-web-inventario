@@ -20,6 +20,10 @@ export type User = {
   email: string;
   fullName: string;
   branches: { branchId: string; role: string }[];
+  /** Primer ingreso / clave temporal: hay que crear una nueva antes de usar el sistema. */
+  mustChangePassword?: boolean;
+  /** Soporte Atria: no listar en Admin. */
+  isSuperadmin?: boolean;
 };
 
 type RequestOpts = {

@@ -4,8 +4,9 @@ import { AppShell } from './components/AppShell';
 import { BoutiqueLoader } from './components/BoutiqueLoader';
 import { RequireOnline } from './components/RequireOnline';
 import { useAuth } from './lib/auth';
+import { userMustChangePassword } from './lib/authPassword';
 import { LoginPage } from './pages/LoginPage';
-import { ResetPasswordPage } from './pages/ResetPasswordPage';
+import { ForceChangePasswordPage } from './pages/ForceChangePasswordPage';
 import { PosPage } from './pages/PosPage';
 import { SalesHistoryPage } from './pages/SalesHistoryPage';
 import { ProductsPage } from './pages/ProductsPage';
@@ -54,9 +55,12 @@ function OnlineOnly({ children }: { children: ReactNode }) {
 }
 
 function Protected({ children }: { children: React.ReactNode }) {
-  const { token, loading, branchId } = useAuth();
+  const { token, loading, branchId, user } = useAuth();
   if (loading) return <BoutiqueLoader label="Preparando sesión…" variant="page" />;
   if (!token) return <Navigate to="/login" replace />;
+  if (userMustChangePassword(user)) {
+    return <ForceChangePasswordPage />;
+  }
   if (!branchId) return <p className="muted" style={{ padding: '2rem' }}>Sin sucursal asignada</p>;
   return children;
 }
@@ -106,7 +110,6 @@ function HomeRedirect() {
 /** Data router: habilita `useBlocker` (p. ej. guardia de salida en Ventas). */
 export const router = createBrowserRouter([
   { path: '/login', element: <LoginPage /> },
-  { path: '/reset-password', element: <ResetPasswordPage /> },
   {
     path: '/',
     element: (

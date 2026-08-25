@@ -1,8 +1,9 @@
 import { type FormEvent, useEffect, useId, useMemo, useState } from 'react';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { ModalOverlayClose } from '../../components/ModalOverlayClose';
-import { api } from '../../lib/api';
+import { api, userFacingError } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
+import { isHiddenSuperAdmin } from '../../lib/authPassword';
 import { toast } from '../../lib/toast';
 
 type UserBranch = { branchId: string; role: string; branchName: string };
@@ -15,6 +16,11 @@ type UserRow = {
   is_active: boolean;
   branches?: UserBranch[];
   pos?: UserPos[];
+  isSuperAdmin?: boolean;
+  is_superadmin?: boolean;
+  role?: string;
+  mustChangePassword?: boolean;
+  must_change_password?: boolean;
 };
 
 type CatalogPos = { id: string; code: string; name: string; status: string };
@@ -118,6 +124,11 @@ export function AdminUsuariasPage() {
   const [busyUserId, setBusyUserId] = useState<string | null>(null);
   const [deactivateTarget, setDeactivateTarget] = useState<UserRow | null>(null);
   const [deleteTarget, setDeleteTarget] = useState<UserRow | null>(null);
+  const [resetTarget, setResetTarget] = useState<UserRow | null>(null);
+  const [resetPassword, setResetPassword] = useState('');
+  const [resetConfirm, setResetConfirm] = useState('');
+  const [resetBusy, setResetBusy] = useState(false);
+  const resetTitleId = useId();
   const [form, setForm] = useState({
     email: '',
     password: '',
@@ -133,7 +144,7 @@ export function AdminUsuariasPage() {
         api<{ users: UserRow[] }>('/api/users'),
         api<{ branches: CatalogBranch[] }>('/api/catalog/branches'),
       ]);
-      setUsers(usersData.users);
+      setUsers((usersData.users || []).filter((u) => !isHiddenSuperAdmin(u)));
       setCatalog(branchData.branches.filter((b) => b.is_active !== false));
     } catch (e) {
       toast.error(e instanceof Error ? e.message : 'No se pudo cargar el listado de usuarios');
@@ -269,6 +280,55 @@ export function AdminUsuariasPage() {
     }
   }
 
+  function openResetPassword(u: UserRow) {
+    setResetTarget(u);
+    setResetPassword('');
+    setResetConfirm('');
+  }
+
+  function closeResetPassword() {
+    setResetTarget(null);
+    setResetPassword('');
+    setResetConfirm('');
+  }
+
+  async function submitResetPassword(e: FormEvent) {
+    e.preventDefault();
+    if (!resetTarget) return;
+    if (resetPassword.length < 6) {
+      toast.warn('La contraseña debe tener al menos 6 caracteres');
+      return;
+    }
+    if (resetPassword !== resetConfirm) {
+      toast.warn('Las contraseñas no coinciden');
+      return;
+    }
+    setResetBusy(true);
+    try {
+      try {
+        const data = await api<{
+          message?: string;
+          mustChangePassword?: boolean;
+        }>(`/api/users/${resetTarget.id}/reset-password`, {
+          method: 'POST',
+          body: { password: resetPassword },
+        });
+        toast.success(
+          data.message ||
+            'Contraseña restablecida. Deberá crear una nueva al ingresar.',
+        );
+      } catch (err) {
+        throw err;
+      }
+      closeResetPassword();
+      await loadUsers();
+    } catch (err) {
+      toast.error(userFacingError(err, 'No se pudo restablecer la contraseña'));
+    } finally {
+      setResetBusy(false);
+    }
+  }
+
   return (
     <div className="admin-panel" role="tabpanel">
       <div className="section-title admin-toolbar">
@@ -342,6 +402,19 @@ export function AdminUsuariasPage() {
                   <button type="button" className="btn" disabled={busy} onClick={() => openEdit(u)}>
                     Editar
                   </button>
+                  <button
+                    type="button"
+                    className="btn secondary"
+                    disabled={busy || isSelf}
+                    title={
+                      isSelf
+                        ? 'Cambia tu clave desde Mi cuenta'
+                        : 'Define una clave temporal; al entrar deberá crear una nueva'
+                    }
+                    onClick={() => openResetPassword(u)}
+                  >
+                    Restablecer clave
+                  </button>
                   {u.is_active ? (
                     <button
                       type="button"
@@ -374,7 +447,8 @@ export function AdminUsuariasPage() {
                 </div>
                 {isSelf ? (
                   <p className="muted admin-field-hint">
-                    Eres tú. No puedes desactivar ni eliminar tu propia cuenta.
+                    Eres tú. Cambia tu clave en Mi cuenta; no puedes desactivar ni eliminar tu
+                    propia cuenta.
                   </p>
                 ) : null}
               </article>
@@ -427,7 +501,7 @@ export function AdminUsuariasPage() {
               </div>
               <div className="field">
                 <label htmlFor="admin-user-pass">
-                  {editing ? 'Nueva contraseña (opcional)' : 'Contraseña'}
+                  {editing ? 'Nueva contraseña (opcional)' : 'Contraseña temporal'}
                 </label>
                 <input
                   id="admin-user-pass"
@@ -438,6 +512,11 @@ export function AdminUsuariasPage() {
                   onChange={(e) => setForm({ ...form, password: e.target.value })}
                   autoComplete="new-password"
                 />
+                {!editing ? (
+                  <span className="muted admin-field-hint">
+                    Al primer ingreso deberá crear una contraseña nueva.
+                  </span>
+                ) : null}
               </div>
               {editing && editing.id !== user?.id ? (
                 <label className="admin-check">
@@ -529,6 +608,69 @@ export function AdminUsuariasPage() {
               </div>
             </form>
           </div></ModalOverlayClose>
+        </div>
+      ) : null}
+
+      {resetTarget ? (
+        <div
+          className="pos-modal open"
+          role="presentation"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) closeResetPassword();
+          }}
+        >
+          <ModalOverlayClose onClose={closeResetPassword}>
+            <div
+              className="pos-modal-panel admin-sheet"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby={resetTitleId}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <div className="pos-modal-head">
+                <h3 id={resetTitleId}>Restablecer contraseña</h3>
+              </div>
+              <form className="admin-sheet-form" onSubmit={(e) => void submitResetPassword(e)}>
+                <p className="muted">
+                  Define una clave temporal para <strong>{resetTarget.full_name}</strong>. Al
+                  ingresar deberá crear una nueva.
+                </p>
+                <div className="field">
+                  <label htmlFor="admin-reset-pass">Nueva clave temporal</label>
+                  <input
+                    id="admin-reset-pass"
+                    type="password"
+                    minLength={6}
+                    required
+                    value={resetPassword}
+                    onChange={(e) => setResetPassword(e.target.value)}
+                    autoComplete="new-password"
+                    autoFocus
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="admin-reset-pass2">Repite la clave</label>
+                  <input
+                    id="admin-reset-pass2"
+                    type="password"
+                    minLength={6}
+                    required
+                    value={resetConfirm}
+                    onChange={(e) => setResetConfirm(e.target.value)}
+                    autoComplete="new-password"
+                  />
+                </div>
+                <div className="admin-sheet-actions">
+                  <button type="button" className="btn ghost" onClick={closeResetPassword}>
+                    Cancelar
+                  </button>
+                  <button className="btn" type="submit" disabled={resetBusy}>
+                    {resetBusy ? 'Guardando…' : 'Restablecer'}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </ModalOverlayClose>
         </div>
       ) : null}
 

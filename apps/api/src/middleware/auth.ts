@@ -12,6 +12,8 @@ export type AuthUser = {
   email: string;
   fullName: string;
   branches: BranchAccess[];
+  mustChangePassword: boolean;
+  isSuperadmin: boolean;
 };
 
 declare global {
@@ -26,6 +28,10 @@ declare global {
 }
 
 type JwtPayload = { sub: string; organizationId: string };
+
+/** Rutas permitidas mientras debe cambiar contraseña. */
+const MUST_CHANGE_ALLOW =
+  /^\/api\/auth\/(me|change-password|refresh)(\/|$)/;
 
 export function resolveSessionTtl(input: { client?: unknown; persistent?: unknown }): {
   persistent: boolean;
@@ -49,6 +55,13 @@ export function signToken(
   );
 }
 
+export function computeMustChangePassword(row: {
+  must_change_password: boolean;
+  password_changed_at: string | Date | null;
+}): boolean {
+  return Boolean(row.must_change_password) || row.password_changed_at == null;
+}
+
 export async function loadUser(userId: string): Promise<AuthUser | null> {
   const userRes = await query<{
     id: string;
@@ -56,7 +69,17 @@ export async function loadUser(userId: string): Promise<AuthUser | null> {
     email: string;
     full_name: string;
     is_active: boolean;
-  }>('SELECT id, organization_id, email, full_name, is_active FROM users WHERE id = $1', [userId]);
+    must_change_password: boolean;
+    password_changed_at: Date | null;
+    is_superadmin: boolean;
+  }>(
+    `SELECT id, organization_id, email, full_name, is_active,
+            COALESCE(must_change_password, false) AS must_change_password,
+            password_changed_at,
+            COALESCE(is_superadmin, false) AS is_superadmin
+     FROM users WHERE id = $1`,
+    [userId],
+  );
   const user = userRes.rows[0];
   if (!user || !user.is_active) return null;
 
@@ -71,10 +94,13 @@ export async function loadUser(userId: string): Promise<AuthUser | null> {
     email: user.email,
     fullName: user.full_name,
     branches: branchesRes.rows.map((b) => ({ branchId: b.branch_id, role: b.role })),
+    mustChangePassword: computeMustChangePassword(user),
+    isSuperadmin: Boolean(user.is_superadmin),
   };
 }
 
-export function isOrgOwner(user: Pick<AuthUser, 'branches'>) {
+export function isOrgOwner(user: Pick<AuthUser, 'branches' | 'isSuperadmin'>) {
+  if (user.isSuperadmin) return true;
   return user.branches.some((b) => b.role === 'owner');
 }
 
@@ -87,6 +113,11 @@ export async function requireAuth(req: Request, _res: Response, next: NextFuncti
     const user = await loadUser(payload.sub);
     if (!user) throw new HttpError(401, 'Usuario inválido');
     req.user = user;
+
+    const pathOnly = (req.originalUrl || req.url || '').split('?')[0];
+    if (user.mustChangePassword && !MUST_CHANGE_ALLOW.test(pathOnly)) {
+      throw new HttpError(403, 'Debes crear una nueva contraseña antes de continuar');
+    }
 
     const branchHeader = req.headers['x-branch-id'];
     const posHeader = req.headers['x-pos-id'];
@@ -125,6 +156,7 @@ export function requireBranch(req: Request, _res: Response, next: NextFunction) 
 export function requireRoles(...roles: BranchAccess['role'][]) {
   return (req: Request, _res: Response, next: NextFunction) => {
     if (!req.activeRole) return next(new HttpError(400, 'Contexto de sucursal requerido'));
+    if (req.user?.isSuperadmin) return next();
     if (!roles.includes(req.activeRole)) return next(new HttpError(403, 'Permiso insuficiente'));
     next();
   };

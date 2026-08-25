@@ -7,7 +7,7 @@ export type StocktakeStatus = 'in_progress' | 'pending_review' | 'completed' | '
 export type StocktakeDecision = 'keep_system' | 'use_physical' | 'adjust';
 
 export function formatTakeLabel(n: number) {
-  return `INV-${String(n).padStart(6, '0')}`;
+  return `INV${String(n).padStart(6, '0')}`;
 }
 
 export function classifyStocktakeDiff(

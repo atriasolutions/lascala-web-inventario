@@ -3,9 +3,9 @@ import { describe, it } from 'node:test';
 import { classifyStocktakeDiff, formatTakeLabel, stocktakeAppliedVariance } from './stocktakes.ts';
 
 describe('stocktakes helpers', () => {
-  it('formatea correlativo INV-', () => {
-    assert.equal(formatTakeLabel(1), 'INV-000001');
-    assert.equal(formatTakeLabel(77), 'INV-000077');
+  it('formatea correlativo INV sin guión', () => {
+    assert.equal(formatTakeLabel(1), 'INV000001');
+    assert.equal(formatTakeLabel(77), 'INV000077');
   });
 
   it('clasifica ok / faltante / sobrante', () => {

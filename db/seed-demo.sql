@@ -2,7 +2,7 @@
 -- Período: junio 2026 → 17 agosto 2026 (America/Santiago)
 --
 -- Idempotente para el set DEMO:
---   prendas LS-1000xx, ingresos d2000000-…, boletas V-D…, gastos d4000000-…
+--   prendas LS1000xx, ingresos d2000000-…, boletas VD…, gastos d4000000-…
 -- No borra admin / vendedora seed. Puede archivar prendas con nombre QA.
 --
 -- Uso: npm run db:seed:demo
@@ -103,7 +103,7 @@ SET name = EXCLUDED.name,
 UPDATE products
 SET status = 'archived', updated_at = now()
 WHERE organization_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
-  AND internal_code !~ '^LS-1000'
+  AND internal_code !~ '^LS1000'
   AND (
     internal_code ~ '^LS-000'
     OR name ILIKE '%QA%'
@@ -117,43 +117,43 @@ WHERE organization_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
 
 -- Quitar set demo anterior (orden FKs).
 DELETE FROM exchange_returns
-WHERE original_product_id IN (SELECT id FROM products WHERE internal_code ~ '^LS-1000')
-   OR new_product_id IN (SELECT id FROM products WHERE internal_code ~ '^LS-1000')
+WHERE original_product_id IN (SELECT id FROM products WHERE internal_code ~ '^LS1000')
+   OR new_product_id IN (SELECT id FROM products WHERE internal_code ~ '^LS1000')
    OR voucher_id IN (
      SELECT id FROM change_vouchers
-     WHERE product_id IN (SELECT id FROM products WHERE internal_code ~ '^LS-1000')
-        OR sale_id IN (SELECT id FROM sales WHERE receipt_number LIKE 'V-D%')
+     WHERE product_id IN (SELECT id FROM products WHERE internal_code ~ '^LS1000')
+        OR sale_id IN (SELECT id FROM sales WHERE receipt_number LIKE 'VD%')
    );
 
 DELETE FROM change_vouchers
-WHERE product_id IN (SELECT id FROM products WHERE internal_code ~ '^LS-1000')
-   OR sale_id IN (SELECT id FROM sales WHERE receipt_number LIKE 'V-D%');
+WHERE product_id IN (SELECT id FROM products WHERE internal_code ~ '^LS1000')
+   OR sale_id IN (SELECT id FROM sales WHERE receipt_number LIKE 'VD%');
 
 DELETE FROM sale_items
 WHERE sale_id IN (
     SELECT id FROM sales
     WHERE organization_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
-      AND receipt_number LIKE 'V-D%'
+      AND receipt_number LIKE 'VD%'
   )
   OR product_id IN (
     SELECT id FROM products
     WHERE organization_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
-      AND internal_code ~ '^LS-1000'
+      AND internal_code ~ '^LS1000'
   );
 
 DELETE FROM sales
 WHERE organization_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
-  AND receipt_number LIKE 'V-D%';
+  AND receipt_number LIKE 'VD%';
 
 DELETE FROM mermas
-WHERE product_id IN (SELECT id FROM products WHERE internal_code ~ '^LS-1000')
+WHERE product_id IN (SELECT id FROM products WHERE internal_code ~ '^LS1000')
    OR id IN (
      'd6000000-0000-4000-a000-000000000001'::uuid,
      'd6000000-0000-4000-a000-000000000002'::uuid
    );
 
 DELETE FROM inventory_movements
-WHERE product_id IN (SELECT id FROM products WHERE internal_code ~ '^LS-1000');
+WHERE product_id IN (SELECT id FROM products WHERE internal_code ~ '^LS1000');
 
 DELETE FROM expenses
 WHERE id::text LIKE 'd4000000-%';
@@ -171,14 +171,14 @@ WHERE id IN (
 );
 
 DELETE FROM product_photos
-WHERE product_id IN (SELECT id FROM products WHERE internal_code ~ '^LS-1000');
+WHERE product_id IN (SELECT id FROM products WHERE internal_code ~ '^LS1000');
 
 DELETE FROM inventory_balances
-WHERE product_id IN (SELECT id FROM products WHERE internal_code ~ '^LS-1000');
+WHERE product_id IN (SELECT id FROM products WHERE internal_code ~ '^LS1000');
 
 DELETE FROM products
 WHERE organization_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
-  AND internal_code ~ '^LS-1000';
+  AND internal_code ~ '^LS1000';
 
 -- Catálogo (~16 prendas). barcode = internal_code.
 INSERT INTO products (
@@ -192,52 +192,52 @@ SELECT v.id, 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa', c.id, v.code, v.code, v.nam
        v.exch, v.exch, true, v.low, v.nomov,
        'dddddddd-dddd-dddd-dddd-ddddddddddd1'
 FROM (VALUES
-  ('d1000000-0000-4000-a000-000000000001'::uuid, 'LS-100001', 'vestidos-fiesta',
+  ('d1000000-0000-4000-a000-000000000001'::uuid, 'LS100001', 'vestidos-fiesta',
    'Vestido de fiesta sirena negro', 'Corte sirena, encaje en busto. Sin cambios.',
    'M', 'Negro', 'vestido', 44990.00, 89980.00, false, 2, NULL::int),
-  ('d1000000-0000-4000-a000-000000000002'::uuid, 'LS-100002', 'vestidos-fiesta',
+  ('d1000000-0000-4000-a000-000000000002'::uuid, 'LS100002', 'vestidos-fiesta',
    'Vestido cocktail rosa palo', 'Midi de fiesta, satín. Sin cambios.',
    'S', 'Rosa palo', 'vestido', 28990.00, 57980.00, false, 2, NULL),
-  ('d1000000-0000-4000-a000-000000000003'::uuid, 'LS-100003', 'vestidos-fiesta',
+  ('d1000000-0000-4000-a000-000000000003'::uuid, 'LS100003', 'vestidos-fiesta',
    'Vestido de fiesta off-shoulder vino', 'Hombro descubierto, cola corta. Sin cambios.',
    'L', 'Vino', 'vestido', 39990.00, 79980.00, false, 2, 30),
-  ('d1000000-0000-4000-a000-000000000004'::uuid, 'LS-100004', 'jeans',
+  ('d1000000-0000-4000-a000-000000000004'::uuid, 'LS100004', 'jeans',
    'Jeans skinny azul índigo', 'Tiro medio, elastano, lavado índigo.',
    'M', 'Azul índigo', 'jeans', 14990.00, 29980.00, true, 3, NULL),
-  ('d1000000-0000-4000-a000-000000000005'::uuid, 'LS-100005', 'jeans',
+  ('d1000000-0000-4000-a000-000000000005'::uuid, 'LS100005', 'jeans',
    'Jeans wide leg negro', 'Palo ancho, pretina alta.',
    'L', 'Negro', 'jeans', 15990.00, 31980.00, true, 2, NULL),
-  ('d1000000-0000-4000-a000-000000000006'::uuid, 'LS-100006', 'ropa-formal',
+  ('d1000000-0000-4000-a000-000000000006'::uuid, 'LS100006', 'ropa-formal',
    'Blusa seda ivory', 'Manga larga, botón cubierto.',
    'S', 'Ivory', 'blusa', 12990.00, 25980.00, true, 2, NULL),
-  ('d1000000-0000-4000-a000-000000000007'::uuid, 'LS-100007', 'ropa-formal',
+  ('d1000000-0000-4000-a000-000000000007'::uuid, 'LS100007', 'ropa-formal',
    'Blazer sastre camel', 'Solapa clásica, un botón.',
    'M', 'Camel', 'blazer', 24990.00, 49980.00, true, 3, NULL),
-  ('d1000000-0000-4000-a000-000000000008'::uuid, 'LS-100008', 'ropa-casual',
+  ('d1000000-0000-4000-a000-000000000008'::uuid, 'LS100008', 'ropa-casual',
    'Camisa lino blanca', 'Oversize liviana de verano.',
    'M', 'Blanco', 'camisa', 9990.00, 19980.00, true, 2, NULL),
-  ('d1000000-0000-4000-a000-000000000009'::uuid, 'LS-100009', 'ropa-casual',
+  ('d1000000-0000-4000-a000-000000000009'::uuid, 'LS100009', 'ropa-casual',
    'Polera crop fucsia', 'Algodón, cuello redondo.',
    'S', 'Fucsia', 'polera', 7990.00, 15980.00, true, 3, NULL),
-  ('d1000000-0000-4000-a000-000000000010'::uuid, 'LS-100010', 'ropa-formal',
+  ('d1000000-0000-4000-a000-000000000010'::uuid, 'LS100010', 'ropa-formal',
    'Falda midi plisada beige', 'Plisado permanente, elástico oculto.',
    'M', 'Beige', 'falda', 11990.00, 23980.00, true, 2, NULL),
-  ('d1000000-0000-4000-a000-000000000011'::uuid, 'LS-100011', 'ropa-casual',
+  ('d1000000-0000-4000-a000-000000000011'::uuid, 'LS100011', 'ropa-casual',
    'Enterito denim claro', 'Tirantes regulables, bolsillos.',
    'S', 'Denim claro', 'enterito', 17990.00, 35980.00, true, 2, NULL),
-  ('d1000000-0000-4000-a000-000000000012'::uuid, 'LS-100012', 'carteras',
+  ('d1000000-0000-4000-a000-000000000012'::uuid, 'LS100012', 'carteras',
    'Cartera baguette negra', 'Cadena removible, cierre imán.',
    'U', 'Negro', 'cartera', 18990.00, 37980.00, true, 2, NULL),
-  ('d1000000-0000-4000-a000-000000000013'::uuid, 'LS-100013', 'cinturones',
+  ('d1000000-0000-4000-a000-000000000013'::uuid, 'LS100013', 'cinturones',
    'Cinturón cuero camel', 'Hebilla dorada, talla M.',
    'M', 'Camel', 'cinturon', 8990.00, 17980.00, true, 2, NULL),
-  ('d1000000-0000-4000-a000-000000000014'::uuid, 'LS-100014', 'accesorios',
+  ('d1000000-0000-4000-a000-000000000014'::uuid, 'LS100014', 'accesorios',
    'Aros aro grande gold', 'Baño oro, cierre clip.',
    'U', 'Dorado', 'aros', 4990.00, 9980.00, true, 2, NULL),
-  ('d1000000-0000-4000-a000-000000000015'::uuid, 'LS-100015', 'accesorios',
+  ('d1000000-0000-4000-a000-000000000015'::uuid, 'LS100015', 'accesorios',
    'Pañuelo seda estampado', 'Estampa floral, 70×70 cm.',
    'U', 'Multicolor', 'pañuelo', 6990.00, 13980.00, true, 2, NULL),
-  ('d1000000-0000-4000-a000-000000000016'::uuid, 'LS-100016', 'ropa-formal',
+  ('d1000000-0000-4000-a000-000000000016'::uuid, 'LS100016', 'ropa-formal',
    'Top paillette plata', 'Tiras finas, brillo fiesta.',
    'S', 'Plata', 'top', 10990.00, 21980.00, true, 2, NULL)
 ) AS v(id, code, slug, name, descr, size_label, color, ptype, cost, sale, exch, low, nomov)
@@ -247,22 +247,22 @@ JOIN categories c
 INSERT INTO product_photos (product_id, url, sort_order)
 SELECT p.id, v.url, 0
 FROM (VALUES
-  ('LS-100001', '/brand/demo-ls-100001.png'),
-  ('LS-100002', '/brand/demo-ls-100002.png'),
-  ('LS-100003', '/brand/demo-ls-100003.png'),
-  ('LS-100004', '/brand/demo-ls-100004.png'),
-  ('LS-100005', '/brand/demo-ls-100005.png'),
-  ('LS-100006', '/brand/demo-ls-100006.png'),
-  ('LS-100007', '/brand/demo-ls-100007.png'),
-  ('LS-100008', '/brand/demo-ls-100008.png'),
-  ('LS-100009', '/brand/demo-ls-100009.png'),
-  ('LS-100010', '/brand/demo-ls-100010.png'),
-  ('LS-100011', '/brand/demo-ls-100011.png'),
-  ('LS-100012', '/brand/demo-ls-100012.png'),
-  ('LS-100013', '/brand/demo-ls-100013.png'),
-  ('LS-100014', '/brand/demo-ls-100014.png'),
-  ('LS-100015', '/brand/demo-ls-100015.png'),
-  ('LS-100016', '/brand/demo-ls-100016.png')
+  ('LS100001', '/brand/demo-ls-100001.png'),
+  ('LS100002', '/brand/demo-ls-100002.png'),
+  ('LS100003', '/brand/demo-ls-100003.png'),
+  ('LS100004', '/brand/demo-ls-100004.png'),
+  ('LS100005', '/brand/demo-ls-100005.png'),
+  ('LS100006', '/brand/demo-ls-100006.png'),
+  ('LS100007', '/brand/demo-ls-100007.png'),
+  ('LS100008', '/brand/demo-ls-100008.png'),
+  ('LS100009', '/brand/demo-ls-100009.png'),
+  ('LS100010', '/brand/demo-ls-100010.png'),
+  ('LS100011', '/brand/demo-ls-100011.png'),
+  ('LS100012', '/brand/demo-ls-100012.png'),
+  ('LS100013', '/brand/demo-ls-100013.png'),
+  ('LS100014', '/brand/demo-ls-100014.png'),
+  ('LS100015', '/brand/demo-ls-100015.png'),
+  ('LS100016', '/brand/demo-ls-100016.png')
 ) AS v(code, url)
 JOIN products p ON p.internal_code = v.code
   AND p.organization_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
@@ -301,10 +301,10 @@ SELECT
   p.cost_price,
   p.sale_price
 FROM (VALUES
-  ('LS-100001', 4), ('LS-100002', 3), ('LS-100003', 3), ('LS-100004', 8),
-  ('LS-100005', 6), ('LS-100006', 5), ('LS-100007', 3), ('LS-100008', 6),
-  ('LS-100009', 10), ('LS-100010', 4), ('LS-100011', 3), ('LS-100012', 4),
-  ('LS-100013', 5), ('LS-100014', 8), ('LS-100015', 6), ('LS-100016', 4)
+  ('LS100001', 4), ('LS100002', 3), ('LS100003', 3), ('LS100004', 8),
+  ('LS100005', 6), ('LS100006', 5), ('LS100007', 3), ('LS100008', 6),
+  ('LS100009', 10), ('LS100010', 4), ('LS100011', 3), ('LS100012', 4),
+  ('LS100013', 5), ('LS100014', 8), ('LS100015', 6), ('LS100016', 4)
 ) AS v(code, qty)
 JOIN products p ON p.internal_code = v.code
   AND p.organization_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
@@ -343,10 +343,10 @@ SELECT
   p.cost_price,
   p.sale_price
 FROM (VALUES
-  ('LS-100001', 2), ('LS-100002', 2), ('LS-100004', 6), ('LS-100005', 4),
-  ('LS-100006', 3), ('LS-100007', 2), ('LS-100008', 4), ('LS-100009', 8),
-  ('LS-100010', 3), ('LS-100011', 2), ('LS-100012', 2), ('LS-100013', 3),
-  ('LS-100014', 6), ('LS-100015', 4), ('LS-100016', 2)
+  ('LS100001', 2), ('LS100002', 2), ('LS100004', 6), ('LS100005', 4),
+  ('LS100006', 3), ('LS100007', 2), ('LS100008', 4), ('LS100009', 8),
+  ('LS100010', 3), ('LS100011', 2), ('LS100012', 2), ('LS100013', 3),
+  ('LS100014', 6), ('LS100015', 4), ('LS100016', 2)
 ) AS v(code, qty)
 JOIN products p ON p.internal_code = v.code
   AND p.organization_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
@@ -388,86 +388,86 @@ CREATE TEMP TABLE demo_tickets (
 INSERT INTO demo_tickets (receipt, sold_local, pos_id, seller_id, code, qty, unit_price)
 SELECT r, s::timestamp, pos, sel, c, q, p.sale_price
 FROM (VALUES
-  ('V-D000001', '2026-06-04 11:20:00', 1, 2, 'LS-100004', 1),
-  ('V-D000001', '2026-06-04 11:20:00', 1, 2, 'LS-100014', 1),
-  ('V-D000002', '2026-06-05 12:40:00', 1, 1, 'LS-100009', 2),
-  ('V-D000003', '2026-06-06 16:10:00', 2, 3, 'LS-100001', 1),
-  ('V-D000004', '2026-06-07 13:05:00', 1, 2, 'LS-100008', 1),
-  ('V-D000004', '2026-06-07 13:05:00', 1, 2, 'LS-100013', 1),
-  ('V-D000005', '2026-06-10 11:30:00', 1, 2, 'LS-100006', 1),
-  ('V-D000006', '2026-06-11 15:45:00', 2, 3, 'LS-100012', 1),
-  ('V-D000007', '2026-06-12 12:20:00', 1, 1, 'LS-100004', 1),
-  ('V-D000007', '2026-06-12 12:20:00', 1, 1, 'LS-100009', 1),
-  ('V-D000008', '2026-06-12 17:50:00', 1, 2, 'LS-100002', 1),
-  ('V-D000009', '2026-06-13 11:10:00', 1, 2, 'LS-100014', 1),
-  ('V-D000009', '2026-06-13 11:10:00', 1, 2, 'LS-100015', 1),
-  ('V-D000010', '2026-06-13 16:00:00', 2, 3, 'LS-100005', 1),
-  ('V-D000011', '2026-06-14 13:40:00', 1, 2, 'LS-100009', 2),
-  ('V-D000012', '2026-06-16 12:15:00', 1, 1, 'LS-100007', 1),
-  ('V-D000013', '2026-06-18 11:55:00', 1, 2, 'LS-100008', 1),
-  ('V-D000013', '2026-06-18 11:55:00', 1, 2, 'LS-100010', 1),
-  ('V-D000014', '2026-06-19 15:20:00', 2, 3, 'LS-100011', 1),
-  ('V-D000015', '2026-06-20 12:40:00', 1, 2, 'LS-100004', 1),
-  ('V-D000016', '2026-06-21 16:30:00', 1, 2, 'LS-100016', 1),
-  ('V-D000016', '2026-06-21 16:30:00', 1, 2, 'LS-100014', 1),
-  ('V-D000017', '2026-06-24 11:05:00', 2, 3, 'LS-100006', 1),
-  ('V-D000018', '2026-06-26 14:50:00', 1, 2, 'LS-100009', 1),
-  ('V-D000018', '2026-06-26 14:50:00', 1, 2, 'LS-100013', 1),
-  ('V-D000019', '2026-06-28 12:25:00', 1, 1, 'LS-100005', 1),
-  ('V-D000020', '2026-07-02 11:40:00', 1, 2, 'LS-100004', 1),
-  ('V-D000021', '2026-07-03 16:15:00', 2, 3, 'LS-100009', 2),
-  ('V-D000022', '2026-07-04 12:30:00', 1, 2, 'LS-100001', 1),
-  ('V-D000022', '2026-07-04 12:30:00', 1, 2, 'LS-100014', 1),
-  ('V-D000023', '2026-07-08 11:20:00', 1, 1, 'LS-100008', 1),
-  ('V-D000024', '2026-07-09 15:00:00', 1, 2, 'LS-100006', 1),
-  ('V-D000024', '2026-07-09 15:00:00', 1, 2, 'LS-100013', 1),
-  ('V-D000025', '2026-07-10 12:45:00', 2, 3, 'LS-100002', 1),
-  ('V-D000026', '2026-07-11 17:10:00', 1, 2, 'LS-100005', 1),
-  ('V-D000026', '2026-07-11 17:10:00', 1, 2, 'LS-100009', 1),
-  ('V-D000027', '2026-07-13 11:25:00', 1, 2, 'LS-100012', 1),
-  ('V-D000028', '2026-07-14 13:50:00', 1, 1, 'LS-100004', 2),
-  ('V-D000029', '2026-07-15 12:05:00', 2, 3, 'LS-100015', 1),
-  ('V-D000029', '2026-07-15 12:05:00', 2, 3, 'LS-100014', 1),
-  ('V-D000030', '2026-07-16 16:40:00', 1, 2, 'LS-100009', 1),
-  ('V-D000031', '2026-07-17 11:55:00', 1, 2, 'LS-100010', 1),
-  ('V-D000031', '2026-07-17 11:55:00', 1, 2, 'LS-100008', 1),
-  ('V-D000032', '2026-07-18 14:20:00', 2, 3, 'LS-100007', 1),
-  ('V-D000033', '2026-07-20 12:30:00', 1, 2, 'LS-100011', 1),
-  ('V-D000034', '2026-07-21 17:00:00', 1, 2, 'LS-100004', 1),
-  ('V-D000034', '2026-07-21 17:00:00', 1, 2, 'LS-100016', 1),
-  ('V-D000035', '2026-07-22 11:15:00', 2, 3, 'LS-100009', 2),
-  ('V-D000036', '2026-07-24 15:35:00', 1, 1, 'LS-100005', 1),
-  ('V-D000037', '2026-07-25 12:50:00', 1, 2, 'LS-100014', 2),
-  ('V-D000038', '2026-07-28 16:10:00', 1, 2, 'LS-100006', 1),
-  ('V-D000039', '2026-07-30 13:20:00', 2, 3, 'LS-100015', 1),
-  ('V-D000039', '2026-07-30 13:20:00', 2, 3, 'LS-100013', 1),
-  ('V-D000040', '2026-08-01 11:30:00', 1, 2, 'LS-100009', 1),
-  ('V-D000041', '2026-08-04 16:20:00', 2, 3, 'LS-100004', 1),
-  ('V-D000041', '2026-08-04 16:20:00', 2, 3, 'LS-100014', 1),
-  ('V-D000042', '2026-08-05 12:10:00', 1, 2, 'LS-100008', 1),
-  ('V-D000043', '2026-08-07 15:45:00', 1, 1, 'LS-100002', 1),
-  ('V-D000043', '2026-08-07 15:45:00', 1, 1, 'LS-100015', 1),
-  ('V-D000044', '2026-08-08 11:50:00', 1, 2, 'LS-100005', 1),
-  ('V-D000045', '2026-08-10 13:30:00', 2, 3, 'LS-100012', 1),
-  ('V-D000045', '2026-08-10 13:30:00', 2, 3, 'LS-100013', 1),
-  ('V-D000046', '2026-08-11 17:05:00', 1, 2, 'LS-100010', 1),
-  ('V-D000047', '2026-08-12 12:40:00', 1, 2, 'LS-100001', 1),
-  ('V-D000047', '2026-08-12 12:40:00', 1, 2, 'LS-100016', 1),
-  ('V-D000048', '2026-08-13 16:15:00', 2, 3, 'LS-100004', 1),
-  ('V-D000049', '2026-08-14 11:25:00', 1, 2, 'LS-100006', 1),
-  ('V-D000049', '2026-08-14 11:25:00', 1, 2, 'LS-100009', 1),
-  ('V-D000050', '2026-08-15 14:50:00', 1, 1, 'LS-100011', 1),
-  ('V-D000051', '2026-08-16 12:20:00', 1, 2, 'LS-100015', 2),
-  ('V-D000051', '2026-08-16 12:20:00', 1, 2, 'LS-100008', 1),
-  ('V-D000052', '2026-08-17 10:45:00', 1, 2, 'LS-100004', 1),
-  ('V-D000052', '2026-08-17 10:45:00', 1, 2, 'LS-100014', 1),
-  ('V-D000053', '2026-08-17 12:20:00', 2, 3, 'LS-100005', 1),
-  ('V-D000053', '2026-08-17 12:20:00', 2, 3, 'LS-100008', 1),
-  ('V-D000054', '2026-08-17 14:10:00', 1, 2, 'LS-100010', 1),
-  ('V-D000054', '2026-08-17 14:10:00', 1, 2, 'LS-100016', 1),
-  ('V-D000055', '2026-08-17 16:35:00', 1, 1, 'LS-100012', 1),
-  ('V-D000055', '2026-08-17 16:35:00', 1, 1, 'LS-100014', 1),
-  ('V-D000056', '2026-08-17 18:05:00', 1, 2, 'LS-100007', 1)
+  ('VD000001', '2026-06-04 11:20:00', 1, 2, 'LS100004', 1),
+  ('VD000001', '2026-06-04 11:20:00', 1, 2, 'LS100014', 1),
+  ('VD000002', '2026-06-05 12:40:00', 1, 1, 'LS100009', 2),
+  ('VD000003', '2026-06-06 16:10:00', 2, 3, 'LS100001', 1),
+  ('VD000004', '2026-06-07 13:05:00', 1, 2, 'LS100008', 1),
+  ('VD000004', '2026-06-07 13:05:00', 1, 2, 'LS100013', 1),
+  ('VD000005', '2026-06-10 11:30:00', 1, 2, 'LS100006', 1),
+  ('VD000006', '2026-06-11 15:45:00', 2, 3, 'LS100012', 1),
+  ('VD000007', '2026-06-12 12:20:00', 1, 1, 'LS100004', 1),
+  ('VD000007', '2026-06-12 12:20:00', 1, 1, 'LS100009', 1),
+  ('VD000008', '2026-06-12 17:50:00', 1, 2, 'LS100002', 1),
+  ('VD000009', '2026-06-13 11:10:00', 1, 2, 'LS100014', 1),
+  ('VD000009', '2026-06-13 11:10:00', 1, 2, 'LS100015', 1),
+  ('VD000010', '2026-06-13 16:00:00', 2, 3, 'LS100005', 1),
+  ('VD000011', '2026-06-14 13:40:00', 1, 2, 'LS100009', 2),
+  ('VD000012', '2026-06-16 12:15:00', 1, 1, 'LS100007', 1),
+  ('VD000013', '2026-06-18 11:55:00', 1, 2, 'LS100008', 1),
+  ('VD000013', '2026-06-18 11:55:00', 1, 2, 'LS100010', 1),
+  ('VD000014', '2026-06-19 15:20:00', 2, 3, 'LS100011', 1),
+  ('VD000015', '2026-06-20 12:40:00', 1, 2, 'LS100004', 1),
+  ('VD000016', '2026-06-21 16:30:00', 1, 2, 'LS100016', 1),
+  ('VD000016', '2026-06-21 16:30:00', 1, 2, 'LS100014', 1),
+  ('VD000017', '2026-06-24 11:05:00', 2, 3, 'LS100006', 1),
+  ('VD000018', '2026-06-26 14:50:00', 1, 2, 'LS100009', 1),
+  ('VD000018', '2026-06-26 14:50:00', 1, 2, 'LS100013', 1),
+  ('VD000019', '2026-06-28 12:25:00', 1, 1, 'LS100005', 1),
+  ('VD000020', '2026-07-02 11:40:00', 1, 2, 'LS100004', 1),
+  ('VD000021', '2026-07-03 16:15:00', 2, 3, 'LS100009', 2),
+  ('VD000022', '2026-07-04 12:30:00', 1, 2, 'LS100001', 1),
+  ('VD000022', '2026-07-04 12:30:00', 1, 2, 'LS100014', 1),
+  ('VD000023', '2026-07-08 11:20:00', 1, 1, 'LS100008', 1),
+  ('VD000024', '2026-07-09 15:00:00', 1, 2, 'LS100006', 1),
+  ('VD000024', '2026-07-09 15:00:00', 1, 2, 'LS100013', 1),
+  ('VD000025', '2026-07-10 12:45:00', 2, 3, 'LS100002', 1),
+  ('VD000026', '2026-07-11 17:10:00', 1, 2, 'LS100005', 1),
+  ('VD000026', '2026-07-11 17:10:00', 1, 2, 'LS100009', 1),
+  ('VD000027', '2026-07-13 11:25:00', 1, 2, 'LS100012', 1),
+  ('VD000028', '2026-07-14 13:50:00', 1, 1, 'LS100004', 2),
+  ('VD000029', '2026-07-15 12:05:00', 2, 3, 'LS100015', 1),
+  ('VD000029', '2026-07-15 12:05:00', 2, 3, 'LS100014', 1),
+  ('VD000030', '2026-07-16 16:40:00', 1, 2, 'LS100009', 1),
+  ('VD000031', '2026-07-17 11:55:00', 1, 2, 'LS100010', 1),
+  ('VD000031', '2026-07-17 11:55:00', 1, 2, 'LS100008', 1),
+  ('VD000032', '2026-07-18 14:20:00', 2, 3, 'LS100007', 1),
+  ('VD000033', '2026-07-20 12:30:00', 1, 2, 'LS100011', 1),
+  ('VD000034', '2026-07-21 17:00:00', 1, 2, 'LS100004', 1),
+  ('VD000034', '2026-07-21 17:00:00', 1, 2, 'LS100016', 1),
+  ('VD000035', '2026-07-22 11:15:00', 2, 3, 'LS100009', 2),
+  ('VD000036', '2026-07-24 15:35:00', 1, 1, 'LS100005', 1),
+  ('VD000037', '2026-07-25 12:50:00', 1, 2, 'LS100014', 2),
+  ('VD000038', '2026-07-28 16:10:00', 1, 2, 'LS100006', 1),
+  ('VD000039', '2026-07-30 13:20:00', 2, 3, 'LS100015', 1),
+  ('VD000039', '2026-07-30 13:20:00', 2, 3, 'LS100013', 1),
+  ('VD000040', '2026-08-01 11:30:00', 1, 2, 'LS100009', 1),
+  ('VD000041', '2026-08-04 16:20:00', 2, 3, 'LS100004', 1),
+  ('VD000041', '2026-08-04 16:20:00', 2, 3, 'LS100014', 1),
+  ('VD000042', '2026-08-05 12:10:00', 1, 2, 'LS100008', 1),
+  ('VD000043', '2026-08-07 15:45:00', 1, 1, 'LS100002', 1),
+  ('VD000043', '2026-08-07 15:45:00', 1, 1, 'LS100015', 1),
+  ('VD000044', '2026-08-08 11:50:00', 1, 2, 'LS100005', 1),
+  ('VD000045', '2026-08-10 13:30:00', 2, 3, 'LS100012', 1),
+  ('VD000045', '2026-08-10 13:30:00', 2, 3, 'LS100013', 1),
+  ('VD000046', '2026-08-11 17:05:00', 1, 2, 'LS100010', 1),
+  ('VD000047', '2026-08-12 12:40:00', 1, 2, 'LS100001', 1),
+  ('VD000047', '2026-08-12 12:40:00', 1, 2, 'LS100016', 1),
+  ('VD000048', '2026-08-13 16:15:00', 2, 3, 'LS100004', 1),
+  ('VD000049', '2026-08-14 11:25:00', 1, 2, 'LS100006', 1),
+  ('VD000049', '2026-08-14 11:25:00', 1, 2, 'LS100009', 1),
+  ('VD000050', '2026-08-15 14:50:00', 1, 1, 'LS100011', 1),
+  ('VD000051', '2026-08-16 12:20:00', 1, 2, 'LS100015', 2),
+  ('VD000051', '2026-08-16 12:20:00', 1, 2, 'LS100008', 1),
+  ('VD000052', '2026-08-17 10:45:00', 1, 2, 'LS100004', 1),
+  ('VD000052', '2026-08-17 10:45:00', 1, 2, 'LS100014', 1),
+  ('VD000053', '2026-08-17 12:20:00', 2, 3, 'LS100005', 1),
+  ('VD000053', '2026-08-17 12:20:00', 2, 3, 'LS100008', 1),
+  ('VD000054', '2026-08-17 14:10:00', 1, 2, 'LS100010', 1),
+  ('VD000054', '2026-08-17 14:10:00', 1, 2, 'LS100016', 1),
+  ('VD000055', '2026-08-17 16:35:00', 1, 1, 'LS100012', 1),
+  ('VD000055', '2026-08-17 16:35:00', 1, 1, 'LS100014', 1),
+  ('VD000056', '2026-08-17 18:05:00', 1, 2, 'LS100007', 1)
 ) AS t(r, s, posn, seln, c, q)
 JOIN products p ON p.internal_code = t.c
   AND p.organization_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa'
@@ -521,7 +521,7 @@ JOIN products p
   ON p.internal_code = d.code
  AND p.organization_id = 'aaaaaaaa-aaaa-aaaa-aaaa-aaaaaaaaaaaa';
 
--- Tickets de cambio (VC-…) para prendas elegibles de las ventas demo V-D…
+-- Tickets de cambio (VC…) para prendas elegibles de las ventas demo VD…
 INSERT INTO change_vouchers (
   organization_id, branch_id, sale_id, sale_item_id, product_id,
   voucher_number, issued_at, expires_at, conditions, created_by, created_at
@@ -532,7 +532,7 @@ SELECT
   s.id,
   si.id,
   si.product_id,
-  'VC-' || LPAD((
+  'VC' || LPAD((
     (
       SELECT COALESCE(MAX(
         CASE WHEN cv.voucher_number ~ '^VC-?[0-9]+$'
@@ -552,7 +552,7 @@ SELECT
 FROM sale_items si
 JOIN sales s ON s.id = si.sale_id
 JOIN products p ON p.id = si.product_id
-WHERE s.receipt_number LIKE 'V-D%'
+WHERE s.receipt_number LIKE 'VD%'
   AND (p.allows_exchange OR p.allows_return)
   AND NOT EXISTS (SELECT 1 FROM change_vouchers v WHERE v.sale_item_id = si.id);
 
@@ -574,7 +574,7 @@ SELECT
   s.sold_at
 FROM sale_items si
 JOIN sales s ON s.id = si.sale_id
-WHERE s.receipt_number LIKE 'V-D%';
+WHERE s.receipt_number LIKE 'VD%';
 
 INSERT INTO mermas (
   id, organization_id, branch_id, product_id, quantity, reason, cost_impact, created_by, created_at
@@ -586,7 +586,7 @@ SELECT
   p.id, 1, 'Costura abierta en bastilla', p.cost_price,
   'dddddddd-dddd-dddd-dddd-ddddddddddd1'::uuid,
   TIMESTAMP '2026-07-27 10:15:00' AT TIME ZONE 'America/Santiago'
-FROM products p WHERE p.internal_code = 'LS-100004';
+FROM products p WHERE p.internal_code = 'LS100004';
 
 INSERT INTO mermas (
   id, organization_id, branch_id, product_id, quantity, reason, cost_impact, created_by, created_at
@@ -598,7 +598,7 @@ SELECT
   p.id, 1, 'Mancha de maquillaje en delantero', p.cost_price,
   'dddddddd-dddd-dddd-dddd-ddddddddddd2'::uuid,
   TIMESTAMP '2026-07-27 10:40:00' AT TIME ZONE 'America/Santiago'
-FROM products p WHERE p.internal_code = 'LS-100009';
+FROM products p WHERE p.internal_code = 'LS100009';
 
 INSERT INTO inventory_movements (
   organization_id, branch_id, product_id, movement_type, quantity_delta, quantity_after,
@@ -624,7 +624,7 @@ FROM (
       ORDER BY created_at, id
     ) AS running
   FROM inventory_movements
-  WHERE product_id IN (SELECT id FROM products WHERE internal_code ~ '^LS-1000')
+  WHERE product_id IN (SELECT id FROM products WHERE internal_code ~ '^LS1000')
 ) x
 WHERE im.id = x.id;
 
@@ -643,7 +643,7 @@ SELECT
   p.low_stock_threshold,
   now()
 FROM products p
-WHERE p.internal_code ~ '^LS-1000';
+WHERE p.internal_code ~ '^LS1000';
 
 -- Gastos del local (fecha civil Chile).
 INSERT INTO expenses (
@@ -692,9 +692,9 @@ INSERT INTO expenses (
 COMMIT;
 
 SELECT
-  (SELECT COUNT(*) FROM products WHERE internal_code ~ '^LS-1000') AS productos_demo,
-  (SELECT COUNT(*) FROM sales WHERE receipt_number LIKE 'V-D%') AS ventas_demo,
+  (SELECT COUNT(*) FROM products WHERE internal_code ~ '^LS1000') AS productos_demo,
+  (SELECT COUNT(*) FROM sales WHERE receipt_number LIKE 'VD%') AS ventas_demo,
   (SELECT COUNT(*) FROM expenses WHERE id::text LIKE 'd4000000-%') AS gastos_demo,
   (SELECT COUNT(*) FROM product_photos ph
      JOIN products p ON p.id = ph.product_id
-    WHERE p.internal_code ~ '^LS-1000') AS fotos_demo;
+    WHERE p.internal_code ~ '^LS1000') AS fotos_demo;

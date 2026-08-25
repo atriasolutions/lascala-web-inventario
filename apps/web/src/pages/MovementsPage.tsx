@@ -49,7 +49,7 @@ type AppliedFilters = {
   productId: string;
   productQ: string;
   productLabel: string;
-  /** Búsqueda de documento / toma (p. ej. INV-… desde Reportes). */
+  /** Búsqueda de documento / toma (p. ej. INV… desde Reportes). */
   q: string;
 };
 

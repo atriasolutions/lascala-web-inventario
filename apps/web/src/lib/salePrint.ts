@@ -106,14 +106,19 @@ export type ChangeTicketPrint = {
   mode: 'cambio' | 'devolucion' | 'ambos';
 };
 
+/** Autonumeración / pistola: sin guiones (Code128 falla con `-` en muchas térmicas). */
+export function barcodeSafeCode(code: string): string {
+  return code.trim().replace(/-/g, '');
+}
+
 /** Código de pistola de la prenda (LS…). */
 export function resolveVoucherScanCode(t: Pick<ChangeTicketPrint, 'barcode' | 'internalCode'>): string {
-  return (t.barcode || t.internalCode || '').trim();
+  return barcodeSafeCode(t.barcode || t.internalCode || '');
 }
 
 /**
  * Code128 en 80 mm (módulo 2): tope conservador para que no se corte el trazo.
- * `VC-000095` entra holgado; si no cabe, se recorta a ASCII.
+ * `VC000095` entra holgado; si no cabe, se recorta a ASCII.
  */
 export const ACCESS_BARCODE_MAX_LEN = 22;
 
@@ -122,11 +127,11 @@ function asciiPrintable(s: string) {
 }
 
 /**
- * Barcode Ticket = `VC-…` único de esa prenda (no el n° de venta: chocaría dos tickets).
- * Caption debajo = el mismo payload. La boleta va solo como texto `Venta V-…`.
+ * Barcode Ticket = `VC…` único de esa prenda (no el n° de venta: chocaría dos tickets).
+ * Caption debajo = el mismo payload. La boleta va solo como texto `Venta V…`.
  */
 export function resolveAccessScanCode(t: Pick<ChangeTicketPrint, 'voucherNumber'>): string {
-  const voucher = (t.voucherNumber || '').trim();
+  const voucher = barcodeSafeCode(t.voucherNumber || '');
   if (voucher && voucher.length <= ACCESS_BARCODE_MAX_LEN && asciiPrintable(voucher)) {
     return voucher;
   }
@@ -204,25 +209,23 @@ export function buildChangeTickets(
   const tickets: ChangeTicketPrint[] = [];
   for (const item of items) {
     if (!allowsChangeTicket(item)) continue;
-    // Un voucher por unidad elegible (como tiendas): si qty>1 y un solo voucher, repetir bloque.
+    // Un voucher por línea elegible; si qty>1 se reimprime el mismo n° de ticket (sin inventar -1/-2).
     const voucher = byItem.get(item.id) || vouchers.find((v) => v.product_id === item.product_id);
     const barcode =
       (voucher?.barcode || item.barcode || '').trim() ||
       (voucher?.internal_code || item.internal_code || '').trim() ||
       null;
     const units = Math.max(1, Math.floor(Number(item.quantity) || 1));
+    const ticketCode = barcodeSafeCode(
+      voucher?.voucher_number || sale.receipt_number || '',
+    );
     for (let u = 0; u < units; u++) {
       tickets.push({
-        key: `${voucher?.id || item.id}-${u}`,
-        voucherNumber:
-          voucher?.voucher_number && units === 1
-            ? voucher.voucher_number
-            : voucher?.voucher_number
-              ? `${voucher.voucher_number}${units > 1 ? `-${u + 1}` : ''}`
-              : `REIMP-${sale.receipt_number}-${u + 1}`,
+        key: `${voucher?.id || item.id}-u${u}`,
+        voucherNumber: ticketCode,
         productName: voucher?.product_name || item.name,
         internalCode: voucher?.internal_code || item.internal_code,
-        barcode,
+        barcode: barcode ? barcodeSafeCode(barcode) : null,
         sizeLabel: voucher?.size_label ?? item.size_label ?? null,
         color: voucher?.color ?? item.color ?? null,
         receiptNumber: sale.receipt_number,

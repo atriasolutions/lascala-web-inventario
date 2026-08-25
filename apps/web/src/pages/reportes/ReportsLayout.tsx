@@ -23,7 +23,7 @@ const LEDES: Record<ReportsVista, string> = {
   ingresos: 'Reinversión a Precio costo y documentos del período.',
   gastos: 'Gastos de operación por categoría. El registro está en Gastos.',
   mermas: 'Bajas y vouchers del período. El registro está en Mermas.',
-  inventarios: 'Faltante, sobrante y neto de cada toma aplicada (INV-…). Valorado a precio de venta.',
+  inventarios: 'Faltante, sobrante y neto de cada toma aplicada (INV…). Valorado a precio de venta.',
 };
 
 function vistaFromPath(pathname: string): ReportsVista {

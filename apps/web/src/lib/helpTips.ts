@@ -50,7 +50,7 @@ export const HELP_TIPS: Record<string, string> = {
   'cta.stock.ajustar':
     'Ajuste de unidades en esta sucursal. Encargado/a o Administrador/a: deja movimiento auditable.',
   'cta.inventarios.nueva':
-    'Empieza una toma INV-…: pistoleas o cargas cantidades y después cierras para conciliar.',
+    'Empieza una toma INV…: pistoleas o cargas cantidades y después cierras para conciliar.',
   'cta.inventarios.aplicar':
     'Aplica la conciliación: Conservar inventario, Conservar stock anterior o Ajustar cantidad.',
   'cta.mermas.registrar':

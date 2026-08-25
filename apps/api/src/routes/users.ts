@@ -1,8 +1,9 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
+import { assertCanResetUserPassword } from '../auth/roles.js';
 import { pool, query } from '../db/pool.js';
-import { requireAuth, requireBranch, requireRoles } from '../middleware/auth.js';
+import { isOrgOwner, requireAuth, requireBranch, requireRoles, type AuthUser } from '../middleware/auth.js';
 import { asyncHandler, HttpError, isUniqueViolation } from '../utils/errors.js';
 
 export const usersRouter = Router();
@@ -15,12 +16,17 @@ const assignmentSchema = z.object({
   posIds: z.array(z.string().uuid()).default([]),
 });
 
+const VISIBLE_USERS = `COALESCE(u.is_superadmin, false) = false`;
+
 async function countOtherActiveOwners(organizationId: string, excludeUserId: string) {
   const res = await query<{ n: string }>(
     `SELECT COUNT(DISTINCT u.id)::text AS n
      FROM users u
      JOIN user_branches ub ON ub.user_id = u.id AND ub.role = 'owner'
-     WHERE u.organization_id = $1 AND u.is_active = true AND u.id <> $2`,
+     WHERE u.organization_id = $1
+       AND u.is_active = true
+       AND u.id <> $2
+       AND COALESCE(u.is_superadmin, false) = false`,
     [organizationId, excludeUserId],
   );
   return Number(res.rows[0]?.n || 0);
@@ -37,6 +43,37 @@ async function assertOrgKeepsOwner(opts: {
   if (others + (selfCounts ? 1 : 0) < 1) {
     throw new HttpError(400, 'Debe quedar al menos una persona con rol Administrador/a activa');
   }
+}
+
+async function loadVisibleTarget(userId: string, organizationId: string) {
+  const res = await query<{
+    id: string;
+    is_active: boolean;
+    is_owner: boolean;
+    is_superadmin: boolean;
+  }>(
+    `SELECT u.id, u.is_active,
+            EXISTS (
+              SELECT 1 FROM user_branches ub
+              WHERE ub.user_id = u.id AND ub.role = 'owner'
+            ) AS is_owner,
+            COALESCE(u.is_superadmin, false) AS is_superadmin
+     FROM users u
+     WHERE u.id = $1 AND u.organization_id = $2`,
+    [userId, organizationId],
+  );
+  const row = res.rows[0];
+  if (!row || row.is_superadmin) return null;
+  return row;
+}
+
+function actorResetContext(req: { user?: AuthUser }) {
+  const u = req.user!;
+  return {
+    id: u.id,
+    isSuperadmin: Boolean(u.isSuperadmin),
+    isOwner: isOrgOwner(u),
+  };
 }
 
 async function loadOrgBranches(organizationId: string) {
@@ -105,11 +142,26 @@ async function replaceUserAccess(
   }
 }
 
+async function setTemporaryPassword(userId: string, password: string) {
+  const hash = await bcrypt.hash(password, 10);
+  await query(
+    `UPDATE users
+     SET password_hash = $1,
+         must_change_password = true,
+         password_changed_at = NULL,
+         updated_at = now()
+     WHERE id = $2`,
+    [hash, userId],
+  );
+}
+
 usersRouter.get(
   '/',
   asyncHandler(async (req, res) => {
     const result = await query(
       `SELECT u.id, u.email, u.full_name, u.is_active, u.created_at,
+              COALESCE(u.must_change_password, false) AS must_change_password,
+              u.password_changed_at,
               COALESCE(
                 json_agg(
                   json_build_object(
@@ -143,6 +195,7 @@ usersRouter.get(
        LEFT JOIN user_branches ub ON ub.user_id = u.id
        LEFT JOIN branches b ON b.id = ub.branch_id
        WHERE u.organization_id = $1
+         AND ${VISIBLE_USERS}
        GROUP BY u.id
        ORDER BY u.is_active DESC, u.full_name`,
       [req.user!.organizationId],
@@ -180,8 +233,12 @@ usersRouter.post(
     let user;
     try {
       const userRes = await query(
-        `INSERT INTO users (organization_id, email, password_hash, full_name)
-         VALUES ($1,$2,$3,$4) RETURNING id, email, full_name, is_active, created_at`,
+        `INSERT INTO users (
+           organization_id, email, password_hash, full_name,
+           must_change_password, password_changed_at, is_superadmin
+         ) VALUES ($1,$2,$3,$4,true,NULL,false)
+         RETURNING id, email, full_name, is_active, created_at,
+                   must_change_password, password_changed_at`,
         [req.user!.organizationId, body.email.toLowerCase(), hash, body.fullName],
       );
       user = userRes.rows[0];
@@ -199,6 +256,39 @@ usersRouter.post(
       throw e;
     }
     res.status(201).json({ user });
+  }),
+);
+
+/**
+ * Restablece contraseña temporal. Fuerza must_change_password.
+ * Reglas: solo superadmin → admin (owner); admin → vendedoras/encargadas.
+ */
+usersRouter.post(
+  '/:id/reset-password',
+  asyncHandler(async (req, res) => {
+    const id = z.string().uuid().parse(req.params.id);
+    const body = z
+      .object({
+        password: z.string().min(6, 'La contraseña debe tener al menos 6 caracteres'),
+      })
+      .parse(req.body);
+
+    const target = await loadVisibleTarget(id, req.user!.organizationId);
+    if (!target) throw new HttpError(404, 'Usuario no encontrado');
+
+    assertCanResetUserPassword(actorResetContext(req), {
+      id: target.id,
+      isSuperadmin: false,
+      isOwner: Boolean(target.is_owner),
+    });
+
+    await setTemporaryPassword(id, body.password);
+    res.json({
+      ok: true,
+      message: 'Contraseña restablecida. La usuaria deberá crear una nueva al ingresar.',
+      userId: id,
+      mustChangePassword: true,
+    });
   }),
 );
 
@@ -228,17 +318,7 @@ usersRouter.patch(
       throw new HttpError(400, 'No puedes desactivar tu propia cuenta');
     }
 
-    const exists = await query<{ id: string; is_active: boolean }>(
-      `SELECT u.id, u.is_active,
-              EXISTS (
-                SELECT 1 FROM user_branches ub
-                WHERE ub.user_id = u.id AND ub.role = 'owner'
-              ) AS is_owner
-       FROM users u
-       WHERE u.id = $1 AND u.organization_id = $2`,
-      [id, req.user!.organizationId],
-    );
-    const row = exists.rows[0] as { id: string; is_active: boolean; is_owner: boolean } | undefined;
+    const row = await loadVisibleTarget(id, req.user!.organizationId);
     if (!row) throw new HttpError(404, 'Usuario no encontrado');
 
     if (body.isActive === false) {
@@ -251,8 +331,12 @@ usersRouter.patch(
     }
 
     if (body.password) {
-      const hash = await bcrypt.hash(body.password, 10);
-      await query(`UPDATE users SET password_hash = $1, updated_at = now() WHERE id = $2`, [hash, id]);
+      assertCanResetUserPassword(actorResetContext(req), {
+        id: row.id,
+        isSuperadmin: false,
+        isOwner: Boolean(row.is_owner),
+      });
+      await setTemporaryPassword(id, body.password);
     }
 
     try {
@@ -263,7 +347,9 @@ usersRouter.patch(
              email = COALESCE($3, email),
              updated_at = now()
          WHERE id = $4 AND organization_id = $5
-         RETURNING id, email, full_name, is_active, created_at`,
+           AND COALESCE(is_superadmin, false) = false
+         RETURNING id, email, full_name, is_active, created_at,
+                   must_change_password, password_changed_at`,
         [
           body.isActive ?? null,
           body.fullName ?? null,
@@ -272,8 +358,10 @@ usersRouter.patch(
           req.user!.organizationId,
         ],
       );
+      if (!result.rows[0]) throw new HttpError(404, 'Usuario no encontrado');
       res.json({ user: result.rows[0] });
     } catch (e) {
+      if (e instanceof HttpError) throw e;
       if (isUniqueViolation(e)) {
         throw new HttpError(409, 'El email ya está registrado');
       }
@@ -289,26 +377,18 @@ usersRouter.delete(
     if (id === req.user!.id) {
       throw new HttpError(400, 'No puedes eliminar tu propia cuenta');
     }
-    const exists = await query<{ id: string; is_owner: boolean }>(
-      `SELECT u.id,
-              EXISTS (
-                SELECT 1 FROM user_branches ub
-                WHERE ub.user_id = u.id AND ub.role = 'owner'
-              ) AS is_owner
-       FROM users u
-       WHERE u.id = $1 AND u.organization_id = $2`,
-      [id, req.user!.organizationId],
-    );
-    if (!exists.rows[0]) throw new HttpError(404, 'Usuario no encontrado');
+    const exists = await loadVisibleTarget(id, req.user!.organizationId);
+    if (!exists) throw new HttpError(404, 'Usuario no encontrado');
     await assertOrgKeepsOwner({
       organizationId: req.user!.organizationId,
       targetUserId: id,
       nextIsActive: false,
-      nextHasOwnerRole: exists.rows[0].is_owner,
+      nextHasOwnerRole: exists.is_owner,
     });
     const result = await query(
       `UPDATE users SET is_active = false, updated_at = now()
        WHERE id = $1 AND organization_id = $2
+         AND COALESCE(is_superadmin, false) = false
        RETURNING id, email, full_name, is_active`,
       [id, req.user!.organizationId],
     );
@@ -322,11 +402,8 @@ usersRouter.put(
     const id = z.string().uuid().parse(req.params.id);
     const body = z.object({ assignments: z.array(assignmentSchema) }).parse(req.body);
 
-    const exists = await query<{ id: string; is_active: boolean }>(
-      `SELECT id, is_active FROM users WHERE id = $1 AND organization_id = $2`,
-      [id, req.user!.organizationId],
-    );
-    if (!exists.rows[0]) throw new HttpError(404, 'Usuario no encontrado');
+    const exists = await loadVisibleTarget(id, req.user!.organizationId);
+    if (!exists) throw new HttpError(404, 'Usuario no encontrado');
 
     const nextHasOwnerRole = body.assignments.some((a) => a.role === 'owner');
     if (id === req.user!.id && !nextHasOwnerRole) {
@@ -335,7 +412,7 @@ usersRouter.put(
     await assertOrgKeepsOwner({
       organizationId: req.user!.organizationId,
       targetUserId: id,
-      nextIsActive: exists.rows[0].is_active,
+      nextIsActive: exists.is_active,
       nextHasOwnerRole,
     });
 
@@ -354,11 +431,8 @@ usersRouter.post(
       })
       .parse(req.body);
     const userId = z.string().uuid().parse(req.params.id);
-    const exists = await query<{ id: string; is_active: boolean }>(
-      'SELECT id, is_active FROM users WHERE id = $1 AND organization_id = $2',
-      [userId, req.user!.organizationId],
-    );
-    if (!exists.rows[0]) throw new HttpError(404, 'Usuario no encontrado');
+    const exists = await loadVisibleTarget(userId, req.user!.organizationId);
+    if (!exists) throw new HttpError(404, 'Usuario no encontrado');
 
     const branch = await query<{ id: string }>(
       `SELECT id FROM branches WHERE id = $1 AND organization_id = $2`,

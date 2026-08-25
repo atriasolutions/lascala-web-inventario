@@ -876,7 +876,7 @@ export async function getInventariosReport(
         'Valorado a precio de venta de sala (el de la ficha). El Precio costo vive en Ingresos, no se usa acá.',
       neto: 'Neto = valor sobrante − valor faltante. Positivo = ganancia neta; negativo = pérdida neta.',
       movements:
-        'Cada prenda que movió stock dejó un ajuste en Movimientos con el n° INV-…. Conservar stock anterior no genera movimiento.',
+        'Cada prenda que movió stock dejó un ajuste en Movimientos con el n° INV…. Conservar stock anterior no genera movimiento.',
     },
   };
 }

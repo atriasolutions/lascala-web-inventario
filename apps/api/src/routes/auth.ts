@@ -1,30 +1,36 @@
-import { createHash, randomBytes } from 'node:crypto';
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { z } from 'zod';
-import { env } from '../config.js';
 import { query } from '../db/pool.js';
-import { loadUser, requireAuth, signToken, resolveSessionTtl, isOrgOwner } from '../middleware/auth.js';
+import {
+  loadUser,
+  requireAuth,
+  signToken,
+  resolveSessionTtl,
+  isOrgOwner,
+  type AuthUser,
+} from '../middleware/auth.js';
 import { asyncHandler, HttpError } from '../utils/errors.js';
 
 export const authRouter = Router();
-
-const GENERIC_FORGOT_MSG =
-  'Si el correo está registrado, recibirás instrucciones para restablecer tu contraseña.';
-
-function hashToken(raw: string) {
-  return createHash('sha256').update(raw).digest('hex');
-}
-
-function sleep(ms: number) {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 const sessionClientSchema = z.object({
   /** App instalada (standalone móvil). El web no debe enviar esto en Chrome de escritorio. */
   client: z.enum(['pwa', 'web']).optional(),
   persistent: z.boolean().optional(),
 });
+
+function publicUser(user: AuthUser) {
+  return {
+    id: user.id,
+    organizationId: user.organizationId,
+    email: user.email,
+    fullName: user.fullName,
+    branches: user.branches,
+    mustChangePassword: user.mustChangePassword,
+    isSuperadmin: user.isSuperadmin,
+  };
+}
 
 function issueSession(user: { id: string; organizationId: string }, hints: z.infer<typeof sessionClientSchema>) {
   const { persistent, expiresIn } = resolveSessionTtl(hints);
@@ -53,7 +59,11 @@ authRouter.post(
     const user = await loadUser(row.id);
     if (!user) throw new HttpError(401, 'Usuario inválido');
     const session = issueSession(user, body);
-    res.json({ ...session, user });
+    res.json({
+      ...session,
+      user: publicUser(user),
+      mustChangePassword: user.mustChangePassword,
+    });
   }),
 );
 
@@ -65,100 +75,80 @@ authRouter.post(
     const body = sessionClientSchema.parse(req.body ?? {});
     const user = req.user!;
     const session = issueSession(user, body);
-    res.json({ ...session, user });
+    res.json({
+      ...session,
+      user: publicUser(user),
+      mustChangePassword: user.mustChangePassword,
+    });
   }),
 );
 
 /**
- * Solicitud de restablecimiento. Siempre responde 200 con mensaje genérico.
- * Sin SMTP: en desarrollo se imprime el link en la consola de la API.
+ * Primer ingreso / cambio voluntario autenticado.
+ * Limpia must_change_password y setea password_changed_at.
  */
 authRouter.post(
-  '/forgot-password',
-  asyncHandler(async (req, res) => {
-    const body = z.object({ email: z.string().email() }).parse(req.body);
-    const email = body.email.toLowerCase().trim();
-
-    const started = Date.now();
-    const userRes = await query<{ id: string }>(
-      `SELECT id FROM users WHERE email = $1 AND is_active = true`,
-      [email],
-    );
-    const user = userRes.rows[0];
-
-    if (user) {
-      const rawToken = randomBytes(32).toString('hex');
-      const tokenHash = hashToken(rawToken);
-      const ttl = Math.max(5, env.passwordResetTtlMinutes);
-
-      await query(
-        `UPDATE password_reset_tokens
-            SET used_at = COALESCE(used_at, now())
-          WHERE user_id = $1 AND used_at IS NULL`,
-        [user.id],
-      );
-      await query(
-        `INSERT INTO password_reset_tokens (user_id, token_hash, expires_at)
-         VALUES ($1, $2, now() + ($3::int * interval '1 minute'))`,
-        [user.id, tokenHash, ttl],
-      );
-
-      const resetUrl = `${env.webOrigin.replace(/\/$/, '')}/reset-password?token=${rawToken}`;
-      // Sin mailer: loguear en consola API (dev / staging sin SMTP).
-      console.info('[auth/forgot-password] Reset link (sin SMTP):', resetUrl);
-      console.info('[auth/forgot-password] Usuario:', email, `· expira en ${ttl} min`);
-    }
-
-    // Mitiga timing aproximado entre email existente / no existente.
-    const elapsed = Date.now() - started;
-    if (elapsed < 400) await sleep(400 - elapsed);
-
-    res.json({ ok: true, message: GENERIC_FORGOT_MSG });
-  }),
-);
-
-/**
- * Define nueva contraseña con el token recibido por email / consola.
- */
-authRouter.post(
-  '/reset-password',
+  '/change-password',
+  requireAuth,
   asyncHandler(async (req, res) => {
     const body = z
       .object({
-        token: z.string().min(20),
-        password: z.string().min(6, 'La contraseña debe tener al menos 6 caracteres'),
+        currentPassword: z.string().min(1, 'Indica tu contraseña actual'),
+        newPassword: z.string().min(6, 'La nueva contraseña debe tener al menos 6 caracteres'),
       })
       .parse(req.body);
 
-    const tokenHash = hashToken(body.token.trim());
-    const rowRes = await query<{ id: string; user_id: string }>(
-      `SELECT id, user_id
-         FROM password_reset_tokens
-        WHERE token_hash = $1
-          AND used_at IS NULL
-          AND expires_at > now()`,
-      [tokenHash],
-    );
-    const row = rowRes.rows[0];
-    if (!row) {
-      throw new HttpError(400, 'El enlace no es válido o ya expiró. Solicita uno nuevo.');
+    if (body.currentPassword === body.newPassword) {
+      throw new HttpError(400, 'La nueva contraseña debe ser distinta a la actual');
     }
 
-    const passwordHash = await bcrypt.hash(body.password, 10);
-    await query(`UPDATE users SET password_hash = $1, updated_at = now() WHERE id = $2`, [
-      passwordHash,
-      row.user_id,
-    ]);
-    await query(`UPDATE password_reset_tokens SET used_at = now() WHERE id = $1`, [row.id]);
-    // Invalida otros tokens pendientes del mismo usuario.
+    const row = await query<{ password_hash: string }>(
+      `SELECT password_hash FROM users WHERE id = $1 AND is_active = true`,
+      [req.user!.id],
+    );
+    if (!row.rows[0]) throw new HttpError(401, 'Usuario inválido');
+    if (!(await bcrypt.compare(body.currentPassword, row.rows[0].password_hash))) {
+      throw new HttpError(400, 'La contraseña actual no es correcta');
+    }
+
+    const hash = await bcrypt.hash(body.newPassword, 10);
     await query(
-      `UPDATE password_reset_tokens
-          SET used_at = COALESCE(used_at, now())
-        WHERE user_id = $1 AND used_at IS NULL`,
-      [row.user_id],
+      `UPDATE users
+       SET password_hash = $1,
+           must_change_password = false,
+           password_changed_at = now(),
+           updated_at = now()
+       WHERE id = $2`,
+      [hash, req.user!.id],
     );
 
-    res.json({ ok: true, message: 'Contraseña actualizada. Ya puedes ingresar.' });
+    const user = await loadUser(req.user!.id);
+    if (!user) throw new HttpError(401, 'Usuario inválido');
+    res.json({
+      ok: true,
+      message: 'Contraseña actualizada',
+      user: publicUser(user),
+      mustChangePassword: false,
+    });
+  }),
+);
+
+/** Ya no hay “olvidé mi contraseña” público. Solo admin/soporte restablece. */
+authRouter.post(
+  '/forgot-password',
+  asyncHandler(async (_req, res) => {
+    res.status(410).json({
+      error: 'No hay recuperación pública. Pide a la administración que restablezca tu contraseña.',
+    });
+  }),
+);
+
+authRouter.post(
+  '/reset-password',
+  asyncHandler(async (_req, res) => {
+    res.status(410).json({
+      error: 'No hay recuperación pública. Pide a la administración que restablezca tu contraseña.',
+    });
   }),
 );
 
@@ -166,7 +156,10 @@ authRouter.get(
   '/me',
   requireAuth,
   asyncHandler(async (req, res) => {
-    res.json({ user: req.user });
+    res.json({
+      user: publicUser(req.user!),
+      mustChangePassword: req.user!.mustChangePassword,
+    });
   }),
 );
 
@@ -178,17 +171,36 @@ authRouter.patch(
       .object({
         fullName: z.string().trim().min(1).max(120).optional(),
         password: z.string().min(6).optional(),
+        currentPassword: z.string().min(1).optional(),
       })
       .parse(req.body);
     if (body.fullName === undefined && body.password === undefined) {
       throw new HttpError(400, 'No hay cambios para aplicar');
     }
     if (body.password) {
+      if (!body.currentPassword) {
+        throw new HttpError(400, 'Indica tu contraseña actual');
+      }
+      const row = await query<{ password_hash: string }>(
+        `SELECT password_hash FROM users WHERE id = $1`,
+        [req.user!.id],
+      );
+      if (!row.rows[0] || !(await bcrypt.compare(body.currentPassword, row.rows[0].password_hash))) {
+        throw new HttpError(400, 'La contraseña actual no es correcta');
+      }
+      if (body.currentPassword === body.password) {
+        throw new HttpError(400, 'La nueva contraseña debe ser distinta a la actual');
+      }
       const hash = await bcrypt.hash(body.password, 10);
-      await query(`UPDATE users SET password_hash = $1, updated_at = now() WHERE id = $2`, [
-        hash,
-        req.user!.id,
-      ]);
+      await query(
+        `UPDATE users
+         SET password_hash = $1,
+             must_change_password = false,
+             password_changed_at = now(),
+             updated_at = now()
+         WHERE id = $2`,
+        [hash, req.user!.id],
+      );
     }
     if (body.fullName !== undefined) {
       await query(`UPDATE users SET full_name = $1, updated_at = now() WHERE id = $2`, [
@@ -198,7 +210,7 @@ authRouter.patch(
     }
     const user = await loadUser(req.user!.id);
     if (!user) throw new HttpError(401, 'Usuario inválido');
-    res.json({ user });
+    res.json({ user: publicUser(user), mustChangePassword: user.mustChangePassword });
   }),
 );
 
