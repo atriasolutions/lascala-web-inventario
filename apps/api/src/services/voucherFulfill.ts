@@ -72,6 +72,26 @@ export function isPartyDress(opts: {
   return opts.allows_exchange === false;
 }
 
+/** CLP: igualdad exacta en pesos enteros (sin centavos de redondeo). */
+export function clpPesos(amount: number | string): number {
+  return Math.round(Number(amount));
+}
+
+/**
+ * Cambio de talla: la prenda que se lleva debe costar exactamente lo mismo
+ * que la línea/prenda del ticket. No permite otra prenda a distinto precio.
+ */
+export function assertExchangeSameSalePrice(returnedSalePrice: number | string, newSalePrice: number | string) {
+  const returned = clpPesos(returnedSalePrice);
+  const neu = clpPesos(newSalePrice);
+  if (returned !== neu) {
+    throw new HttpError(
+      400,
+      `El cambio solo permite otra prenda al mismo precio de venta ($${returned.toLocaleString('es-CL')})`,
+    );
+  }
+}
+
 export async function findProductIdByScannedCode(
   client: PoolClient,
   organizationId: string,
@@ -180,8 +200,13 @@ export async function fulfillVoucherWithClient(
     throw new HttpError(400, 'El código no corresponde a la prenda de este ticket');
   }
 
-  const prod = await client.query<{ cost_price: string; tracks_stock: boolean }>(
-    `SELECT cost_price, COALESCE(tracks_stock, true) AS tracks_stock
+  const prod = await client.query<{
+    cost_price: string;
+    sale_price: string;
+    tracks_stock: boolean;
+  }>(
+    `SELECT cost_price, sale_price::text AS sale_price,
+            COALESCE(tracks_stock, true) AS tracks_stock
      FROM products WHERE id = $1 AND organization_id = $2`,
     [voucher.product_id, organizationId],
   );
@@ -189,13 +214,18 @@ export async function fulfillVoucherWithClient(
 
   let qty = 1;
   let lineTotal = 0;
+  /** Precio de venta de la prenda/línea que se devuelve (igualdad exacta en cambio). */
+  let returnedSalePrice = Number(prod.rows[0].sale_price);
   if (voucher.sale_item_id) {
-    const item = await client.query<{ quantity: number; line_total: string }>(
-      `SELECT quantity, line_total::text FROM sale_items WHERE id = $1`,
+    const item = await client.query<{ quantity: number; line_total: string; unit_price: string }>(
+      `SELECT quantity, line_total::text, unit_price::text FROM sale_items WHERE id = $1`,
       [voucher.sale_item_id],
     );
     if (item.rows[0]?.quantity) qty = item.rows[0].quantity;
     lineTotal = Number(item.rows[0]?.line_total || 0);
+    if (item.rows[0]?.unit_price != null) {
+      returnedSalePrice = Number(item.rows[0].unit_price);
+    }
   }
 
   let cashAmount: number | null = null;
@@ -269,12 +299,13 @@ export async function fulfillVoucherWithClient(
     if (body.newProductId === voucher.product_id && body.destination === 'restock') {
       throw new HttpError(400, 'Para un cambio, pistolea una prenda distinta de vitrina');
     }
-    const neu = await client.query<{ id: string; tracks_stock: boolean }>(
-      `SELECT id, COALESCE(tracks_stock, true) AS tracks_stock
+    const neu = await client.query<{ id: string; tracks_stock: boolean; sale_price: string }>(
+      `SELECT id, COALESCE(tracks_stock, true) AS tracks_stock, sale_price::text AS sale_price
        FROM products WHERE id = $1 AND organization_id = $2`,
       [body.newProductId, organizationId],
     );
     if (!neu.rows[0]) throw new HttpError(400, 'La prenda nueva no existe');
+    assertExchangeSameSalePrice(returnedSalePrice, neu.rows[0].sale_price);
     if (!neu.rows[0].tracks_stock) {
       throw new HttpError(400, 'La prenda nueva no controla stock de vitrina');
     }

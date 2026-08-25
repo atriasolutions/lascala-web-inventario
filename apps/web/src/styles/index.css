@@ -965,6 +965,77 @@ a.is-nav-offline,
   flex-shrink: 0;
 }
 
+/* ——— Boutique loader (marca) ——— */
+.boutique-loader {
+  display: grid;
+  justify-items: center;
+  align-content: center;
+  gap: 0.85rem;
+  text-align: center;
+  color: var(--color-ink);
+}
+.boutique-loader--page {
+  min-height: min(52vh, 28rem);
+  padding: 2.5rem 1.25rem;
+}
+.boutique-loader--block {
+  min-height: 8rem;
+  padding: 1.5rem 0.75rem;
+}
+.boutique-loader-mark {
+  position: relative;
+  width: 4.25rem;
+  height: 4.25rem;
+  display: grid;
+  place-items: center;
+}
+.boutique-loader-mark img {
+  width: 2.6rem;
+  height: 2.6rem;
+  object-fit: contain;
+  position: relative;
+  z-index: 1;
+  animation: boutiqueLoaderPulse 1.6s var(--ease-standard) infinite;
+}
+.boutique-loader-ring {
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  border: 1.5px solid rgba(230, 0, 126, 0.18);
+  border-top-color: var(--color-brand);
+  animation: boutiqueLoaderSpin 0.95s linear infinite;
+}
+.boutique-loader-label {
+  margin: 0;
+  font-family: var(--font-body);
+  font-size: 0.92rem;
+  font-weight: 550;
+  letter-spacing: 0.02em;
+  color: var(--color-muted);
+}
+@keyframes boutiqueLoaderSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes boutiqueLoaderPulse {
+  0%,
+  100% {
+    opacity: 1;
+    transform: scale(1);
+  }
+  50% {
+    opacity: 0.72;
+    transform: scale(0.96);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .boutique-loader-mark img,
+  .boutique-loader-ring {
+    animation: none;
+  }
+}
+
 /* ——— Dashboard boutique ——— */
 .dash {
   display: grid;
@@ -9163,6 +9234,20 @@ button.inv-stat.is-active {
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(9.5rem, 1fr));
   gap: 0.5rem;
+}
+.merma-outcome {
+  grid-template-columns: 1fr 1fr;
+}
+.merma-outcome .merma-choice-btn {
+  text-align: center;
+  justify-items: center;
+  min-height: 44px;
+}
+.merma-exchange-hint {
+  margin: 0;
+  font-size: 0.85rem;
+  color: var(--color-muted);
+  line-height: 1.35;
 }
 .merma-choice-btn {
   display: grid;

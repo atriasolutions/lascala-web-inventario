@@ -8,6 +8,7 @@ import {
   useState,
 } from 'react';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { BoutiqueLoader } from '../components/BoutiqueLoader';
 import { InfiniteListFooter } from '../components/InfiniteListFooter';
 import { ModalOverlayClose } from '../components/ModalOverlayClose';
 import { SortableTh } from '../components/SortableTh';
@@ -62,7 +63,8 @@ type Filters = {
   category: CategoryFilter;
   dateFrom: string;
   dateTo: string;
-  q: string;
+  description: string;
+  user: string;
   /** 'all' = sin filtro de fecha; resto = presets de Reportes. */
   periodPreset: PeriodPreset | 'all';
   periodDay: string;
@@ -76,7 +78,8 @@ const DEFAULT_FILTERS: Filters = {
   category: 'all',
   dateFrom: '',
   dateTo: '',
-  q: '',
+  description: '',
+  user: '',
   periodPreset: 'all',
   periodDay: chileIsoDate(),
   periodMonth: chileYearMonth().month,
@@ -118,8 +121,14 @@ function applyPeriodPreset(
   };
 }
 
-function normalizeExpenseFilters(raw: Filters): Filters {
-  const merged = { ...DEFAULT_FILTERS, ...raw };
+function normalizeExpenseFilters(raw: Filters & { q?: string }): Filters {
+  const legacy = String(raw.q || '').trim();
+  const merged: Filters = {
+    ...DEFAULT_FILTERS,
+    ...raw,
+    description: raw.description || (!raw.user ? legacy : '') || '',
+    user: raw.user || '',
+  };
   if (!merged.periodPreset) {
     if (merged.dateFrom || merged.dateTo) {
       return applyPeriodPreset(
@@ -157,7 +166,8 @@ function buildQuery(f: Filters, offset: number, limit: number) {
   if (f.category !== 'all') params.set('category', f.category);
   if (f.dateFrom) params.set('dateFrom', f.dateFrom);
   if (f.dateTo) params.set('dateTo', f.dateTo);
-  if (f.q.trim()) params.set('q', f.q.trim());
+  if (f.description.trim()) params.set('description', f.description.trim());
+  if (f.user.trim()) params.set('user', f.user.trim());
   withPagination(params, offset, limit);
   return `/api/ops/expenses?${params.toString()}`;
 }
@@ -198,7 +208,8 @@ export function ExpensesPage() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [draftDateFrom, setDraftDateFrom] = useState('');
   const [draftDateTo, setDraftDateTo] = useState('');
-  const [draftQ, setDraftQ] = useState('');
+  const [draftDescription, setDraftDescription] = useState('');
+  const [draftUser, setDraftUser] = useState('');
   const [draftCategory, setDraftCategory] = useState<CategoryFilter>('all');
   const filtersTitleId = useId();
   const modalRef = useRef<HTMLDivElement>(null);
@@ -269,7 +280,11 @@ export function ExpensesPage() {
   const years = useMemo(() => yearOptions(), []);
 
   const hasExtraFilters = Boolean(
-    filters.dateFrom || filters.dateTo || filters.q.trim() || filters.category !== 'all',
+    filters.dateFrom ||
+      filters.dateTo ||
+      filters.description.trim() ||
+      filters.user.trim() ||
+      filters.category !== 'all',
   );
 
   const summaryChips = useMemo(() => {
@@ -285,14 +300,18 @@ export function ExpensesPage() {
       if (filters.dateFrom) chips.push({ key: 'from', label: `Desde ${fmtDay(filters.dateFrom)}` });
       if (filters.dateTo) chips.push({ key: 'to', label: `Hasta ${fmtDay(filters.dateTo)}` });
     }
-    if (filters.q.trim()) chips.push({ key: 'q', label: filters.q.trim() });
+    if (filters.description.trim()) {
+      chips.push({ key: 'description', label: filters.description.trim() });
+    }
+    if (filters.user.trim()) chips.push({ key: 'user', label: filters.user.trim() });
     return chips;
   }, [filters]);
 
   function openDrawer() {
     setDraftDateFrom(filters.dateFrom);
     setDraftDateTo(filters.dateTo);
-    setDraftQ(filters.q);
+    setDraftDescription(filters.description);
+    setDraftUser(filters.user);
     setDraftCategory(filters.category);
     setDrawerOpen(true);
   }
@@ -307,7 +326,8 @@ export function ExpensesPage() {
         {
           ...prev,
           category: draftCategory,
-          q: draftQ,
+          description: draftDescription,
+          user: draftUser,
         },
         'range',
         { dateFrom: draftDateFrom, dateTo: draftDateTo },
@@ -627,13 +647,7 @@ export function ExpensesPage() {
           {error && <p className="error">{error}</p>}
 
           <div className="ing-list-scroll" ref={scrollRef}>
-            {loading && (
-              <div className="ing-skel" aria-busy="true" aria-label="Cargando gastos">
-                <div className="ing-skel-row" />
-                <div className="ing-skel-row" />
-                <div className="ing-skel-row" />
-              </div>
-            )}
+            {loading && <BoutiqueLoader label="Cargando gastos…" variant="block" />}
 
             {!loading && !expenses.length && (
               <div className="sales-empty">
@@ -835,12 +849,22 @@ export function ExpensesPage() {
                   />
                 </div>
                 <div className="field">
-                  <label htmlFor="gasto-f-q">Buscar</label>
+                  <label htmlFor="gasto-f-description">Descripción</label>
                   <input
-                    id="gasto-f-q"
-                    value={draftQ}
-                    onChange={(e) => setDraftQ(e.target.value)}
-                    placeholder="Descripción, categoría, usuario…"
+                    id="gasto-f-description"
+                    value={draftDescription}
+                    onChange={(e) => setDraftDescription(e.target.value)}
+                    placeholder="Texto del gasto"
+                    autoComplete="off"
+                  />
+                </div>
+                <div className="field">
+                  <label htmlFor="gasto-f-user">Usuario</label>
+                  <input
+                    id="gasto-f-user"
+                    value={draftUser}
+                    onChange={(e) => setDraftUser(e.target.value)}
+                    placeholder="Nombre"
                     autoComplete="off"
                   />
                 </div>

@@ -9,12 +9,14 @@ import {
 } from 'react';
 import { Link } from 'react-router-dom';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { BoutiqueLoader } from '../components/BoutiqueLoader';
 import { InfiniteListFooter } from '../components/InfiniteListFooter';
 import { ModalOverlayClose } from '../components/ModalOverlayClose';
 import { SortableTh } from '../components/SortableTh';
 import { useInfiniteList } from '../hooks/useInfiniteList';
 import { api, mediaUrl, money, userFacingError } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { sameSalePriceExact } from '../lib/exchangePrice';
 import { loadListFilters, saveListFilters } from '../lib/listFiltersPersist';
 import {
   nextMermaSort,
@@ -131,14 +133,18 @@ type Voucher = {
 type MermaFilters = {
   dateFrom: string;
   dateTo: string;
-  q: string;
+  product: string;
+  reason: string;
+  user: string;
 };
 
 type VoucherFilters = {
   status: 'all' | 'open' | 'used' | 'expired' | 'cancelled';
   dateFrom: string;
   dateTo: string;
-  q: string;
+  voucher: string;
+  product: string;
+  sale: string;
 };
 
 type ConfirmState =
@@ -147,13 +153,46 @@ type ConfirmState =
   | { kind: 'cancel'; voucher: Voucher }
   | null;
 
-const DEFAULT_MERMA_FILTERS: MermaFilters = { dateFrom: '', dateTo: '', q: '' };
+const DEFAULT_MERMA_FILTERS: MermaFilters = {
+  dateFrom: '',
+  dateTo: '',
+  product: '',
+  reason: '',
+  user: '',
+};
 const DEFAULT_VOUCHER_FILTERS: VoucherFilters = {
   status: 'open',
   dateFrom: '',
   dateTo: '',
-  q: '',
+  voucher: '',
+  product: '',
+  sale: '',
 };
+
+/** Migra filtros viejos con `q` agrupado → campos separados. */
+function normalizeMermaFilters(raw: Partial<MermaFilters> & { q?: string }): MermaFilters {
+  const legacy = String(raw.q || '').trim();
+  return {
+    dateFrom: raw.dateFrom || '',
+    dateTo: raw.dateTo || '',
+    product: raw.product || (!raw.reason && !raw.user ? legacy : '') || '',
+    reason: raw.reason || '',
+    user: raw.user || '',
+  };
+}
+
+function normalizeVoucherFilters(raw: Partial<VoucherFilters> & { q?: string }): VoucherFilters {
+  const legacy = String(raw.q || '').trim();
+  const hasSplit = Boolean(raw.voucher || raw.product || raw.sale);
+  return {
+    status: raw.status || 'open',
+    dateFrom: raw.dateFrom || '',
+    dateTo: raw.dateTo || '',
+    voucher: raw.voucher || (!hasSplit ? legacy : '') || '',
+    product: raw.product || '',
+    sale: raw.sale || '',
+  };
+}
 
 const MERMA_DESTINATIONS: { id: MermaKind; label: string; hint: string }[] = [
   { id: 'discard', label: 'Pérdida', hint: 'Sale de vitrina, no vuelve a sala' },
@@ -162,7 +201,7 @@ const MERMA_DESTINATIONS: { id: MermaKind; label: string; hint: string }[] = [
 
 const VOUCHER_OUTCOMES: { id: VoucherOutcome; label: string }[] = [
   { id: 'exchange', label: 'Cambio' },
-  { id: 'cash_refund', label: 'Devolución de efectivo' },
+  { id: 'cash_refund', label: 'Devolución' },
 ];
 
 const VOUCHER_DESTINATIONS: { id: VoucherDest; label: string }[] = [
@@ -200,7 +239,9 @@ function buildMermasQuery(f: MermaFilters, offset: number, limit: number) {
   const params = new URLSearchParams();
   if (f.dateFrom) params.set('dateFrom', f.dateFrom);
   if (f.dateTo) params.set('dateTo', f.dateTo);
-  if (f.q.trim()) params.set('q', f.q.trim());
+  if (f.product.trim()) params.set('product', f.product.trim());
+  if (f.reason.trim()) params.set('reason', f.reason.trim());
+  if (f.user.trim()) params.set('user', f.user.trim());
   withPagination(params, offset, limit);
   return `/api/ops/mermas?${params.toString()}`;
 }
@@ -210,7 +251,9 @@ function buildVouchersQuery(f: VoucherFilters, offset: number, limit: number) {
   if (f.status !== 'all') params.set('status', f.status);
   if (f.dateFrom) params.set('dateFrom', f.dateFrom);
   if (f.dateTo) params.set('dateTo', f.dateTo);
-  if (f.q.trim()) params.set('q', f.q.trim());
+  if (f.voucher.trim()) params.set('voucher', f.voucher.trim());
+  if (f.product.trim()) params.set('product', f.product.trim());
+  if (f.sale.trim()) params.set('sale', f.sale.trim());
   withPagination(params, offset, limit);
   return `/api/ops/vouchers?${params.toString()}`;
 }
@@ -325,13 +368,13 @@ export function MermasPage() {
   const role = activeBranch?.role;
   const canSeeCost = role === 'owner' || role === 'branch_manager';
 
-  const [tab, setTab] = useState<Tab>('mermas');
+  const [tab, setTab] = useState<Tab>('vouchers');
 
   const [mermaFilters, setMermaFilters] = useState<MermaFilters>(() =>
-    loadListFilters('mermas', branchId, DEFAULT_MERMA_FILTERS),
+    normalizeMermaFilters(loadListFilters('mermas', branchId, DEFAULT_MERMA_FILTERS)),
   );
   const [voucherFilters, setVoucherFilters] = useState<VoucherFilters>(() =>
-    loadListFilters('vouchers', branchId, DEFAULT_VOUCHER_FILTERS),
+    normalizeVoucherFilters(loadListFilters('vouchers', branchId, DEFAULT_VOUCHER_FILTERS)),
   );
 
   const [mermaSortKey, setMermaSortKey] = useState<MermaSortKey>('date');
@@ -353,7 +396,11 @@ export function MermasPage() {
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [draftDateFrom, setDraftDateFrom] = useState('');
   const [draftDateTo, setDraftDateTo] = useState('');
-  const [draftQ, setDraftQ] = useState('');
+  const [draftProduct, setDraftProduct] = useState('');
+  const [draftReason, setDraftReason] = useState('');
+  const [draftUser, setDraftUser] = useState('');
+  const [draftVoucher, setDraftVoucher] = useState('');
+  const [draftSale, setDraftSale] = useState('');
   const filtersTitleId = useId();
   const wizardTitleId = useId();
   const modalRef = useRef<HTMLDivElement>(null);
@@ -400,8 +447,10 @@ export function MermasPage() {
   );
 
   useEffect(() => {
-    setMermaFilters(loadListFilters('mermas', branchId, DEFAULT_MERMA_FILTERS));
-    setVoucherFilters(loadListFilters('vouchers', branchId, DEFAULT_VOUCHER_FILTERS));
+    setMermaFilters(normalizeMermaFilters(loadListFilters('mermas', branchId, DEFAULT_MERMA_FILTERS)));
+    setVoucherFilters(
+      normalizeVoucherFilters(loadListFilters('vouchers', branchId, DEFAULT_VOUCHER_FILTERS)),
+    );
   }, [branchId]);
 
   useEffect(() => {
@@ -473,12 +522,18 @@ export function MermasPage() {
   );
 
   const hasExtraMermaFilters = Boolean(
-    mermaFilters.dateFrom || mermaFilters.dateTo || mermaFilters.q.trim(),
+    mermaFilters.dateFrom ||
+      mermaFilters.dateTo ||
+      mermaFilters.product.trim() ||
+      mermaFilters.reason.trim() ||
+      mermaFilters.user.trim(),
   );
   const hasExtraVoucherFilters = Boolean(
     voucherFilters.dateFrom ||
       voucherFilters.dateTo ||
-      voucherFilters.q.trim() ||
+      voucherFilters.voucher.trim() ||
+      voucherFilters.product.trim() ||
+      voucherFilters.sale.trim() ||
       voucherFilters.status !== 'open',
   );
 
@@ -486,7 +541,9 @@ export function MermasPage() {
     const chips: { key: string; label: string }[] = [];
     if (mermaFilters.dateFrom) chips.push({ key: 'from', label: `Desde ${fmtDay(mermaFilters.dateFrom)}` });
     if (mermaFilters.dateTo) chips.push({ key: 'to', label: `Hasta ${fmtDay(mermaFilters.dateTo)}` });
-    if (mermaFilters.q.trim()) chips.push({ key: 'q', label: mermaFilters.q.trim() });
+    if (mermaFilters.product.trim()) chips.push({ key: 'product', label: mermaFilters.product.trim() });
+    if (mermaFilters.reason.trim()) chips.push({ key: 'reason', label: mermaFilters.reason.trim() });
+    if (mermaFilters.user.trim()) chips.push({ key: 'user', label: mermaFilters.user.trim() });
     return chips;
   }, [mermaFilters]);
 
@@ -496,7 +553,13 @@ export function MermasPage() {
       chips.push({ key: 'from', label: `Desde ${fmtDay(voucherFilters.dateFrom)}` });
     }
     if (voucherFilters.dateTo) chips.push({ key: 'to', label: `Hasta ${fmtDay(voucherFilters.dateTo)}` });
-    if (voucherFilters.q.trim()) chips.push({ key: 'q', label: voucherFilters.q.trim() });
+    if (voucherFilters.voucher.trim()) {
+      chips.push({ key: 'voucher', label: voucherFilters.voucher.trim() });
+    }
+    if (voucherFilters.product.trim()) {
+      chips.push({ key: 'product', label: voucherFilters.product.trim() });
+    }
+    if (voucherFilters.sale.trim()) chips.push({ key: 'sale', label: voucherFilters.sale.trim() });
     if (voucherFilters.status !== 'open') {
       const label = VOUCHER_STATUS_CHIPS.find((c) => c.id === voucherFilters.status)?.label;
       if (label) chips.push({ key: 'st', label });
@@ -508,11 +571,15 @@ export function MermasPage() {
     if (tab === 'mermas') {
       setDraftDateFrom(mermaFilters.dateFrom);
       setDraftDateTo(mermaFilters.dateTo);
-      setDraftQ(mermaFilters.q);
+      setDraftProduct(mermaFilters.product);
+      setDraftReason(mermaFilters.reason);
+      setDraftUser(mermaFilters.user);
     } else {
       setDraftDateFrom(voucherFilters.dateFrom);
       setDraftDateTo(voucherFilters.dateTo);
-      setDraftQ(voucherFilters.q);
+      setDraftVoucher(voucherFilters.voucher);
+      setDraftProduct(voucherFilters.product);
+      setDraftSale(voucherFilters.sale);
     }
     setDrawerOpen(true);
   }
@@ -523,13 +590,21 @@ export function MermasPage() {
 
   function applyDrawer() {
     if (tab === 'mermas') {
-      setMermaFilters({ dateFrom: draftDateFrom, dateTo: draftDateTo, q: draftQ });
+      setMermaFilters({
+        dateFrom: draftDateFrom,
+        dateTo: draftDateTo,
+        product: draftProduct,
+        reason: draftReason,
+        user: draftUser,
+      });
     } else {
       setVoucherFilters((prev) => ({
         ...prev,
         dateFrom: draftDateFrom,
         dateTo: draftDateTo,
-        q: draftQ,
+        voucher: draftVoucher,
+        product: draftProduct,
+        sale: draftSale,
       }));
     }
     setDrawerOpen(false);
@@ -816,11 +891,18 @@ export function MermasPage() {
     const raw = newScanRef.current?.value ?? newCode;
     const code = normalizeScanCode(raw);
     if (!code) return;
+    if (!ticket) return;
     setNewLooking(true);
     try {
       const product = await lookupProduct(code);
-      if (ticket && product.id === ticket.product.id && destination === 'restock') {
+      if (product.id === ticket.product.id && destination === 'restock') {
         toast.error('Para un cambio, pistolea una prenda distinta de vitrina');
+        setNewProduct(null);
+        return;
+      }
+      const expectedPrice = ticket.sale?.unit_price ?? ticket.product.sale_price;
+      if (!sameSalePriceExact(expectedPrice, product.sale_price)) {
+        toast.error('Debe ser el mismo precio de venta (p. ej. otra talla)');
         setNewProduct(null);
         return;
       }
@@ -849,7 +931,7 @@ export function MermasPage() {
       return;
     }
     if (!outcome) {
-      toast.error('Elige cambio o devolución de efectivo');
+      toast.error('Elige cambio o devolución');
       return;
     }
     if (!destination) {
@@ -858,6 +940,18 @@ export function MermasPage() {
     }
     if (outcome === 'exchange' && !newProduct) {
       toast.error('Pistolea la prenda nueva para el cambio');
+      return;
+    }
+    if (
+      outcome === 'exchange' &&
+      newProduct &&
+      ticket &&
+      !sameSalePriceExact(
+        ticket.sale?.unit_price ?? ticket.product.sale_price,
+        newProduct.sale_price,
+      )
+    ) {
+      toast.error('Debe ser el mismo precio de venta (p. ej. otra talla)');
       return;
     }
     setConfirm({ kind: 'fulfill' });
@@ -881,7 +975,7 @@ export function MermasPage() {
           overrideNote: ticket.expired ? overrideNote.trim() : null,
         },
       });
-      toast.success(outcome === 'exchange' ? 'Cambio registrado' : 'Devolución de efectivo registrada');
+      toast.success(outcome === 'exchange' ? 'Cambio registrado' : 'Devolución registrada');
       setConfirm(null);
       closeWizard();
       vouchersList.reload();
@@ -969,7 +1063,7 @@ export function MermasPage() {
     confirm?.kind === 'merma' && mermaProduct
       ? `Se dará de baja ${mermaQty} ud. de «${mermaProduct.name}» (${MERMA_DESTINATIONS.find((d) => d.id === mermaKind)?.label}). Queda movimiento auditable.`
       : confirm?.kind === 'fulfill' && ticket
-        ? `Ticket ${ticket.voucher_number}: ${outcome === 'exchange' ? 'cambio' : 'devolución de efectivo'}. Destino: ${VOUCHER_DESTINATIONS.find((d) => d.id === destination)?.label || ''}.`
+        ? `Ticket ${ticket.voucher_number}: ${outcome === 'exchange' ? 'cambio' : 'devolución'}. Destino: ${VOUCHER_DESTINATIONS.find((d) => d.id === destination)?.label || ''}.`
         : confirm?.kind === 'cancel'
           ? `Se anulará el ticket ${confirm.voucher.voucher_number}. No podrá usarse después.`
           : '';
@@ -982,17 +1076,17 @@ export function MermasPage() {
             <nav className="admin-tabs merma-tabs-inline" aria-label="Mermas y cambios">
               <button
                 type="button"
-                className={tab === 'mermas' ? 'is-active' : undefined}
-                onClick={() => setTab('mermas')}
-              >
-                Merma
-              </button>
-              <button
-                type="button"
                 className={tab === 'vouchers' ? 'is-active' : undefined}
                 onClick={() => setTab('vouchers')}
               >
                 Cambio / devolución
+              </button>
+              <button
+                type="button"
+                className={tab === 'mermas' ? 'is-active' : undefined}
+                onClick={() => setTab('mermas')}
+              >
+                Merma
               </button>
             </nav>
             {tab === 'mermas' ? (
@@ -1139,11 +1233,7 @@ export function MermasPage() {
 
           <div className="ing-list-scroll" ref={list.scrollRef}>
             {list.loading && (
-              <div className="ing-skel" aria-busy="true" aria-label="Cargando">
-                <div className="ing-skel-row" />
-                <div className="ing-skel-row" />
-                <div className="ing-skel-row" />
-              </div>
+              <BoutiqueLoader label="Cargando…" variant="block" />
             )}
 
             {tab === 'mermas' && !list.loading && !mermasList.items.length && (
@@ -1591,20 +1681,73 @@ export function MermasPage() {
                     onChange={(e) => setDraftDateTo(e.target.value)}
                   />
                 </div>
-                <div className="field">
-                  <label htmlFor="merma-f-q">Buscar</label>
-                  <input
-                    id="merma-f-q"
-                    value={draftQ}
-                    onChange={(e) => setDraftQ(e.target.value)}
-                    placeholder={
-                      tab === 'mermas'
-                        ? 'Producto, motivo, usuario…'
-                        : 'N° ticket, producto, venta…'
-                    }
-                    autoComplete="off"
-                  />
-                </div>
+                {tab === 'mermas' ? (
+                  <>
+                    <div className="field">
+                      <label htmlFor="merma-f-product">Producto</label>
+                      <input
+                        id="merma-f-product"
+                        value={draftProduct}
+                        onChange={(e) => setDraftProduct(e.target.value)}
+                        placeholder="Nombre o código"
+                        autoComplete="off"
+                      />
+                    </div>
+                    <div className="field">
+                      <label htmlFor="merma-f-reason">Motivo</label>
+                      <input
+                        id="merma-f-reason"
+                        value={draftReason}
+                        onChange={(e) => setDraftReason(e.target.value)}
+                        placeholder="Texto del motivo"
+                        autoComplete="off"
+                      />
+                    </div>
+                    <div className="field">
+                      <label htmlFor="merma-f-user">Usuario</label>
+                      <input
+                        id="merma-f-user"
+                        value={draftUser}
+                        onChange={(e) => setDraftUser(e.target.value)}
+                        placeholder="Nombre"
+                        autoComplete="off"
+                      />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <div className="field">
+                      <label htmlFor="merma-f-voucher">N° ticket</label>
+                      <input
+                        id="merma-f-voucher"
+                        value={draftVoucher}
+                        onChange={(e) => setDraftVoucher(e.target.value)}
+                        placeholder="Ej. VC-000002"
+                        autoComplete="off"
+                      />
+                    </div>
+                    <div className="field">
+                      <label htmlFor="merma-f-product">Producto</label>
+                      <input
+                        id="merma-f-product"
+                        value={draftProduct}
+                        onChange={(e) => setDraftProduct(e.target.value)}
+                        placeholder="Nombre o código"
+                        autoComplete="off"
+                      />
+                    </div>
+                    <div className="field">
+                      <label htmlFor="merma-f-sale">N° venta</label>
+                      <input
+                        id="merma-f-sale"
+                        value={draftSale}
+                        onChange={(e) => setDraftSale(e.target.value)}
+                        placeholder="Ej. V-000003"
+                        autoComplete="off"
+                      />
+                    </div>
+                  </>
+                )}
               </div>
             </div>
             <div className="btn-row ing-filters-sheet-actions">
@@ -1866,43 +2009,70 @@ export function MermasPage() {
                             photoUrl={ticket.product.photo_url}
                           />
                           <div className="merma-wizard-actions-col">
-                            <div className="merma-choice" role="group" aria-label="Tipo de atención">
+                            <div
+                              className="merma-choice merma-outcome"
+                              role="group"
+                              aria-label="Tipo de atención"
+                            >
                               {VOUCHER_OUTCOMES.map((o) => (
                                 <button
                                   key={o.id}
                                   type="button"
                                   className={`merma-choice-btn${outcome === o.id ? ' is-active' : ''}`}
-                                  onClick={() => setOutcome(o.id)}
+                                  onClick={() => {
+                                    setOutcome(o.id);
+                                    if (o.id !== 'exchange') {
+                                      setNewProduct(null);
+                                      setNewCode('');
+                                    }
+                                  }}
                                 >
                                   <strong>{o.label}</strong>
                                 </button>
                               ))}
                             </div>
                             {outcome === 'cash_refund' && ticket.sale?.line_total ? (
-                              <p className="muted">Monto de la línea: {money(ticket.sale.line_total)}</p>
+                              <p className="muted merma-exchange-hint">
+                                Monto de la línea: {money(ticket.sale.line_total)}
+                              </p>
                             ) : null}
                             {outcome === 'exchange' ? (
-                              <form className="merma-scan-row" onSubmit={(e) => void onScanNewProduct(e)}>
-                                <label className="sr-only" htmlFor="new-scan">
-                                  Código de la prenda nueva
-                                </label>
-                                <input
-                                  id="new-scan"
-                                  ref={newScanRef}
-                                  value={newCode}
-                                  onChange={(e) => setNewCode(e.target.value)}
-                                  placeholder="Pistolea la prenda nueva"
-                                  autoComplete="off"
-                                />
-                                <button type="submit" className="btn secondary" disabled={newLooking}>
-                                  {newLooking ? 'Buscando…' : 'Prenda nueva'}
-                                </button>
-                              </form>
+                              <>
+                                <p className="merma-exchange-hint">
+                                  Mismo precio de venta — ideal para cambio de talla.
+                                </p>
+                                <form
+                                  className="merma-scan-row"
+                                  onSubmit={(e) => void onScanNewProduct(e)}
+                                >
+                                  <label className="sr-only" htmlFor="new-scan">
+                                    Código de la prenda nueva
+                                  </label>
+                                  <input
+                                    id="new-scan"
+                                    ref={newScanRef}
+                                    value={newCode}
+                                    onChange={(e) => setNewCode(e.target.value)}
+                                    placeholder="Pistolea otra prenda al mismo precio"
+                                    autoComplete="off"
+                                  />
+                                  <button
+                                    type="submit"
+                                    className="btn secondary"
+                                    disabled={newLooking}
+                                  >
+                                    {newLooking ? 'Buscando…' : 'Buscar'}
+                                  </button>
+                                </form>
+                              </>
                             ) : null}
                             {newProduct ? (
                               <ProductFicha
                                 name={newProduct.name}
-                                code={displayProductCode(newProduct.internal_code, newProduct.barcode)}
+                                code={displayProductCode(
+                                  newProduct.internal_code,
+                                  newProduct.barcode,
+                                )}
                                 meta={[newProduct.size_label, newProduct.color]
                                   .filter(Boolean)
                                   .join(' · ')}
@@ -1910,18 +2080,22 @@ export function MermasPage() {
                                 stock={Number(newProduct.stock) || 0}
                               />
                             ) : null}
-                            <p className="merma-choice-label">Destino de la prenda devuelta</p>
-                            <div className="merma-choice" role="group" aria-label="Destino">
-                              {VOUCHER_DESTINATIONS.map((d) => (
-                                <button
-                                  key={d.id}
-                                  type="button"
-                                  className={`merma-choice-btn${destination === d.id ? ' is-active' : ''}`}
-                                  onClick={() => setDestination(d.id)}
-                                >
-                                  <strong>{d.label}</strong>
-                                </button>
-                              ))}
+                            <div className="field">
+                              <label htmlFor="voucher-dest">Destino de la prenda devuelta</label>
+                              <select
+                                id="voucher-dest"
+                                value={destination}
+                                onChange={(e) =>
+                                  setDestination((e.target.value || '') as VoucherDest | '')
+                                }
+                              >
+                                <option value="">Elige destino…</option>
+                                {VOUCHER_DESTINATIONS.map((d) => (
+                                  <option key={d.id} value={d.id}>
+                                    {d.label}
+                                  </option>
+                                ))}
+                              </select>
                             </div>
                             <div className="merma-wizard-actions">
                               <button type="button" className="btn ghost" onClick={resetTicketWizard}>

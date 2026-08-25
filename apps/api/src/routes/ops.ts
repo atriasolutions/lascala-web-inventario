@@ -64,6 +64,9 @@ opsRouter.get(
   '/mermas',
   asyncHandler(async (req, res) => {
     const q = String(req.query.q || '').trim();
+    const product = String(req.query.product || '').trim();
+    const reason = String(req.query.reason || '').trim();
+    const user = String(req.query.user || '').trim();
     const dateFrom = String(req.query.dateFrom || '').trim();
     const dateTo = String(req.query.dateTo || '').trim();
     const { limit, offset } = parsePagination(req.query);
@@ -79,7 +82,24 @@ opsRouter.get(
       params.push(dateTo);
       where += ` AND (timezone('${CHILE_TZ}', m.created_at))::date <= $${params.length}::date`;
     }
-    if (q) {
+    if (product) {
+      params.push(`%${product}%`);
+      const p = params.length;
+      where += ` AND (
+        p.name ILIKE $${p}
+        OR p.internal_code ILIKE $${p}
+        OR COALESCE(p.barcode, '') ILIKE $${p}
+      )`;
+    }
+    if (reason) {
+      params.push(`%${reason}%`);
+      where += ` AND m.reason ILIKE $${params.length}`;
+    }
+    if (user) {
+      params.push(`%${user}%`);
+      where += ` AND COALESCE(u.full_name, '') ILIKE $${params.length}`;
+    }
+    if (q && !product && !reason && !user) {
       params.push(`%${q}%`);
       const p = params.length;
       where += ` AND (
@@ -251,6 +271,9 @@ opsRouter.get(
   '/vouchers',
   asyncHandler(async (req, res) => {
     const q = String(req.query.q || '').trim();
+    const voucher = String(req.query.voucher || '').trim();
+    const product = String(req.query.product || '').trim();
+    const sale = String(req.query.sale || '').trim();
     const status = String(req.query.status || 'all').trim();
     const dateFrom = String(req.query.dateFrom || '').trim();
     const dateTo = String(req.query.dateTo || '').trim();
@@ -282,7 +305,20 @@ opsRouter.get(
       params.push(dateTo);
       where += ` AND v.issued_at <= $${params.length}::date`;
     }
-    if (q) {
+    if (voucher) {
+      params.push(`%${voucher}%`);
+      where += ` AND v.voucher_number ILIKE $${params.length}`;
+    }
+    if (product) {
+      params.push(`%${product}%`);
+      const p = params.length;
+      where += ` AND (p.name ILIKE $${p} OR p.internal_code ILIKE $${p})`;
+    }
+    if (sale) {
+      params.push(`%${sale}%`);
+      where += ` AND COALESCE(s.receipt_number, '') ILIKE $${params.length}`;
+    }
+    if (q && !voucher && !product && !sale) {
       params.push(`%${q}%`);
       const p = params.length;
       where += ` AND (
@@ -746,6 +782,8 @@ opsRouter.get(
   requireRoles('owner'),
   asyncHandler(async (req, res) => {
     const q = String(req.query.q || '').trim();
+    const description = String(req.query.description || '').trim();
+    const user = String(req.query.user || '').trim();
     const category = String(req.query.category || '').trim();
     const dateFrom = String(req.query.dateFrom || '').trim();
     const dateTo = String(req.query.dateTo || '').trim();
@@ -766,7 +804,15 @@ opsRouter.get(
       params.push(dateTo);
       where += ` AND e.incurred_on <= $${params.length}::date`;
     }
-    if (q) {
+    if (description) {
+      params.push(`%${description}%`);
+      where += ` AND e.description ILIKE $${params.length}`;
+    }
+    if (user) {
+      params.push(`%${user}%`);
+      where += ` AND COALESCE(u.full_name, '') ILIKE $${params.length}`;
+    }
+    if (q && !description && !user) {
       params.push(`%${q}%`);
       const p = params.length;
       where += ` AND (

@@ -25,6 +25,7 @@ import { api, money } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { chartColor } from '../lib/chartColors';
 import { personalDayGreeting } from '../lib/dayGreeting';
+import { BoutiqueLoader } from '../components/BoutiqueLoader';
 
 type ExpenseRow = {
   id: string;
@@ -163,12 +164,7 @@ export function DashboardPage() {
 
   if (error) return <p className="error">{error}</p>;
   if (!data) {
-    return (
-      <div className="dash-loading">
-        <div className="dash-loading-bar" />
-        <p className="muted">Preparando el salón de hoy…</p>
-      </div>
-    );
+    return <BoutiqueLoader label="Preparando el salón de hoy…" variant="block" />;
   }
 
   const totalAlerts =

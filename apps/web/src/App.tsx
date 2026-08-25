@@ -1,6 +1,7 @@
 import { Suspense, lazy, type ReactNode } from 'react';
 import { Navigate, createBrowserRouter } from 'react-router-dom';
 import { AppShell } from './components/AppShell';
+import { BoutiqueLoader } from './components/BoutiqueLoader';
 import { RequireOnline } from './components/RequireOnline';
 import { useAuth } from './lib/auth';
 import { LoginPage } from './pages/LoginPage';
@@ -41,7 +42,7 @@ const ReportsLayout = lazy(() =>
 );
 
 function PageFallback() {
-  return <p className="muted" style={{ padding: '2rem' }}>Cargando…</p>;
+  return <BoutiqueLoader label="Cargando…" variant="page" />;
 }
 
 function Lazy({ children }: { children: ReactNode }) {
@@ -54,7 +55,7 @@ function OnlineOnly({ children }: { children: ReactNode }) {
 
 function Protected({ children }: { children: React.ReactNode }) {
   const { token, loading, branchId } = useAuth();
-  if (loading) return <p className="muted" style={{ padding: '2rem' }}>Cargando…</p>;
+  if (loading) return <BoutiqueLoader label="Preparando sesión…" variant="page" />;
   if (!token) return <Navigate to="/login" replace />;
   if (!branchId) return <p className="muted" style={{ padding: '2rem' }}>Sin sucursal asignada</p>;
   return children;
@@ -68,7 +69,7 @@ function RequireRoles({
   children: React.ReactNode;
 }) {
   const { branches, branchId, loading } = useAuth();
-  if (loading) return <p className="muted" style={{ padding: '2rem' }}>Cargando…</p>;
+  if (loading) return <BoutiqueLoader label="Cargando…" variant="page" />;
   const role = branches.find((b) => b.id === branchId)?.role;
   if (!role || !allow.includes(role as 'owner' | 'branch_manager' | 'seller')) {
     return <Navigate to="/vender" replace />;
@@ -83,7 +84,7 @@ function RequireAdmin({ children }: { children: React.ReactNode }) {
 /** Landing `/` según rol y viewport (mismo corte ~900px del AppShell). */
 function HomeRedirect() {
   const { branches, branchId, loading } = useAuth();
-  if (loading) return <p className="muted" style={{ padding: '2rem' }}>Cargando…</p>;
+  if (loading) return <BoutiqueLoader label="Cargando…" variant="page" />;
   const role = branches.find((b) => b.id === branchId)?.role;
   if (role === 'owner') {
     return (
