@@ -3,12 +3,20 @@ import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { ModalOverlayClose } from '../components/ModalOverlayClose';
 import { ProductPhotoPlaceholder } from '../components/ProductPhotoPlaceholder';
+import { IconTrash } from '../components/icons';
 import { useShellTitle } from '../components/shellTitle';
 import { api, mediaUrl, userFacingError } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { isLeadRole } from '../lib/roles';
 import { normalizeScanCode } from '../lib/scanCode';
 import { toast } from '../lib/toast';
+
+type QtyDraft = {
+  code: string;
+  productId: string;
+  name: string;
+  currentCounted: number;
+};
 
 type Decision = 'keep_system' | 'use_physical' | 'adjust';
 
@@ -131,7 +139,9 @@ export function StocktakeDetailPage() {
   const canApply = isLeadRole(role);
 
   const scanRef = useRef<HTMLInputElement>(null);
+  const qtyInputRef = useRef<HTMLInputElement>(null);
   const adjustTitleId = useId();
+  const qtyTitleId = useId();
   const [code, setCode] = useState('');
   const [stocktake, setStocktake] = useState<Stocktake | null>(null);
   const [lines, setLines] = useState<Line[]>([]);
@@ -142,6 +152,10 @@ export function StocktakeDetailPage() {
   const [adjustLine, setAdjustLine] = useState<Line | null>(null);
   const [adjustQty, setAdjustQty] = useState('0');
   const [confirm, setConfirm] = useState<'complete' | 'apply' | 'cancel' | null>(null);
+  const [qtyDraft, setQtyDraft] = useState<QtyDraft | null>(null);
+  const [qtyMode, setQtyMode] = useState<'add' | 'set'>('add');
+  const [qtyValue, setQtyValue] = useState('1');
+  const [removeLine, setRemoveLine] = useState<Line | null>(null);
 
   const applyPayload = useCallback(() => {
     return Object.entries(decisions).map(([productId, choice]) => ({
@@ -225,20 +239,96 @@ export function StocktakeDetailPage() {
     if (!raw) return;
     setScanning(true);
     try {
-      const data = await api<{ stocktake: Stocktake; lines: Line[]; scanned: { name: string; qty: number } }>(
-        `/api/stocktakes/${id}/scan`,
-        { method: 'POST', body: { code: raw } },
-      );
-      setStocktake(data.stocktake);
-      setLines(data.lines || []);
-      toast.success(`${data.scanned.name} · ${data.scanned.qty} uds`);
+      const data = await api<{
+        product: {
+          id: string;
+          name: string;
+          tracks_stock?: boolean;
+        };
+      }>(`/api/products/by-code/${encodeURIComponent(raw)}`);
+      const product = data.product;
+      if (product.tracks_stock === false) {
+        toast.error('Esta prenda no controla stock de vitrina');
+        return;
+      }
+      const existing = lines.find((l) => l.product_id === product.id);
+      setQtyDraft({
+        code: raw,
+        productId: product.id,
+        name: product.name,
+        currentCounted: existing ? Number(existing.qty_counted) : 0,
+      });
+      setQtyMode('add');
+      setQtyValue('1');
       setCode('');
-      scanRef.current?.focus();
     } catch (err) {
-      toast.error(userFacingError(err, 'No se pudo registrar el scan'));
+      toast.error(userFacingError(err, 'No se encontró la prenda'));
       scanRef.current?.select();
     } finally {
       setScanning(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!qtyDraft) return;
+    const t = window.setTimeout(() => qtyInputRef.current?.select(), 40);
+    return () => window.clearTimeout(t);
+  }, [qtyDraft]);
+
+  async function confirmQty() {
+    if (!id || !qtyDraft) return;
+    const n = Number.parseInt(qtyValue, 10);
+    if (!Number.isFinite(n) || n < 0) {
+      toast.error('Indica una cantidad válida');
+      return;
+    }
+    if (qtyMode === 'add' && n < 1) {
+      toast.error('Para sumar, la cantidad debe ser al menos 1');
+      return;
+    }
+    setBusy(true);
+    try {
+      const data = await api<{
+        stocktake: Stocktake;
+        lines: Line[];
+        scanned: { name: string; qty: number };
+      }>(`/api/stocktakes/${id}/scan`, {
+        method: 'POST',
+        body: { code: qtyDraft.code, quantity: n, mode: qtyMode },
+      });
+      setStocktake(data.stocktake);
+      setLines(data.lines || []);
+      toast.success(
+        qtyMode === 'set'
+          ? `${data.scanned.name} · quedó en ${data.scanned.qty} uds`
+          : `${data.scanned.name} · ${data.scanned.qty} uds`,
+      );
+      setQtyDraft(null);
+      scanRef.current?.focus();
+    } catch (err) {
+      toast.error(userFacingError(err, 'No se pudo registrar el conteo'));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  async function doRemoveLine() {
+    if (!id || !removeLine) return;
+    setBusy(true);
+    try {
+      const data = await api<{ stocktake: Stocktake; lines: Line[] }>(
+        `/api/stocktakes/${id}/lines/${removeLine.product_id}`,
+        { method: 'DELETE' },
+      );
+      setStocktake(data.stocktake);
+      setLines(data.lines || []);
+      toast.success(`Se quitó ${removeLine.product_name} del conteo`);
+      setRemoveLine(null);
+      scanRef.current?.focus();
+    } catch (err) {
+      toast.error(userFacingError(err, 'No se pudo quitar la prenda'));
+    } finally {
+      setBusy(false);
     }
   }
 
@@ -389,10 +479,13 @@ export function StocktakeDetailPage() {
                   autoComplete="off"
                   autoFocus
                 />
-                <button type="submit" className="btn" disabled={scanning}>
-                  {scanning ? 'Sumando…' : 'Sumar'}
+                <button type="submit" className="btn" disabled={scanning || busy}>
+                  {scanning ? 'Buscando…' : 'Contar'}
                 </button>
               </form>
+              <p className="ing-hint st-scan-hint">
+                Tras el código puedes sumar varias unidades o fijar la cantidad, sin pistolear una por una.
+              </p>
 
               <div className="ing-list-scroll">
                 {!countedLines.length ? (
@@ -410,6 +503,15 @@ export function StocktakeDetailPage() {
                           </p>
                         </div>
                         <span className="st-qty">{l.qty_counted}</span>
+                        <button
+                          type="button"
+                          className="btn ghost st-line-remove"
+                          aria-label={`Quitar ${l.product_name} del conteo`}
+                          disabled={busy}
+                          onClick={() => setRemoveLine(l)}
+                        >
+                          <IconTrash size={16} />
+                        </button>
                       </li>
                     ))}
                   </ul>
@@ -627,6 +729,108 @@ export function StocktakeDetailPage() {
         onCancel={() => setConfirm(null)}
         onConfirm={() => void doCancel()}
       />
+      <ConfirmDialog
+        open={Boolean(removeLine)}
+        title="Quitar del conteo"
+        message={
+          removeLine
+            ? `¿Quieres quitar «${removeLine.product_name}» (${removeLine.qty_counted} uds) de esta toma?`
+            : ''
+        }
+        confirmLabel={busy ? 'Quitando…' : 'Quitar'}
+        cancelLabel="Cancelar"
+        danger
+        onCancel={() => setRemoveLine(null)}
+        onConfirm={() => void doRemoveLine()}
+      />
+      {qtyDraft ? (
+        <div
+          className="pos-modal open"
+          role="presentation"
+          onClick={(e) => {
+            if (e.target === e.currentTarget && !busy) setQtyDraft(null);
+          }}
+        >
+          <ModalOverlayClose onClose={() => !busy && setQtyDraft(null)}>
+            <form
+              className="pos-modal-panel ing-line-modal st-adjust-modal"
+              role="dialog"
+              aria-modal="true"
+              aria-labelledby={qtyTitleId}
+              onClick={(e) => e.stopPropagation()}
+              onSubmit={(e) => {
+                e.preventDefault();
+                void confirmQty();
+              }}
+            >
+              <div className="pos-modal-head">
+                <h3 id={qtyTitleId}>Cantidad contada</h3>
+              </div>
+              <div className="st-adjust-body">
+                <p>
+                  <strong>{qtyDraft.name}</strong>
+                </p>
+                {qtyDraft.currentCounted > 0 ? (
+                  <p className="muted">Ya llevas {qtyDraft.currentCounted} en el conteo</p>
+                ) : (
+                  <p className="muted">Primera vez en esta toma</p>
+                )}
+                <div className="st-qty-mode" role="group" aria-label="Cómo aplicar la cantidad">
+                  <button
+                    type="button"
+                    className={`btn secondary${qtyMode === 'add' ? ' is-active' : ''}`}
+                    onClick={() => {
+                      setQtyMode('add');
+                      setQtyValue('1');
+                    }}
+                  >
+                    Sumar
+                  </button>
+                  <button
+                    type="button"
+                    className={`btn secondary${qtyMode === 'set' ? ' is-active' : ''}`}
+                    onClick={() => {
+                      setQtyMode('set');
+                      setQtyValue(
+                        String(qtyDraft.currentCounted > 0 ? qtyDraft.currentCounted : 1),
+                      );
+                    }}
+                  >
+                    Fijar cantidad
+                  </button>
+                </div>
+                <label className="field" htmlFor="st-qty-input">
+                  {qtyMode === 'add' ? 'Unidades a sumar' : 'Dejar el conteo en'}
+                  <input
+                    id="st-qty-input"
+                    ref={qtyInputRef}
+                    type="number"
+                    min={qtyMode === 'add' ? 1 : 0}
+                    step={1}
+                    inputMode="numeric"
+                    value={qtyValue}
+                    onChange={(e) => setQtyValue(e.target.value)}
+                    disabled={busy}
+                  />
+                </label>
+              </div>
+              <div className="st-adjust-foot">
+                <button
+                  type="button"
+                  className="btn ghost"
+                  disabled={busy}
+                  onClick={() => setQtyDraft(null)}
+                >
+                  Cancelar
+                </button>
+                <button type="submit" className="btn" disabled={busy}>
+                  {busy ? 'Guardando…' : qtyMode === 'add' ? 'Sumar al conteo' : 'Fijar'}
+                </button>
+              </div>
+            </form>
+          </ModalOverlayClose>
+        </div>
+      ) : null}
       {adjustLine ? (
         <div
           className="pos-modal open"

@@ -11,7 +11,9 @@ import {
   createOrResumeStocktake,
   findOpenStocktake,
   loadStocktake,
+  removeStocktakeLine,
   scanStocktakeLine,
+  updateStocktakeLineQty,
 } from '../services/stocktakes.js';
 import { fetchLimit, parsePagination, slicePage } from '../utils/pagination.js';
 
@@ -104,12 +106,59 @@ stocktakesRouter.post(
   requireRoles(...countRoles),
   asyncHandler(async (req, res) => {
     const id = z.string().uuid().parse(req.params.id);
-    const body = z.object({ code: z.string().trim().min(1, 'Pistolea o escribe el código') }).parse(req.body ?? {});
+    const body = z
+      .object({
+        code: z.string().trim().min(1, 'Pistolea o escribe el código'),
+        quantity: z.number().int().nonnegative().optional(),
+        mode: z.enum(['add', 'set']).optional(),
+      })
+      .parse(req.body ?? {});
     const result = await scanStocktakeLine({
       organizationId: req.user!.organizationId,
       branchId: req.activeBranchId!,
       stocktakeId: id,
       code: body.code,
+      quantity: body.quantity,
+      mode: body.mode,
+    });
+    res.json(result);
+  }),
+);
+
+stocktakesRouter.delete(
+  '/:id/lines/:productId',
+  requireRoles(...countRoles),
+  asyncHandler(async (req, res) => {
+    const id = z.string().uuid().parse(req.params.id);
+    const productId = z.string().uuid().parse(req.params.productId);
+    const result = await removeStocktakeLine({
+      organizationId: req.user!.organizationId,
+      branchId: req.activeBranchId!,
+      stocktakeId: id,
+      productId,
+    });
+    res.json(result);
+  }),
+);
+
+/** Actualiza cantidad de una línea (por id de línea). qtyCounted 0 elimina la línea. */
+stocktakesRouter.patch(
+  '/:id/lines/:lineId',
+  requireRoles(...countRoles),
+  asyncHandler(async (req, res) => {
+    const id = z.string().uuid().parse(req.params.id);
+    const lineId = z.string().uuid().parse(req.params.lineId);
+    const body = z
+      .object({
+        qtyCounted: z.number().int().nonnegative(),
+      })
+      .parse(req.body ?? {});
+    const result = await updateStocktakeLineQty({
+      organizationId: req.user!.organizationId,
+      branchId: req.activeBranchId!,
+      stocktakeId: id,
+      lineId,
+      qtyCounted: body.qtyCounted,
     });
     res.json(result);
   }),

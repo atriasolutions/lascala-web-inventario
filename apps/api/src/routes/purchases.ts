@@ -37,9 +37,8 @@ const createProductSchema = z.object({
 
 const documentTypeSchema = z.enum(['factura', 'boleta', 'guia', 'otro']);
 const listPurchasesQuerySchema = z.object({
-  status: z
-    .enum(['pending_reception', 'partially_received', 'received', 'all'])
-    .optional(),
+  /** Uno o varios: `pending_reception`, `partially_received,received`, o `all`. */
+  status: z.string().optional(),
   dateFrom: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, 'dateFrom debe ser YYYY-MM-DD')
@@ -159,8 +158,23 @@ purchasesRouter.get(
        WHERE p.organization_id = $1 AND p.destination_branch_id = $2`;
 
     if (filters.status && filters.status !== 'all') {
-      params.push(filters.status);
-      sql += ` AND p.status = $${params.length}::purchase_status`;
+      const allowed = new Set([
+        'pending_reception',
+        'partially_received',
+        'received',
+        'cancelled',
+      ]);
+      const statuses = filters.status
+        .split(',')
+        .map((s) => s.trim())
+        .filter((s) => allowed.has(s));
+      if (statuses.length === 1) {
+        params.push(statuses[0]);
+        sql += ` AND p.status = $${params.length}::purchase_status`;
+      } else if (statuses.length > 1) {
+        params.push(statuses);
+        sql += ` AND p.status = ANY($${params.length}::purchase_status[])`;
+      }
     }
     if (filters.dateFrom) {
       params.push(filters.dateFrom);

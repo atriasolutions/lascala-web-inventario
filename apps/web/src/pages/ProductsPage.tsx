@@ -12,8 +12,9 @@ import {
   ProductCodeEntry,
   type ProductCodeMode,
 } from '../components/ProductCodeEntry';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { ModalOverlayClose } from '../components/ModalOverlayClose';
-import { IconPencil } from '../components/icons';
+import { IconPencil, IconTrash } from '../components/icons';
 import { api, mediaUrl, money } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { isLeadRole, canRegisterProductCode, CODE_REGISTER_FORBIDDEN } from '../lib/roles';
@@ -235,6 +236,7 @@ export function ProductsPage() {
   const role = branches.find((b) => b.id === branchId)?.role || '';
   const canEditSalePrice = isLeadRole(role);
   const canCreateProduct = canRegisterProductCode(role);
+  const canArchiveProduct = isLeadRole(role);
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
   const [q, setQ] = useState('');
@@ -271,6 +273,8 @@ export function ProductsPage() {
   const [labelCopies, setLabelCopies] = useState('1');
   const [labelQtyError, setLabelQtyError] = useState('');
   const [printBusy, setPrintBusy] = useState(false);
+  const [archiveConfirm, setArchiveConfirm] = useState(false);
+  const [archiving, setArchiving] = useState(false);
 
   const modalTitleId = useId();
   const filtersTitleId = useId();
@@ -526,6 +530,8 @@ export function ProductsPage() {
     setEditing(null);
     setModalMode('create');
     setFormSnapshot(null);
+    setArchiveConfirm(false);
+    setArchiving(false);
     setForm(emptyForm());
     setFormError('');
     setSaving(false);
@@ -540,6 +546,24 @@ export function ProductsPage() {
     const el = triggerRef.current;
     triggerRef.current = null;
     window.setTimeout(() => el?.focus(), 40);
+  }
+
+  async function archiveProduct() {
+    if (!editing || !canArchiveProduct) return;
+    setArchiving(true);
+    setFormError('');
+    try {
+      await api(`/api/products/${editing.id}`, { method: 'DELETE' });
+      toast.success('Prenda eliminada del catálogo');
+      setProducts((prev) => prev.filter((p) => p.id !== editing.id));
+      setArchiveConfirm(false);
+      closeModal();
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : 'No se pudo eliminar la prenda';
+      setFormError(msg);
+      toast.error(msg);
+      setArchiving(false);
+    }
   }
 
   function clearFilters() {
@@ -1402,20 +1426,44 @@ export function ProductsPage() {
                   </button>
                 </>
               ) : (
-                <button
-                  type="button"
-                  className="btn secondary"
-                  onClick={closeModal}
-                  disabled={printBusy}
-                >
-                  Cerrar
-                </button>
+                <>
+                  {canArchiveProduct ? (
+                    <button
+                      type="button"
+                      className="btn ghost prod-archive-btn"
+                      onClick={() => setArchiveConfirm(true)}
+                      disabled={printBusy || archiving}
+                    >
+                      <IconTrash size={15} />
+                      Eliminar
+                    </button>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="btn secondary"
+                    onClick={closeModal}
+                    disabled={printBusy || archiving}
+                  >
+                    Cerrar
+                  </button>
+                </>
               )}
             </div>
           </form>
           </div></ModalOverlayClose>
         </div>
       )}
+
+      <ConfirmDialog
+        open={archiveConfirm}
+        title="Eliminar prenda"
+        message="La prenda dejará de verse en el catálogo, inventario y búsquedas. El historial de ventas e ingresos se conserva. Esta acción no borra el registro del sistema."
+        confirmLabel={archiving ? 'Eliminando…' : 'Eliminar del catálogo'}
+        cancelLabel="Cancelar"
+        danger
+        onCancel={() => !archiving && setArchiveConfirm(false)}
+        onConfirm={() => void archiveProduct()}
+      />
 
       {labelQtyOpen && (
         <div

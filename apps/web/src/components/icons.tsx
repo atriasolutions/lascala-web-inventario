@@ -206,3 +206,14 @@ export function IconPencil({ size = 16 }: IconProps) {
     </svg>
   );
 }
+
+export function IconTrash({ size = 16 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...base} aria-hidden="true">
+      <path d="M4 7h16" />
+      <path d="M9 7V5a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2" />
+      <path d="M6.5 7 7.5 20h9l1-13" />
+      <path d="M10 11v6M14 11v6" />
+    </svg>
+  );
+}

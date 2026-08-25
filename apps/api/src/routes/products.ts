@@ -40,6 +40,7 @@ productsRouter.get(
   asyncHandler(async (req, res) => {
     const pendingPhoto = req.query.pendingPhoto === '1';
     const lowStock = req.query.lowStock === '1';
+    const includeArchived = req.query.includeArchived === '1' || req.query.includeArchived === 'true';
     const allowsReturn = boolQuery(req.query.allowsReturn);
     const allowsExchange = boolQuery(req.query.allowsExchange);
     const tracksStock = boolQuery(req.query.tracksStock);
@@ -85,8 +86,10 @@ productsRouter.get(
       FROM products p
       LEFT JOIN categories c ON c.id = p.category_id
       ${stockJoin}
-      WHERE p.organization_id = $1
-        AND p.status <> 'archived'`;
+      WHERE p.organization_id = $1`;
+    if (!includeArchived) {
+      sql += ` AND p.status <> 'archived'`;
+    }
 
     if (categoryId) {
       params.push(categoryId);
@@ -326,7 +329,9 @@ productsRouter.patch(
         costPrice: z.number().nonnegative().optional(),
         barcode: z.string().optional().nullable(),
         internalCode: z.string().optional().nullable(),
-        status: z.string().optional(),
+        status: z
+          .enum(['available', 'reserved', 'sold', 'merma', 'returned_to_supplier', 'archived'])
+          .optional(),
         allowsExchange: z.boolean().optional(),
         allowsReturn: z.boolean().optional(),
         tracksStock: z.boolean().optional(),
@@ -445,5 +450,37 @@ productsRouter.patch(
       }
     }
     res.json({ product: result.rows[0] });
+  }),
+);
+
+/**
+ * Soft-delete: status = archived. Conserva historial (ventas, movimientos, ingresos).
+ * Listado normal lo oculta; admin: GET /products?includeArchived=1
+ */
+productsRouter.delete(
+  '/:id',
+  requireBranch,
+  requireRoles('owner', 'branch_manager'),
+  asyncHandler(async (req, res) => {
+    const productId = z.string().uuid().parse(req.params.id);
+    const current = await query<{ id: string; status: string; name: string }>(
+      `SELECT id, status::text AS status, name
+       FROM products WHERE id = $1 AND organization_id = $2`,
+      [productId, req.user!.organizationId],
+    );
+    const row = current.rows[0];
+    if (!row) throw new HttpError(404, 'Producto no encontrado');
+    if (row.status === 'archived') {
+      res.json({ product: row, alreadyArchived: true });
+      return;
+    }
+    const result = await query(
+      `UPDATE products
+       SET status = 'archived', updated_at = now()
+       WHERE id = $1 AND organization_id = $2
+       RETURNING *`,
+      [productId, req.user!.organizationId],
+    );
+    res.json({ product: result.rows[0], archived: true });
   }),
 );

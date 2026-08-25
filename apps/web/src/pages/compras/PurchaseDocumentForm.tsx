@@ -12,6 +12,7 @@ import { Link, useBlocker, useNavigate } from 'react-router-dom';
 import { BoutiqueMood } from '../../components/BoutiqueMood';
 import { ChileMoneyInput } from '../../components/ChileMoneyInput';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { IconTrash } from '../../components/icons';
 import { MarginHint } from '../../components/MarginHint';
 import { ModalOverlayClose } from '../../components/ModalOverlayClose';
 import { ProductPhotoPlaceholder } from '../../components/ProductPhotoPlaceholder';
@@ -607,10 +608,11 @@ export function PurchaseDocumentForm({
                         <button
                           type="button"
                           className="btn ghost ing-compact-remove"
-                          aria-label={`Quitar ${line.description}`}
+                          aria-label={`Eliminar ${line.description}`}
+                          title="Eliminar línea"
                           onClick={() => removeLine(line.key)}
                         >
-                          Quitar
+                          <IconTrash size={16} />
                         </button>
                       </>
                     )}

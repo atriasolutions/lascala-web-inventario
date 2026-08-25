@@ -5063,9 +5063,16 @@ a.ing-row:hover { border-color: #e3b7cf; }
 
 .ing-compact-remove {
   min-width: 44px;
-  border-radius: 0;
-  font-size: 1.25rem;
+  min-height: 44px;
+  border-radius: 8px;
+  display: inline-grid;
+  place-items: center;
   color: var(--color-muted);
+}
+.ing-compact-remove:hover,
+.ing-compact-remove:focus-visible {
+  color: var(--color-brand);
+  background: color-mix(in srgb, var(--color-brand) 8%, transparent);
 }
 
 .ing-line-photo {
@@ -8383,6 +8390,17 @@ button.inv-stat.is-active {
   /* Anula sticky de .ing-line-modal-actions en mobile (solapa Precio venta en iOS) */
   bottom: auto;
 }
+.prod-archive-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  margin-right: auto;
+  color: var(--color-muted);
+}
+.prod-archive-btn:hover,
+.prod-archive-btn:focus-visible {
+  color: var(--color-brand);
+}
 .prod-print-labels-btn {
   margin-top: 0.55rem;
   width: 100%;
@@ -10678,11 +10696,38 @@ button.inv-stat.is-active {
 }
 .st-count-row {
   display: grid;
-  grid-template-columns: 48px 1fr auto;
+  grid-template-columns: 48px 1fr auto auto;
   gap: 0.65rem;
   align-items: center;
   padding: 0.55rem 0;
   border-bottom: 1px solid #eee;
+}
+.st-line-remove {
+  min-width: 44px;
+  min-height: 44px;
+  display: inline-grid;
+  place-items: center;
+  color: var(--color-ink);
+  opacity: 0.7;
+}
+.st-line-remove:hover,
+.st-line-remove:focus-visible {
+  opacity: 1;
+  color: var(--color-brand);
+}
+.st-scan-hint {
+  margin: 0.35rem 0 0.75rem;
+}
+.st-qty-mode {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  margin: 0.65rem 0 0.85rem;
+}
+.st-qty-mode .btn.is-active {
+  border-color: var(--color-brand);
+  color: var(--color-brand);
+  background: color-mix(in srgb, var(--color-brand) 8%, #fff);
 }
 .st-list-card {
   display: flex;
@@ -10801,12 +10846,17 @@ button.inv-stat.is-active {
     top: 0;
   }
   .st-count-row {
-    grid-template-columns: 48px 1fr;
+    grid-template-columns: 48px 1fr auto;
   }
   .st-qty,
   .st-line-actions {
     grid-column: 2;
     justify-self: start;
+  }
+  .st-line-remove {
+    grid-column: 3;
+    grid-row: 1 / span 2;
+    align-self: center;
   }
 }
 

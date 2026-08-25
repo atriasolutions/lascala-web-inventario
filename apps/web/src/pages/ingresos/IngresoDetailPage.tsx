@@ -53,9 +53,7 @@ type StageItem = {
   ordered: number;
 };
 
-type LinkModal =
-  | { kind: 'create'; barcode: string }
-  | { kind: 'link'; barcode: string; product: ProductHit };
+type LinkModal = { kind: 'link'; barcode: string; product: ProductHit };
 
 type CategoryOption = { id: string; name: string };
 
@@ -133,6 +131,7 @@ export function IngresoDetailPage() {
   const [stagePulse, setStagePulse] = useState(false);
   const [noBarcodeOpen, setNoBarcodeOpen] = useState(false);
   const [suggestedBarcode, setSuggestedBarcode] = useState('LS000001');
+  const [presetBarcode, setPresetBarcode] = useState<string | null>(null);
   const [noBarcodeBusy, setNoBarcodeBusy] = useState(false);
   const [printLabel, setPrintLabel] = useState<{ name: string; code: string; copies: number } | null>(
     null,
@@ -145,9 +144,8 @@ export function IngresoDetailPage() {
   } | null>(null);
   const [photoPreview, setPhotoPreview] = useState<{ url: string; name: string } | null>(null);
 
-  // Modal form (crear/vincular por escáner)
+  // Modal vincular prenda existente (escáner)
   const [pickLineId, setPickLineId] = useState('');
-  const [newName, setNewName] = useState('');
   const [receiveQty, setReceiveQty] = useState(1);
   const [labelCopies, setLabelCopies] = useState(1);
   const [modalError, setModalError] = useState('');
@@ -323,28 +321,11 @@ export function IngresoDetailPage() {
     );
   }
 
-  function openCreateModal(barcode: string) {
-    const first = unlinkedPending[0];
-    const pend = first
-      ? Math.max(1, Number(first.quantity_ordered) - first.draftReceived)
-      : 1;
-    setPickLineId(first?.id || '');
-    setNewName(first?.description || '');
-    setReceiveQty(pend);
-    setLabelCopies(pend);
-    setModalError('');
-    setModal({ kind: 'create', barcode });
-  }
-
   function openLinkModal(barcode: string, product: ProductHit) {
     const first = unlinkedPending[0];
-    const pend = first
-      ? Math.max(1, Number(first.quantity_ordered) - first.draftReceived)
-      : 1;
     setPickLineId(first?.id || '');
-    setNewName('');
-    setReceiveQty(pend);
-    setLabelCopies(pend);
+    setReceiveQty(1);
+    setLabelCopies(1);
     setModalError('');
     setModal({ kind: 'link', barcode, product });
   }
@@ -399,10 +380,8 @@ export function IngresoDetailPage() {
     if (!modal || !pickLineId) return;
     const line = lines.find((l) => l.id === pickLineId);
     if (!line) return;
-    if (modal.kind === 'create') setNewName(line.description);
-    const pend = Math.max(1, Number(line.quantity_ordered) - line.draftReceived);
-    setReceiveQty(pend);
-    setLabelCopies(pend);
+    setReceiveQty(1);
+    setLabelCopies(1);
   }, [pickLineId, modal?.kind]);
 
   useEffect(() => {
@@ -490,8 +469,8 @@ export function IngresoDetailPage() {
           focusScan();
           return;
         }
-        openCreateModal(raw);
-        setLiveMsg('Código no registrado');
+        openCreateFromScan(raw);
+        setLiveMsg('Código no registrado · completa la ficha');
         setCode('');
         return;
       }
@@ -501,9 +480,15 @@ export function IngresoDetailPage() {
     }
   }
 
+  function openCreateFromScan(barcode: string) {
+    setPresetBarcode(barcode.trim().toUpperCase().replace(/\s+/g, ''));
+    setNoBarcodeOpen(true);
+  }
+
   async function openNoBarcode() {
     setNoBarcodeBusy(true);
     try {
+      setPresetBarcode(null);
       if (canCreateProduct) {
         const data = await api<{ nextBarcode: string }>('/api/products/next-barcode');
         setSuggestedBarcode(data.nextBarcode);
@@ -518,6 +503,7 @@ export function IngresoDetailPage() {
 
   function closeNoBarcode() {
     setNoBarcodeOpen(false);
+    setPresetBarcode(null);
     focusScan();
   }
 
@@ -532,6 +518,7 @@ export function IngresoDetailPage() {
     productType: string | null;
     season: string | null;
     description: string | null;
+    photoUrl: string | null;
     quantityReceived: number;
     labelCopies: number;
   }) {
@@ -558,6 +545,7 @@ export function IngresoDetailPage() {
               productType: payload.productType,
               season: payload.season,
               description: payload.description,
+              photoUrl: payload.photoUrl,
             },
           },
         ],
@@ -565,7 +553,7 @@ export function IngresoDetailPage() {
     });
     pulseStage({
       name: payload.name,
-      photo_url: null,
+      photo_url: payload.photoUrl,
       size_label: payload.sizeLabel,
       color: payload.color,
       qty: nextQty,
@@ -575,7 +563,11 @@ export function IngresoDetailPage() {
       `Prenda creada y recibida (${add} ud. · ${nextQty}/${line.quantity_ordered})`,
     );
     setLiveMsg(`Prenda creada · ${nextQty}/${line.quantity_ordered}`);
-    setSuccess('Stock actualizado. La foto se agrega después en Productos.');
+    setSuccess(
+      payload.photoUrl
+        ? 'Stock actualizado.'
+        : 'Stock actualizado. Puedes agregar la foto después en Productos.',
+    );
     closeNoBarcode();
     await load();
     // Impresión no bloquea: respeta N etiquetas en segundo plano
@@ -675,67 +667,8 @@ export function IngresoDetailPage() {
     }
   }
 
-  async function submitCreateModal() {
-    if (!id || !modal || modal.kind !== 'create') return;
-    const line = lines.find((l) => l.id === pickLineId);
-    if (!line) {
-      setModalError('Elige una línea');
-      return;
-    }
-    const pending = Math.max(0, Number(line.quantity_ordered) - line.draftReceived);
-    const qty = Math.floor(Number(receiveQty));
-    if (!Number.isFinite(qty) || qty < 1) {
-      setModalError('Indica la cantidad recibida');
-      return;
-    }
-    if (qty > pending) {
-      setModalError(`Solo quedan ${pending} pendiente${pending === 1 ? '' : 's'}`);
-      return;
-    }
-    const nextQty = line.draftReceived + qty;
-    setBusy(true);
-    setModalError('');
-    try {
-      await api(`/api/purchases/${id}/receive`, {
-        method: 'POST',
-        body: {
-          items: [
-            {
-              purchaseItemId: line.id,
-              quantityReceived: nextQty,
-              createProduct: {
-                barcode: modal.barcode,
-                name: newName.trim() || line.description,
-              },
-            },
-          ],
-        },
-      });
-      pulseStage({
-        name: newName.trim() || line.description,
-        photo_url: null,
-        size_label: line.size_label,
-        color: line.color,
-        qty: nextQty,
-        ordered: Number(line.quantity_ordered),
-      });
-      toast.success(`Prenda creada y recibida (${qty} ud. · ${nextQty}/${line.quantity_ordered})`);
-      setLiveMsg(`Prenda creada · ${nextQty}/${line.quantity_ordered}`);
-      setSuccess('Stock actualizado. La foto se agrega después en Productos.');
-      const printName = newName.trim() || line.description;
-      const copies = Math.max(1, Math.floor(Number(labelCopies) || 1));
-      closeModal();
-      await load();
-      void requestLabelPrint(printName, modal.barcode, copies);
-    } catch (err) {
-      setModalError(err instanceof Error ? err.message : 'Error al crear');
-    } finally {
-      setBusy(false);
-    }
-  }
-
   async function submitLinkModal() {
-    if (!id || !modal || modal.kind !== 'link') return;
+    if (!id || !modal) return;
     const line = lines.find((l) => l.id === pickLineId);
     if (!line) {
       setModalError('Elige una línea');
@@ -744,11 +677,11 @@ export function IngresoDetailPage() {
     const pending = Math.max(0, Number(line.quantity_ordered) - line.draftReceived);
     const qty = Math.floor(Number(receiveQty));
     if (!Number.isFinite(qty) || qty < 1) {
-      setModalError('Indica la cantidad recibida');
+      setModalError('Indica la cantidad (mínimo 1)');
       return;
     }
     if (qty > pending) {
-      setModalError(`Solo quedan ${pending} pendiente${pending === 1 ? '' : 's'}`);
+      setModalError(`Solo quedan ${pending} en esta línea`);
       return;
     }
     setBusy(true);
@@ -819,7 +752,6 @@ export function IngresoDetailPage() {
 
   const locked = purchase.status === 'received' || purchase.status === 'cancelled';
   const selectedLine = lines.find((l) => l.id === pickLineId);
-  const modalSaleDisplay = selectedLine ? lineFloorSalePrice(selectedLine) : 0;
   const modalPending = selectedLine
     ? Math.max(0, Number(selectedLine.quantity_ordered) - selectedLine.draftReceived)
     : 0;
@@ -931,10 +863,7 @@ export function IngresoDetailPage() {
                       <strong>{name}</strong>
                       {detail ? <div className="meta">{detail}</div> : null}
                       <div className="meta">
-                        Recibido {line.draftReceived}/{line.quantity_ordered}
-                        {Number(line.quantity_ordered) - line.draftReceived > 0
-                          ? ` · Pendiente ${Number(line.quantity_ordered) - line.draftReceived}`
-                          : ''}
+                        {line.draftReceived} de {line.quantity_ordered}
                         {lineFloorSalePrice(line) > 0
                           ? ` · P. venta ${money(lineFloorSalePrice(line))}`
                           : ''}
@@ -947,11 +876,11 @@ export function IngresoDetailPage() {
                       )}
                     </div>
                     {!locked && pending && line.product_id ? (
-                      <div className="pos-qty" role="group" aria-label={`Cantidad ${name}`}>
+                      <div className="pos-qty" role="group" aria-label={`Cantidad a recibir · ${name}`}>
                         <button
                           type="button"
                           className="btn secondary"
-                          aria-label="Menos"
+                          aria-label="Quitar una"
                           onClick={() => bumpLine(line.id, -1)}
                           disabled={line.draftReceived <= Number(line.quantity_received)}
                         >
@@ -963,7 +892,7 @@ export function IngresoDetailPage() {
                         <button
                           type="button"
                           className="btn secondary"
-                          aria-label="Más"
+                          aria-label="Sumar una"
                           onClick={() => bumpLine(line.id, 1)}
                           disabled={line.draftReceived >= Number(line.quantity_ordered)}
                         >
@@ -1034,6 +963,7 @@ export function IngresoDetailPage() {
         lines={unlinkedPending}
         categories={categories}
         suggestedBarcode={suggestedBarcode}
+        presetBarcode={presetBarcode}
         canCreateProduct={canCreateProduct}
         onClose={closeNoBarcode}
         onCreateAndReceive={createFromNoBarcode}
@@ -1059,16 +989,12 @@ export function IngresoDetailPage() {
             ref={modalRef}
           >
             <div className="pos-modal-head">
-              <h3 id={createTitleId}>
-                {modal.kind === 'create' ? 'Crear prenda y vincular' : 'Vincular prenda existente'}
-              </h3>
+              <h3 id={createTitleId}>Vincular prenda existente</h3>
             </div>
 
             <div className="ing-line-modal-body">
               <p className="ing-barcode-fixed">Código: {modal.barcode}</p>
-              <p className="ing-hint">
-                Es el código de la etiqueta y de la pistola. Elige la línea de este ingreso.
-              </p>
+              <p className="ing-hint">Elige la línea de este ingreso para vincular la prenda.</p>
 
               <div className="ing-line-picks" role="radiogroup" aria-label="Líneas pendientes">
                 {unlinkedPending.map((l) => (
@@ -1082,7 +1008,7 @@ export function IngresoDetailPage() {
                   >
                     <strong>{l.description}</strong>
                     <span>
-                      Recibido {l.draftReceived}/{l.quantity_ordered} · Pendiente{' '}
+                      {l.draftReceived} de {l.quantity_ordered} · quedan{' '}
                       {Number(l.quantity_ordered) - l.draftReceived}
                       {lineFloorSalePrice(l) > 0
                         ? ` · P. venta ${money(lineFloorSalePrice(l))}`
@@ -1092,39 +1018,13 @@ export function IngresoDetailPage() {
                 ))}
               </div>
 
-              {modal.kind === 'create' && (
-                <>
-                  <div className="field">
-                    <label htmlFor="ing-new-name">Nombre</label>
-                    <input
-                      id="ing-new-name"
-                      value={newName}
-                      onChange={(e) => setNewName(e.target.value)}
-                    />
-                  </div>
-                  <div className="field">
-                    <label htmlFor="ing-sale">Precio de venta</label>
-                    <input
-                      id="ing-sale"
-                      value={modalSaleDisplay > 0 ? money(modalSaleDisplay) : '—'}
-                      disabled
-                      readOnly
-                      aria-readonly="true"
-                    />
-                    <span className="ing-hint">Fijado en la compra · no editable en recepción</span>
-                  </div>
-                </>
-              )}
-
-              {modal.kind === 'link' && (
-                <p className="meta">
-                  Prenda: <strong>{modal.product.name}</strong> · {modal.product.internal_code}
-                </p>
-              )}
+              <p className="meta">
+                Prenda: <strong>{modal.product.name}</strong> · {modal.product.internal_code}
+              </p>
 
               <div className="ing-nb-grid" style={{ marginTop: '0.65rem' }}>
                 <div className="field">
-                  <label htmlFor="ing-modal-qty">Cantidad recibida</label>
+                  <label htmlFor="ing-modal-qty">Cantidad</label>
                   <input
                     id="ing-modal-qty"
                     type="number"
@@ -1137,10 +1037,12 @@ export function IngresoDetailPage() {
                       if (Number.isFinite(v) && v >= 1) setLabelCopies(v);
                     }}
                   />
-                  <span className="ing-hint">Pendiente en la línea: {modalPending}</span>
+                  {modalPending > 1 ? (
+                    <span className="ing-hint">Máximo {modalPending} en esta línea</span>
+                  ) : null}
                 </div>
                 <div className="field">
-                  <label htmlFor="ing-modal-labels">Imprimir N etiquetas</label>
+                  <label htmlFor="ing-modal-labels">Etiquetas</label>
                   <input
                     id="ing-modal-labels"
                     type="number"
@@ -1151,10 +1053,6 @@ export function IngresoDetailPage() {
                   />
                 </div>
               </div>
-
-              {modal.kind === 'create' ? (
-                <p className="ing-hint">La foto se agrega después en Productos</p>
-              ) : null}
 
               {modalError && <p className="error">{modalError}</p>}
             </div>
@@ -1167,9 +1065,9 @@ export function IngresoDetailPage() {
                 type="button"
                 className="btn"
                 disabled={busy || !pickLineId}
-                onClick={() => (modal.kind === 'create' ? submitCreateModal() : submitLinkModal())}
+                onClick={() => void submitLinkModal()}
               >
-                {modal.kind === 'create' ? 'Crear y recepcionar' : 'Vincular y recibir'}
+                Vincular y recibir
               </button>
             </div>
           </div>

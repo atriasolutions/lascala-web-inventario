@@ -152,9 +152,22 @@ export async function scanStocktakeLine(params: {
   branchId: string;
   stocktakeId: string;
   code: string;
+  /** Cantidad a sumar o fijar (default 1 en modo add). */
+  quantity?: number;
+  /** `add` suma al conteo; `set` deja el conteo en quantity. */
+  mode?: 'add' | 'set';
 }) {
   const variants = expandProductCodeVariants(params.code);
   if (!variants.length) throw new HttpError(400, 'Indica el código de la prenda');
+
+  const mode = params.mode ?? 'add';
+  const qtyRaw = params.quantity == null ? 1 : Math.floor(Number(params.quantity));
+  if (!Number.isFinite(qtyRaw) || qtyRaw < 0) {
+    throw new HttpError(400, 'Indica una cantidad válida (0 o más)');
+  }
+  if (mode === 'add' && qtyRaw < 1) {
+    throw new HttpError(400, 'Para sumar, la cantidad debe ser al menos 1');
+  }
 
   const client = await pool.connect();
   try {
@@ -192,19 +205,149 @@ export async function scanStocktakeLine(params: {
       throw new HttpError(400, 'Esta prenda no controla stock de vitrina');
     }
 
-    const line = await client.query(
-      `INSERT INTO stocktake_lines (stocktake_id, product_id, qty_counted, last_scanned_at, updated_at)
-       VALUES ($1, $2, 1, now(), now())
-       ON CONFLICT (stocktake_id, product_id) DO UPDATE SET
-         qty_counted = stocktake_lines.qty_counted + 1,
-         last_scanned_at = now(),
-         updated_at = now()
-       RETURNING *`,
-      [params.stocktakeId, product.id],
-    );
+    const line =
+      mode === 'set'
+        ? qtyRaw === 0
+          ? null
+          : await client.query(
+              `INSERT INTO stocktake_lines (stocktake_id, product_id, qty_counted, last_scanned_at, updated_at)
+               VALUES ($1, $2, $3, now(), now())
+               ON CONFLICT (stocktake_id, product_id) DO UPDATE SET
+                 qty_counted = $3,
+                 last_scanned_at = now(),
+                 updated_at = now()
+               RETURNING *`,
+              [params.stocktakeId, product.id, qtyRaw],
+            )
+        : await client.query(
+            `INSERT INTO stocktake_lines (stocktake_id, product_id, qty_counted, last_scanned_at, updated_at)
+             VALUES ($1, $2, $3, now(), now())
+             ON CONFLICT (stocktake_id, product_id) DO UPDATE SET
+               qty_counted = stocktake_lines.qty_counted + $3,
+               last_scanned_at = now(),
+               updated_at = now()
+             RETURNING *`,
+            [params.stocktakeId, product.id, qtyRaw],
+          );
+
+    if (mode === 'set' && qtyRaw === 0) {
+      await client.query(
+        `DELETE FROM stocktake_lines WHERE stocktake_id = $1 AND product_id = $2`,
+        [params.stocktakeId, product.id],
+      );
+      await client.query('COMMIT');
+      const full = await loadStocktake(params.stocktakeId, params.organizationId, params.branchId);
+      return {
+        ...full,
+        scanned: { productId: product.id, name: product.name, qty: 0, removed: true },
+      };
+    }
+
     await client.query('COMMIT');
     const full = await loadStocktake(params.stocktakeId, params.organizationId, params.branchId);
-    return { ...full, scanned: { productId: product.id, name: product.name, qty: line.rows[0].qty_counted } };
+    return {
+      ...full,
+      scanned: { productId: product.id, name: product.name, qty: line!.rows[0].qty_counted },
+    };
+  } catch (e) {
+    try {
+      await client.query('ROLLBACK');
+    } catch {
+      /* ignore */
+    }
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+export async function removeStocktakeLine(params: {
+  organizationId: string;
+  branchId: string;
+  stocktakeId: string;
+  productId: string;
+}) {
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const st = await client.query<{ id: string; status: string }>(
+      `SELECT id, status FROM stocktakes
+       WHERE id = $1 AND organization_id = $2 AND branch_id = $3
+       FOR UPDATE`,
+      [params.stocktakeId, params.organizationId, params.branchId],
+    );
+    if (!st.rows[0]) throw new HttpError(404, 'Toma de inventario no encontrada');
+    if (st.rows[0].status !== 'in_progress') {
+      throw new HttpError(400, 'Solo puedes quitar líneas mientras la toma está en conteo');
+    }
+    const del = await client.query(
+      `DELETE FROM stocktake_lines
+       WHERE stocktake_id = $1 AND product_id = $2
+       RETURNING id`,
+      [params.stocktakeId, params.productId],
+    );
+    if (!del.rows[0]) throw new HttpError(404, 'Esa prenda no está en el conteo');
+    await client.query('COMMIT');
+    return loadStocktake(params.stocktakeId, params.organizationId, params.branchId);
+  } catch (e) {
+    try {
+      await client.query('ROLLBACK');
+    } catch {
+      /* ignore */
+    }
+    throw e;
+  } finally {
+    client.release();
+  }
+}
+
+/** Actualiza qty_counted de una línea (por id de línea). qty 0 = elimina. */
+export async function updateStocktakeLineQty(params: {
+  organizationId: string;
+  branchId: string;
+  stocktakeId: string;
+  lineId: string;
+  qtyCounted: number;
+}) {
+  if (!Number.isInteger(params.qtyCounted) || params.qtyCounted < 0) {
+    throw new HttpError(400, 'La cantidad debe ser un entero mayor o igual a 0');
+  }
+  const client = await pool.connect();
+  try {
+    await client.query('BEGIN');
+    const st = await client.query<{ id: string; status: string }>(
+      `SELECT id, status FROM stocktakes
+       WHERE id = $1 AND organization_id = $2 AND branch_id = $3
+       FOR UPDATE`,
+      [params.stocktakeId, params.organizationId, params.branchId],
+    );
+    if (!st.rows[0]) throw new HttpError(404, 'Toma de inventario no encontrada');
+    if (st.rows[0].status !== 'in_progress') {
+      throw new HttpError(400, 'Solo puedes editar líneas mientras la toma está en conteo');
+    }
+
+    if (params.qtyCounted === 0) {
+      const del = await client.query(
+        `DELETE FROM stocktake_lines WHERE id = $1 AND stocktake_id = $2 RETURNING id`,
+        [params.lineId, params.stocktakeId],
+      );
+      if (!del.rows[0]) throw new HttpError(404, 'Línea no encontrada');
+      await client.query('COMMIT');
+      const full = await loadStocktake(params.stocktakeId, params.organizationId, params.branchId);
+      return { ...full, removed: true as const };
+    }
+
+    const upd = await client.query(
+      `UPDATE stocktake_lines
+       SET qty_counted = $1, updated_at = now(), last_scanned_at = now()
+       WHERE id = $2 AND stocktake_id = $3
+       RETURNING *`,
+      [params.qtyCounted, params.lineId, params.stocktakeId],
+    );
+    if (!upd.rows[0]) throw new HttpError(404, 'Línea no encontrada');
+    await client.query('COMMIT');
+    const full = await loadStocktake(params.stocktakeId, params.organizationId, params.branchId);
+    return { ...full, line: upd.rows[0] };
   } catch (e) {
     try {
       await client.query('ROLLBACK');

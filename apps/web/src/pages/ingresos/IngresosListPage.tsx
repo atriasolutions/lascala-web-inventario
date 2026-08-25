@@ -24,26 +24,38 @@ import {
   type PurchaseStatus,
 } from '../../lib/purchasesStatus';
 
-/** Estados seleccionables en el drawer (Pendiente vive en el chip). */
-type DrawerStatus = 'partially_received' | 'received' | 'all';
+/** Default de piso: pendientes + parciales. */
+const OPEN_STATUSES = 'pending_reception,partially_received';
+
+type StatusFilter =
+  | 'pending_and_partial'
+  | 'pending_reception'
+  | 'partially_received'
+  | 'received'
+  | 'all';
 
 type AppliedFilters = {
-  status: 'pending_reception' | DrawerStatus;
+  status: StatusFilter;
   dateFrom: string;
   dateTo: string;
   q: string;
 };
 
 const DEFAULT_FILTERS: AppliedFilters = {
-  status: 'pending_reception',
+  status: 'pending_and_partial',
   dateFrom: '',
   dateTo: '',
   q: '',
 };
 
+function statusToQuery(status: StatusFilter): string {
+  if (status === 'pending_and_partial') return OPEN_STATUSES;
+  return status;
+}
+
 function buildQuery(f: AppliedFilters, offset: number, limit: number) {
   const params = new URLSearchParams();
-  if (f.status !== 'all') params.set('status', f.status);
+  params.set('status', statusToQuery(f.status));
   if (f.dateFrom) params.set('dateFrom', f.dateFrom);
   if (f.dateTo) params.set('dateTo', f.dateTo);
   if (f.q.trim()) params.set('q', f.q.trim());
@@ -66,7 +78,7 @@ export function IngresosListPage() {
   const [draftDateFrom, setDraftDateFrom] = useState('');
   const [draftDateTo, setDraftDateTo] = useState('');
   const [draftQ, setDraftQ] = useState('');
-  const [draftStatus, setDraftStatus] = useState<'' | DrawerStatus>('');
+  const [draftStatus, setDraftStatus] = useState<StatusFilter>('pending_and_partial');
   const [sortKey, setSortKey] = useState<PurchaseSortKey>('date');
   const [sortDir, setSortDir] = useState<SortDir>('desc');
 
@@ -112,20 +124,21 @@ export function IngresosListPage() {
     setSortDir(next.dir);
   }
 
-  const isPendingOnly =
-    filters.status === 'pending_reception' && !filters.dateFrom && !filters.dateTo && !filters.q.trim();
+  const isDefaultOpen =
+    filters.status === 'pending_and_partial' && !filters.dateFrom && !filters.dateTo && !filters.q.trim();
 
   const hasExtraFilters =
     Boolean(filters.dateFrom) ||
     Boolean(filters.dateTo) ||
     Boolean(filters.q.trim()) ||
-    filters.status !== 'pending_reception';
+    filters.status !== 'pending_and_partial';
 
   const summaryChips = useMemo(() => {
     const chips: { key: string; label: string }[] = [];
     if (filters.dateFrom) chips.push({ key: 'from', label: `Desde ${formatDate(filters.dateFrom)}` });
     if (filters.dateTo) chips.push({ key: 'to', label: `Hasta ${formatDate(filters.dateTo)}` });
     if (filters.q.trim()) chips.push({ key: 'q', label: `Producto: ${filters.q.trim()}` });
+    if (filters.status === 'pending_reception') chips.push({ key: 'st', label: 'Solo pendiente' });
     if (filters.status === 'partially_received') chips.push({ key: 'st', label: 'Parcial' });
     if (filters.status === 'received') chips.push({ key: 'st', label: 'Recibido' });
     if (filters.status === 'all') chips.push({ key: 'st', label: 'Todos' });
@@ -136,9 +149,7 @@ export function IngresosListPage() {
     setDraftDateFrom(filters.dateFrom);
     setDraftDateTo(filters.dateTo);
     setDraftQ(filters.q);
-    setDraftStatus(
-      filters.status === 'pending_reception' ? '' : (filters.status as DrawerStatus),
-    );
+    setDraftStatus(filters.status);
     setDrawerOpen(true);
   }
 
@@ -148,7 +159,7 @@ export function IngresosListPage() {
 
   function applyDrawer() {
     setFilters({
-      status: draftStatus || 'pending_reception',
+      status: draftStatus,
       dateFrom: draftDateFrom,
       dateTo: draftDateTo,
       q: draftQ,
@@ -160,8 +171,8 @@ export function IngresosListPage() {
     setFilters(DEFAULT_FILTERS);
   }
 
-  function activatePending() {
-    setFilters((prev) => ({ ...prev, status: 'pending_reception' }));
+  function activateOpen() {
+    setFilters((prev) => ({ ...prev, status: 'pending_and_partial' }));
   }
 
   useEffect(() => {
@@ -197,12 +208,12 @@ export function IngresosListPage() {
       <div className="ing-filters" role="toolbar" aria-label="Filtros de ingresos">
         <button
           type="button"
-          className={`ing-chip${filters.status === 'pending_reception' ? ' is-active' : ''}`}
-          aria-pressed={filters.status === 'pending_reception'}
+          className={`ing-chip${filters.status === 'pending_and_partial' ? ' is-active' : ''}`}
+          aria-pressed={filters.status === 'pending_and_partial'}
           data-help="cta.ingresos.pendiente"
-          onClick={activatePending}
+          onClick={activateOpen}
         >
-          Pendiente
+          Pendiente + Parcial
         </button>
         <button type="button" className="btn secondary ing-filters-btn" data-help="cta.ingresos.filtros" onClick={openDrawer}>
           Filtros
@@ -235,9 +246,9 @@ export function IngresosListPage() {
 
       {!loading && !purchases.length && (
         <div className="ing-empty">
-          {isPendingOnly ? (
+          {isDefaultOpen ? (
             <>
-              <p>No hay pendientes</p>
+              <p>No hay pendientes ni parciales</p>
               <p className="muted">Cuando haya compras por recibir, aparecerán aquí.</p>
               <Link to="/compras" className="btn secondary" style={{ marginTop: '0.75rem' }}>
                 Ver compras
@@ -461,14 +472,14 @@ export function IngresosListPage() {
                 <select
                   id="ing-f-status"
                   value={draftStatus}
-                  onChange={(e) => setDraftStatus(e.target.value as '' | DrawerStatus)}
+                  onChange={(e) => setDraftStatus(e.target.value as StatusFilter)}
                 >
-                  <option value="">—</option>
+                  <option value="pending_and_partial">Pendiente + Parcial</option>
+                  <option value="pending_reception">Solo pendiente</option>
                   <option value="partially_received">Parcial</option>
                   <option value="received">Recibido</option>
                   <option value="all">Todos</option>
                 </select>
-                <span className="ing-hint">Vacío = Pendiente (chip). Parcial · Recibido · Todos aquí.</span>
               </div>
             </div>
             </div>

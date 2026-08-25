@@ -9,6 +9,7 @@ import { ProductFichaFields } from './ProductFichaFields';
 import { ProductPhotoPlaceholder } from './ProductPhotoPlaceholder';
 import { api, mediaUrl, money } from '../lib/api';
 import { lineFloorSalePrice, type PurchaseItem } from '../lib/purchasesStatus';
+import { fileToDataUrl } from '../pages/compras/purchaseFormTypes';
 
 export type NoBarcodeLine = PurchaseItem & { draftReceived: number };
 
@@ -35,6 +36,11 @@ type Props = {
   lines: NoBarcodeLine[];
   categories: CategoryOption[];
   suggestedBarcode: string;
+  /**
+   * Código escaneado inexistente: abre ficha create con barcode en modo pistola.
+   * Si es null/undefined, flujo «Sin código» (autogenerar).
+   */
+  presetBarcode?: string | null;
   onClose: () => void;
   onCreateAndReceive: (payload: {
     purchaseItemId: string;
@@ -47,6 +53,7 @@ type Props = {
     productType: string | null;
     season: string | null;
     description: string | null;
+    photoUrl: string | null;
     quantityReceived: number;
     labelCopies: number;
   }) => Promise<void>;
@@ -71,6 +78,7 @@ export function NoBarcodeModal({
   lines,
   categories,
   suggestedBarcode,
+  presetBarcode = null,
   onClose,
   onCreateAndReceive,
   onLinkExisting,
@@ -78,10 +86,12 @@ export function NoBarcodeModal({
   canCreateProduct = true,
 }: Props) {
   const panelRef = useRef<HTMLDivElement>(null);
+  const blobRef = useRef<string | null>(null);
   const searchId = useId();
   const [mode, setMode] = useState<Mode>('new');
   const [busy, setBusy] = useState(false);
   const [printBusy, setPrintBusy] = useState(false);
+  const [photoBusy, setPhotoBusy] = useState(false);
   const [error, setError] = useState('');
 
   const [pickLineId, setPickLineId] = useState('');
@@ -99,6 +109,8 @@ export function NoBarcodeModal({
   const [productType, setProductType] = useState('');
   const [season, setSeason] = useState('');
   const [description, setDescription] = useState('');
+  const [photoUrl, setPhotoUrl] = useState('');
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
   const [receiveQty, setReceiveQty] = useState(1);
   const [labelCopies, setLabelCopies] = useState(1);
 
@@ -114,6 +126,15 @@ export function NoBarcodeModal({
 
   const displaySale = selectedLine ? lineFloorSalePrice(selectedLine) : 0;
   const pendingOnLine = selectedLine ? linePending(selectedLine) : 0;
+  const scannedCreate = Boolean(presetBarcode?.trim());
+  const photoSrc = photoPreview || (photoUrl ? mediaUrl(photoUrl) : null);
+
+  function revokeBlob() {
+    if (blobRef.current) {
+      URL.revokeObjectURL(blobRef.current);
+      blobRef.current = null;
+    }
+  }
 
   useEffect(() => {
     if (!open) return;
@@ -121,15 +142,25 @@ export function NoBarcodeModal({
     setError('');
     setBusy(false);
     setPrintBusy(false);
-    setBarcode(suggestedBarcode);
-    setCodeMode('auto');
-    setCodeAvailability('idle');
+    setPhotoBusy(false);
+    setPhotoUrl('');
+    setPhotoPreview(null);
+    revokeBlob();
+    const scanned = (presetBarcode || '').trim().toUpperCase().replace(/\s+/g, '');
+    if (scanned) {
+      setBarcode(scanned);
+      setCodeMode('scan');
+      setCodeAvailability('ok');
+    } else {
+      setBarcode(suggestedBarcode);
+      setCodeMode('auto');
+      setCodeAvailability('idle');
+    }
     setCodeGenerating(false);
     setSearchQ('');
     setSearchHits([]);
     setSelected(null);
     const first = lines[0];
-    const pend = first ? linePending(first) : 1;
     setPickLineId(first?.id || '');
     setName(first?.description || '');
     setColor(first?.color || '');
@@ -139,28 +170,19 @@ export function NoBarcodeModal({
     setProductType('');
     setSeason('');
     setDescription(first?.description || '');
-    setReceiveQty(Math.max(1, pend));
-    setLabelCopies(Math.max(1, pend));
+    setReceiveQty(1);
+    setLabelCopies(1);
     requestAnimationFrame(() => {
       panelRef.current?.querySelector<HTMLElement>('input, select, button')?.focus();
     });
-  }, [open, suggestedBarcode, lines, canCreateProduct]);
+    return () => revokeBlob();
+  }, [open, suggestedBarcode, presetBarcode, lines, canCreateProduct]);
 
   useEffect(() => {
     if (!selectedLine || mode !== 'new') return;
-    const pend = linePending(selectedLine);
-    setReceiveQty(Math.max(1, pend));
-    setLabelCopies(Math.max(1, pend));
     if (!name.trim()) setName(selectedLine.description || '');
     if (!color && selectedLine.color) setColor(selectedLine.color);
     if (!sizeLabel && selectedLine.size_label) setSizeLabel(selectedLine.size_label);
-  }, [selectedLine?.id, mode]);
-
-  useEffect(() => {
-    if (!selectedLine || mode !== 'search') return;
-    const pend = linePending(selectedLine);
-    setReceiveQty(Math.max(1, pend || 1));
-    setLabelCopies(Math.max(1, pend || 1));
   }, [selectedLine?.id, mode]);
 
   useEffect(() => {
@@ -232,6 +254,49 @@ export function NoBarcodeModal({
     }
   }
 
+  async function onPhoto(file: File | null) {
+    if (!file) return;
+    if (!file.type.startsWith('image/')) {
+      setError('La foto debe ser una imagen');
+      return;
+    }
+    setPhotoBusy(true);
+    setError('');
+    revokeBlob();
+    const localPreview = URL.createObjectURL(file);
+    blobRef.current = localPreview;
+    setPhotoPreview(localPreview);
+    try {
+      const image = await fileToDataUrl(file);
+      const data = await api<{ url: string }>('/api/uploads', {
+        method: 'POST',
+        body: { image },
+      });
+      setPhotoUrl(data.url);
+      const remote = mediaUrl(data.url);
+      if (remote) {
+        const probe = new Image();
+        probe.onload = () => {
+          setPhotoPreview(null);
+          revokeBlob();
+        };
+        probe.src = remote;
+      }
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'No se pudo subir la foto');
+      setPhotoPreview(null);
+      revokeBlob();
+    } finally {
+      setPhotoBusy(false);
+    }
+  }
+
+  function clearPhoto() {
+    revokeBlob();
+    setPhotoPreview(null);
+    setPhotoUrl('');
+  }
+
   async function executeCreate() {
     if (!pickLineId || !selectedLine) return;
     const code = barcode.trim().toUpperCase().replace(/\s+/g, '');
@@ -265,6 +330,7 @@ export function NoBarcodeModal({
         productType: productType.trim() || null,
         season: season.trim() || null,
         description: description.trim() || null,
+        photoUrl: photoUrl.trim() || null,
         quantityReceived: qty,
         labelCopies: Math.max(1, Math.floor(Number(labelCopies) || 1)),
       });
@@ -277,6 +343,10 @@ export function NoBarcodeModal({
 
   function handleCreate() {
     setError('');
+    if (photoBusy) {
+      setError('Espera a que termine de subir la foto');
+      return;
+    }
     if (!lines.length) {
       setError('No hay líneas sin vincular en este ingreso');
       return;
@@ -304,11 +374,11 @@ export function NoBarcodeModal({
     }
     const qty = Math.floor(Number(receiveQty));
     if (!Number.isFinite(qty) || qty < 1) {
-      setError('Indica la cantidad recibida (mínimo 1)');
+      setError('Indica la cantidad (mínimo 1)');
       return;
     }
     if (qty > pendingOnLine) {
-      setError(`Solo quedan ${pendingOnLine} pendiente${pendingOnLine === 1 ? '' : 's'} en esta línea`);
+      setError(`Solo quedan ${pendingOnLine} en esta línea`);
       return;
     }
     void executeCreate();
@@ -374,11 +444,11 @@ export function NoBarcodeModal({
     }
     const qty = Math.floor(Number(receiveQty));
     if (!Number.isFinite(qty) || qty < 1) {
-      setError('Indica la cantidad recibida (mínimo 1)');
+      setError('Indica la cantidad (mínimo 1)');
       return;
     }
     if (qty > pendingOnLine) {
-      setError(`Solo quedan ${pendingOnLine} pendiente${pendingOnLine === 1 ? '' : 's'} en esta línea`);
+      setError(`Solo quedan ${pendingOnLine} en esta línea`);
       return;
     }
     void executeLinkExisting();
@@ -402,9 +472,10 @@ export function NoBarcodeModal({
         aria-labelledby={titleId}
       >
         <div className="pos-modal-head">
-          <h3 id={titleId}>Sin código de barras</h3>
+          <h3 id={titleId}>{scannedCreate ? 'Nueva prenda' : 'Sin código de barras'}</h3>
         </div>
 
+        {!scannedCreate ? (
         <div className="ing-nb-tabs" role="tablist" aria-label="Modo">
           {canCreateProduct ? (
             <button
@@ -433,6 +504,7 @@ export function NoBarcodeModal({
             Buscar existente
           </button>
         </div>
+        ) : null}
         {!canCreateProduct ? (
           <p className="ing-hint" style={{ padding: '0 1.25rem' }}>
             Solo la administración puede dar de alta el código en el sistema. Puedes buscar una
@@ -449,8 +521,9 @@ export function NoBarcodeModal({
             ) : (
               <>
                 <p className="ing-hint">
-                  Elige la línea y completa la ficha. El código (LS…) es el de la etiqueta y de la
-                  pistola.
+                  {scannedCreate
+                    ? 'Completa la ficha con el código escaneado y elige la línea del ingreso.'
+                    : 'Elige la línea y completa la ficha. El código (LS…) es el de la etiqueta y de la pistola.'}
                 </p>
 
                 <div className="ing-line-picks" role="radiogroup" aria-label="Líneas pendientes">
@@ -465,14 +538,47 @@ export function NoBarcodeModal({
                     >
                       <strong>{l.description}</strong>
                       <span>
-                        Recibido {l.draftReceived}/{l.quantity_ordered} · Pendiente{' '}
-                        {linePending(l)}
+                        {l.draftReceived}/{l.quantity_ordered} · quedan {linePending(l)}
                         {lineFloorSalePrice(l) > 0
                           ? ` · P. venta ${money(lineFloorSalePrice(l))}`
                           : ''}
                       </span>
                     </button>
                   ))}
+                </div>
+
+                <div className="prod-modal-photo ing-nb-photo">
+                  {photoSrc ? (
+                    <img src={photoSrc} alt="" />
+                  ) : (
+                    <ProductPhotoPlaceholder className="prod-modal-photo-empty" />
+                  )}
+                  <div className="prod-modal-photo-actions">
+                    <label className="ing-photo-btn">
+                      <input
+                        type="file"
+                        accept="image/*"
+                        capture="environment"
+                        hidden
+                        disabled={busy || photoBusy}
+                        onChange={(e) => {
+                          void onPhoto(e.target.files?.[0] ?? null);
+                          e.target.value = '';
+                        }}
+                      />
+                      {photoBusy ? 'Subiendo…' : photoSrc ? 'Cambiar foto' : 'Agregar foto'}
+                    </label>
+                    {photoSrc ? (
+                      <button
+                        type="button"
+                        className="btn ghost"
+                        disabled={busy || photoBusy}
+                        onClick={clearPhoto}
+                      >
+                        Quitar
+                      </button>
+                    ) : null}
+                  </div>
                 </div>
 
                 <ProductFichaFields
@@ -498,7 +604,7 @@ export function NoBarcodeModal({
                     if (partial.description !== undefined) setDescription(partial.description);
                   }}
                   categories={categories}
-                  disabled={busy}
+                  disabled={busy || photoBusy}
                   code={{
                     locked: false,
                     value: barcode,
@@ -515,14 +621,14 @@ export function NoBarcodeModal({
                         onModeChange={(m) => {
                           setCodeMode(m);
                           setCodeAvailability('idle');
-                          if (m === 'scan') setBarcode('');
+                          if (m === 'scan' && !scannedCreate) setBarcode('');
                         }}
                         onChange={(v) => {
                           setBarcode(v);
                           setCodeAvailability('idle');
                         }}
                         onAutogenerate={fetchNextCode}
-                        disabled={busy}
+                        disabled={busy || photoBusy}
                         generating={codeGenerating}
                         availability={codeAvailability}
                         onBlurCheck={() => void checkScanBarcode()}
@@ -539,7 +645,7 @@ export function NoBarcodeModal({
                 />
                 <div className="ing-nb-grid">
                   <div className="field">
-                    <label htmlFor="ing-nb-qty">Cantidad recibida</label>
+                    <label htmlFor="ing-nb-qty">Cantidad</label>
                     <input
                       id="ing-nb-qty"
                       type="number"
@@ -552,12 +658,12 @@ export function NoBarcodeModal({
                         if (Number.isFinite(v) && v >= 1) setLabelCopies(v);
                       }}
                     />
-                    <span className="ing-hint">
-                      Pendiente en la línea: {pendingOnLine}
-                    </span>
+                    {pendingOnLine > 1 ? (
+                      <span className="ing-hint">Máximo {pendingOnLine} en esta línea</span>
+                    ) : null}
                   </div>
                   <div className="field">
-                    <label htmlFor="ing-nb-labels">Imprimir N etiquetas</label>
+                    <label htmlFor="ing-nb-labels">Etiquetas</label>
                     <input
                       id="ing-nb-labels"
                       type="number"
@@ -699,7 +805,7 @@ export function NoBarcodeModal({
               <div className="ing-nb-grid">
                 {lines.length > 0 ? (
                   <div className="field">
-                    <label htmlFor="ing-nb-qty-search">Cantidad recibida</label>
+                    <label htmlFor="ing-nb-qty-search">Cantidad</label>
                     <input
                       id="ing-nb-qty-search"
                       type="number"
@@ -712,11 +818,13 @@ export function NoBarcodeModal({
                         if (Number.isFinite(v) && v >= 1) setLabelCopies(v);
                       }}
                     />
-                    <span className="ing-hint">Pendiente en la línea: {pendingOnLine}</span>
+                    {pendingOnLine > 1 ? (
+                      <span className="ing-hint">Máximo {pendingOnLine} en esta línea</span>
+                    ) : null}
                   </div>
                 ) : null}
                 <div className="field">
-                  <label htmlFor="ing-nb-labels-search">Imprimir N etiquetas</label>
+                  <label htmlFor="ing-nb-labels-search">Etiquetas</label>
                   <input
                     id="ing-nb-labels-search"
                     type="number"
