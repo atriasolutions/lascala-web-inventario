@@ -240,10 +240,7 @@ export function DashboardPage() {
       <section className="dash-hero dash-hero-plain" aria-label="Resumen del día">
         <div className="dash-hero-copy">
           <p className="dash-kicker">Hoy en {branchName}</p>
-          <h2 className="dash-hero-title">
-            <span className="mobile-only">{greeting}</span>
-            <span className="desktop-only">Salón de ventas</span>
-          </h2>
+          <h2 className="dash-hero-title">{greeting}</h2>
           <p className="dash-hero-sub">
             {todayLabel} · Toda la sucursal
           </p>

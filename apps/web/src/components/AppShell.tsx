@@ -12,7 +12,6 @@ import { OfflineBanner } from './OfflineBanner';
 import { PwaInstallHint } from './PwaInstallHint';
 import { ShellTitleContext } from './shellTitle';
 import { WorkplaceSwitcher } from './WorkplaceSwitcher';
-import { personalDayGreeting } from '../lib/dayGreeting';
 import { isAdminRole, roleLabel as formatRoleLabel } from '../lib/roles';
 import {
   IconAlertTriangle,
@@ -398,11 +397,7 @@ export function AppShell() {
           <header className="topbar-desktop">
             <div className="topbar-title">
               <span className="topbar-eyebrow">{eyebrow}</span>
-              <h1>
-                {location.pathname === '/'
-                  ? personalDayGreeting(user?.fullName)
-                  : title}
-              </h1>
+              <h1>{title}</h1>
             </div>
             <div className="right">
               {isOwner ? (

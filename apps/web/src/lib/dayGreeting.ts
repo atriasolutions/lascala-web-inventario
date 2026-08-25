@@ -1,6 +1,6 @@
 /**
  * Saludo por franja horaria (Chile): mañana / tarde / noche.
- * Una sola fuente para header desktop y hero mobile del Dashboard.
+ * Fuente única para el hero del Dashboard (desktop y mobile).
  */
 export type DayPartGreeting = 'Buenos días' | 'Buenas tardes' | 'Buenas noches';
 
