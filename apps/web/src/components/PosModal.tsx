@@ -1,9 +1,11 @@
 import {
   type MouseEventHandler,
   type ReactNode,
+  useRef,
 } from 'react';
 import { createPortal } from 'react-dom';
 import { useModalScrollLock } from '../hooks/useModalScrollLock';
+import { usePosModalViewport } from '../hooks/usePosModalViewport';
 
 type Props = {
   /** Si false, no renderiza. Default true (útil con `{open && <PosModal>}`). */
@@ -16,8 +18,9 @@ type Props = {
 
 /**
  * Overlay de modal portaleado a `document.body`.
- * Evita el bug iOS: `position:fixed` atrapado por `.main-content { overflow }`,
- * donde el bottom-nav tapa el footer y el scroll va a la página de atrás.
+ * - Evita fixed atrapado por `.main-content { overflow }`
+ * - En iOS: anclado a visualViewport (teclado no empuja el panel fuera de pantalla)
+ * - Solo el body interno scrollea hacia el input enfocado
  */
 export function PosModal({
   open = true,
@@ -26,14 +29,16 @@ export function PosModal({
   onClick,
   role = 'presentation',
 }: Props) {
+  const rootRef = useRef<HTMLDivElement>(null);
   useModalScrollLock(open);
+  usePosModalViewport(open, rootRef);
 
   if (!open || typeof document === 'undefined') return null;
 
   const classes = ['pos-modal', 'open', className].filter(Boolean).join(' ');
 
   return createPortal(
-    <div className={classes} role={role} onClick={onClick}>
+    <div ref={rootRef} className={classes} role={role} onClick={onClick}>
       {children}
     </div>,
     document.body,

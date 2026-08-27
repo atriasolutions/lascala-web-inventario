@@ -1929,7 +1929,9 @@ a.is-nav-offline,
   cursor: not-allowed;
 }
 
-/* Safari iOS: date/month/time ignoran width:100% sin min-width:0 */
+/* Safari iOS: date/month/time tienen min-content intrínseco > 100%;
+   width/min-width:0 en el input NO basta — hay que achicar el shadow DOM
+   y contener el .field con overflow + max-width. */
 .field input[type='date'],
 .field input[type='time'],
 .field input[type='datetime-local'],
@@ -1942,6 +1944,27 @@ a.is-nav-offline,
   min-width: 0;
   box-sizing: border-box;
   display: block;
+}
+.field:has(> input[type='date']),
+.field:has(> input[type='time']),
+.field:has(> input[type='datetime-local']),
+.field:has(> input[type='month']),
+.field:has(> input[type='week']) {
+  min-width: 0;
+  max-width: 100%;
+  overflow: hidden;
+}
+.field input[type='date']::-webkit-datetime-edit,
+.field input[type='date']::-webkit-datetime-edit-fields-wrapper,
+.field input[type='date']::-webkit-datetime-edit-text,
+.field input[type='date']::-webkit-datetime-edit-month-field,
+.field input[type='date']::-webkit-datetime-edit-day-field,
+.field input[type='date']::-webkit-datetime-edit-year-field,
+.field input[type='datetime-local']::-webkit-datetime-edit,
+.field input[type='datetime-local']::-webkit-datetime-edit-fields-wrapper {
+  min-width: 0;
+  max-width: 100%;
+  padding: 0;
 }
 
 /* Combobox unificado: mismo look nativo en toda la app */
@@ -2920,6 +2943,14 @@ a.is-nav-offline,
   background: rgba(10, 4, 8, 0.45);
   overflow: hidden;
   overscroll-behavior: none;
+  /* iOS teclado: usePosModalViewport setea --vv-*; sin eso cae a inset 0 */
+  top: var(--vv-top, 0px);
+  left: var(--vv-left, 0px);
+  width: var(--vv-width, 100%);
+  height: var(--vv-height, 100dvh);
+  right: auto;
+  bottom: auto;
+  box-sizing: border-box;
 }
 body.modal-scroll-lock {
   overflow: hidden !important;
@@ -2977,18 +3008,19 @@ body.modal-scroll-lock .pos-modal * {
 }
 @media (max-width: 900px) {
   .pos-modal.open {
-    padding-top: calc(1.35rem + env(safe-area-inset-top, 0px));
+    padding-top: max(0.35rem, env(safe-area-inset-top, 0px));
   }
-  .modal-overlay-close {
-    top: -10px;
+  /* X siempre dentro del card (no fuera de pantalla con teclado) */
+  .pos-modal.open .modal-overlay-close {
+    top: 8px;
     right: 8px;
   }
 
   /*
    * Patrones unificados mobile (iOS):
-   * - Overlay fija a viewport (PosModal → body); no scrollea la página detrás
-   * - Panel max-height; body interno con overflow-y
-   * - Footer sticky con safe-area (overlay tapa bottom-nav)
+   * - Overlay fija a visualViewport (PosModal → --vv-*)
+   * - Panel max-height al alto visible; body interno con overflow-y
+   * - Header sticky: título + X visibles con teclado
    */
   .pos-modal.open {
     align-items: flex-end;
@@ -3016,7 +3048,10 @@ body.modal-scroll-lock .pos-modal * {
   .pos-modal.open .pos-modal-panel {
     width: 100%;
     max-width: none;
-    max-height: min(92dvh, calc(100dvh - env(safe-area-inset-top, 0px)));
+    max-height: min(
+      92dvh,
+      calc(var(--vv-height, 100dvh) - env(safe-area-inset-top, 0px) - 0.35rem)
+    );
     min-height: 0;
     overflow: hidden;
     display: flex;
@@ -3028,10 +3063,18 @@ body.modal-scroll-lock .pos-modal * {
   .pos-modal.open.print-reminder-modal .pos-modal-panel {
     width: min(480px, calc(100vw - 2rem));
     max-width: min(480px, calc(100vw - 2rem));
-    max-height: min(85dvh, 640px);
+    max-height: min(85dvh, calc(var(--vv-height, 100dvh) - 2rem));
     border-radius: 20px;
   }
-  .pos-modal.open .pos-modal-head,
+  .pos-modal.open .pos-modal-head {
+    position: sticky;
+    top: 0;
+    z-index: 4;
+    flex-shrink: 0;
+    margin: 0;
+    padding: 0.15rem 2.75rem 0.45rem 0;
+    background: #fff8fb;
+  }
   .pos-modal.open .ing-line-modal-note,
   .pos-modal.open .ing-nb-tabs {
     flex-shrink: 0;
@@ -3115,6 +3158,26 @@ body.modal-scroll-lock .pos-modal * {
   box-shadow: var(--shadow);
   animation: sheetRise var(--duration-sheet) var(--ease-out);
   overflow: visible;
+}
+/*
+ * Focus en campos dentro del modal: ring hacia ADENTRO.
+ * El --focus-ring global es outward (0 0 0 4px); con overflow:hidden +
+ * border-radius del panel, ese glow se recorta y “sangra” como trazo rosa
+ * en los bordes izq/der del card (Nueva prenda, Productos, etc.).
+ */
+.pos-modal-panel .field input:focus,
+.pos-modal-panel .field input:focus-visible,
+.pos-modal-panel .field select:focus,
+.pos-modal-panel .field select:focus-visible,
+.pos-modal-panel .field textarea:focus,
+.pos-modal-panel .field textarea:focus-visible,
+.pos-modal-panel .lookup-control input:focus,
+.pos-modal-panel .lookup-control input:focus-visible,
+.pos-modal-panel .context-selects select:focus,
+.pos-modal-panel .context-selects select:focus-visible {
+  outline: none;
+  border-color: var(--color-brand);
+  box-shadow: inset 0 0 0 2px rgba(230, 0, 126, 0.45);
 }
 .pos-modal-head {
   display: flex;
@@ -5099,9 +5162,19 @@ a.ing-row:hover { border-color: #e3b7cf; }
   display: grid;
   grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 0.75rem;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
 }
 .ing-new-meta .field {
   min-width: 0;
+  max-width: 100%;
+}
+.ing-new-meta input[type='date'] {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
 }
 
 .ing-save-steps {
@@ -5507,6 +5580,21 @@ a.ing-row:hover { border-color: #e3b7cf; }
 @media (max-width: 900px) {
   .ing-new-meta {
     grid-template-columns: minmax(0, 1fr);
+    width: 100%;
+    max-width: 100%;
+  }
+  .ing-new-meta .field,
+  .compras-form .ing-new-meta .field {
+    min-width: 0;
+    max-width: 100%;
+    overflow: hidden;
+  }
+  .compras-form .ing-new-meta input[type='date'],
+  .compras-form .field input[type='date'] {
+    width: 100% !important;
+    max-width: 100% !important;
+    min-width: 0 !important;
+    box-sizing: border-box;
   }
 }
 
