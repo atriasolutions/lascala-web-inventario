@@ -10,6 +10,7 @@ import {
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { NoBarcodeModal } from '../../components/NoBarcodeModal';
 import { ModalOverlayClose } from '../../components/ModalOverlayClose';
+import { PosModal } from '../../components/PosModal';
 import { PrintReminderModal } from '../../components/PrintReminderModal';
 import { ProductPhotoPlaceholder } from '../../components/ProductPhotoPlaceholder';
 import { useShellTitle } from '../../components/shellTitle';
@@ -972,13 +973,11 @@ export function IngresoDetailPage() {
       />
 
       {modal && (
-        <div
-          className="pos-modal open no-print"
-          role="presentation"
+        <PosModal
+          className="no-print"
           onClick={(e) => {
             if (e.target === e.currentTarget) closeModal();
-          }}
-        >
+          }}>
           <ModalOverlayClose onClose={closeModal}>
           <div className="ing-line-modal-shell">
           <div
@@ -1072,7 +1071,7 @@ export function IngresoDetailPage() {
             </div>
           </div>
           </div></ModalOverlayClose>
-        </div>
+        </PosModal>
       )}
 
       {photoPreview && (

@@ -1,3 +1,5 @@
+import { isHiddenSuperAdmin } from './authPassword';
+
 /** Roles de sucursal (DB). Labels de UI: Administrador/a, Encargado/a, Vendedor/a. */
 
 export type AppRole = 'owner' | 'branch_manager' | 'seller';
@@ -14,6 +16,15 @@ export function roleLabel(role: string) {
 
 export function isAdminRole(role: string) {
   return role === 'owner';
+}
+
+/** Mobile (~900px): solo Administrador/a o superadmin de soporte. */
+export function canUseMobileApp(
+  user: Parameters<typeof isHiddenSuperAdmin>[0],
+  branchRole: string,
+) {
+  if (isHiddenSuperAdmin(user)) return true;
+  return isAdminRole(branchRole);
 }
 
 /** Administrador/a o Encargado/a: ajustes de stock, aplicar/anular toma, precio de venta. */

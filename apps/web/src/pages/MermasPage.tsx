@@ -12,6 +12,7 @@ import { ConfirmDialog } from '../components/ConfirmDialog';
 import { BoutiqueLoader } from '../components/BoutiqueLoader';
 import { InfiniteListFooter } from '../components/InfiniteListFooter';
 import { ModalOverlayClose } from '../components/ModalOverlayClose';
+import { PosModal } from '../components/PosModal';
 import { SortableTh } from '../components/SortableTh';
 import { useInfiniteList } from '../hooks/useInfiniteList';
 import { api, mediaUrl, money, userFacingError } from '../lib/api';
@@ -1643,13 +1644,10 @@ export function MermasPage() {
       </div>
 
       {drawerOpen && (
-        <div
-          className="pos-modal open"
-          role="presentation"
+        <PosModal
           onClick={(e) => {
             if (e.target === e.currentTarget) closeDrawer();
-          }}
-        >
+          }}>
           <ModalOverlayClose onClose={closeDrawer}>
           <div
             className="pos-modal-panel ing-filters-sheet"
@@ -1759,18 +1757,16 @@ export function MermasPage() {
               </button>
             </div>
           </div></ModalOverlayClose>
-        </div>
+        </PosModal>
       )}
 
 
       {wizardOpen ? (
-        <div
-          className="pos-modal open no-print"
-          role="presentation"
+        <PosModal
+          className="no-print"
           onClick={(e) => {
             if (e.target === e.currentTarget && !confirm) closeWizard();
-          }}
-        >
+          }}>
           <ModalOverlayClose onClose={closeWizard}>
           <div
             className="pos-modal-panel merma-form-sheet"
@@ -2126,7 +2122,7 @@ export function MermasPage() {
 
             </div>
           </div></ModalOverlayClose>
-        </div>
+        </PosModal>
       ) : null}
 
       <ConfirmDialog

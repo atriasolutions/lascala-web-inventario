@@ -4,6 +4,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { InfiniteListFooter } from '../components/InfiniteListFooter';
 import { IconChevronDown } from '../components/icons';
 import { ModalOverlayClose } from '../components/ModalOverlayClose';
+import { PosModal } from '../components/PosModal';
 import { SortableTh } from '../components/SortableTh';
 import { useInfiniteList } from '../hooks/useInfiniteList';
 import { api } from '../lib/api';
@@ -810,13 +811,10 @@ export function MovementsPage() {
       </div>
 
       {drawerOpen && (
-        <div
-          className="pos-modal open"
-          role="presentation"
+        <PosModal
           onClick={(e) => {
             if (e.target === e.currentTarget) closeDrawer();
-          }}
-        >
+          }}>
           <ModalOverlayClose onClose={closeDrawer}>
           <div
             className="pos-modal-panel ing-filters-sheet"
@@ -891,7 +889,7 @@ export function MovementsPage() {
               </button>
             </div>
           </div></ModalOverlayClose>
-        </div>
+        </PosModal>
       )}
     </div>
   );

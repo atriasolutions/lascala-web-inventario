@@ -1,5 +1,6 @@
 import { useEffect, useId, useState } from 'react';
 import { ModalOverlayClose } from './ModalOverlayClose';
+import { PosModal } from './PosModal';
 import {
   getProfile,
   loadPrintPrefs,
@@ -46,8 +47,6 @@ export function PrintReminderModal({ open, profile, onConfirm, onCancel }: Props
     return () => document.removeEventListener('keydown', onKey);
   }, [open, onCancel]);
 
-  if (!open) return null;
-
   const paper = profilePaperHint(profile);
   const note = getProfile(profile).note;
 
@@ -68,9 +67,9 @@ export function PrintReminderModal({ open, profile, onConfirm, onCancel }: Props
   }
 
   return (
-    <div
-      className="pos-modal open no-print print-reminder-modal"
-      role="presentation"
+    <PosModal
+      open={open}
+      className="no-print print-reminder-modal"
       onClick={(e) => {
         if (e.target === e.currentTarget) onCancel();
       }}
@@ -144,6 +143,6 @@ export function PrintReminderModal({ open, profile, onConfirm, onCancel }: Props
           </button>
         </div>
       </div></ModalOverlayClose>
-    </div>
+    </PosModal>
   );
 }

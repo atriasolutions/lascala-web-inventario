@@ -2,6 +2,7 @@ import { type FormEvent, useCallback, useEffect, useId, useMemo, useRef, useStat
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { ModalOverlayClose } from '../components/ModalOverlayClose';
+import { PosModal } from '../components/PosModal';
 import { ProductPhotoPlaceholder } from '../components/ProductPhotoPlaceholder';
 import { IconTrash } from '../components/icons';
 import { useShellTitle } from '../components/shellTitle';
@@ -744,13 +745,10 @@ export function StocktakeDetailPage() {
         onConfirm={() => void doRemoveLine()}
       />
       {qtyDraft ? (
-        <div
-          className="pos-modal open"
-          role="presentation"
+        <PosModal
           onClick={(e) => {
             if (e.target === e.currentTarget && !busy) setQtyDraft(null);
-          }}
-        >
+          }}>
           <ModalOverlayClose onClose={() => !busy && setQtyDraft(null)}>
             <form
               className="pos-modal-panel ing-line-modal st-adjust-modal"
@@ -829,16 +827,13 @@ export function StocktakeDetailPage() {
               </div>
             </form>
           </ModalOverlayClose>
-        </div>
+        </PosModal>
       ) : null}
       {adjustLine ? (
-        <div
-          className="pos-modal open"
-          role="presentation"
+        <PosModal
           onClick={(e) => {
             if (e.target === e.currentTarget) setAdjustLine(null);
-          }}
-        >
+          }}>
           <ModalOverlayClose onClose={() => setAdjustLine(null)}>
           <form
             className="pos-modal-panel ing-line-modal st-adjust-modal"
@@ -889,7 +884,7 @@ export function StocktakeDetailPage() {
             </div>
           </form>
           </ModalOverlayClose>
-        </div>
+        </PosModal>
       ) : null}
     </div>
   );

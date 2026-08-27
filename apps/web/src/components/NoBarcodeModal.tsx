@@ -1,6 +1,7 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
 import { ColorSwatch } from './ColorSwatch';
 import { ModalOverlayClose } from './ModalOverlayClose';
+import { PosModal } from './PosModal';
 import {
   ProductCodeEntry,
   type ProductCodeMode,
@@ -10,6 +11,7 @@ import { ConfirmDialog } from './ConfirmDialog';
 import { ProductPhotoInput } from './ProductPhotoInput';
 import { ProductPhotoPlaceholder } from './ProductPhotoPlaceholder';
 import { api, mediaUrl, money } from '../lib/api';
+import { parseChileMoney } from '../lib/chileMoney';
 import { lineFloorSalePrice, type PurchaseItem } from '../lib/purchasesStatus';
 import { fileToDataUrl } from '../pages/compras/purchaseFormTypes';
 
@@ -476,9 +478,9 @@ export function NoBarcodeModal({
   }
 
   return (
-    <div
-      className="pos-modal open no-print"
-      role="presentation"
+    <>
+    <PosModal
+      className="no-print"
       onClick={(e) => {
         if (e.target === e.currentTarget) requestClose();
       }}
@@ -659,7 +661,9 @@ export function NoBarcodeModal({
                           amount: displaySale > 0 ? displaySale : undefined,
                           hint: 'Fijado en la compra · no editable en recepción',
                         }}
-                        costPrice={selectedLine ? Number(selectedLine.unit_cost) : null}
+                        costPrice={
+                          selectedLine ? parseChileMoney(selectedLine.unit_cost) : null
+                        }
                       />
                       <div className="ing-nb-grid">
                         <div className="field">
@@ -895,6 +899,7 @@ export function NoBarcodeModal({
         )}
       </div>
       </div></ModalOverlayClose>
+    </PosModal>
       <ConfirmDialog
         open={cancelConfirm}
         title="¿Cancelar?"
@@ -908,6 +913,6 @@ export function NoBarcodeModal({
           onClose();
         }}
       />
-    </div>
+    </>
   );
 }

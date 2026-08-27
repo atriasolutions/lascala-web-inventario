@@ -1,5 +1,6 @@
 import { type FormEvent, useEffect, useId, useState } from 'react';
 import { ModalOverlayClose } from '../../components/ModalOverlayClose';
+import { PosModal } from '../../components/PosModal';
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { toast } from '../../lib/toast';
@@ -178,13 +179,10 @@ export function AdminCajasPage() {
       )}
 
       {sheet ? (
-        <div
-          className="pos-modal open"
-          role="presentation"
+        <PosModal
           onClick={(e) => {
             if (e.target === e.currentTarget) closeSheet();
-          }}
-        >
+          }}>
           <ModalOverlayClose onClose={closeSheet}>
           <div
             className="pos-modal-panel admin-sheet"
@@ -273,7 +271,7 @@ export function AdminCajasPage() {
               </div>
             </form>
           </div></ModalOverlayClose>
-        </div>
+        </PosModal>
       ) : null}
     </div>
   );

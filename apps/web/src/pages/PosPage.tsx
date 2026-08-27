@@ -11,6 +11,7 @@ import {
 import { useBlocker } from 'react-router-dom';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { ModalOverlayClose } from '../components/ModalOverlayClose';
+import { PosModal } from '../components/PosModal';
 import { SaleThermalPrint } from '../components/SaleThermalPrint';
 import { ColorSwatch } from '../components/ColorSwatch';
 import { ProductPhotoPlaceholder } from '../components/ProductPhotoPlaceholder';
@@ -836,13 +837,10 @@ export function PosPage() {
       </div>
 
       {searchOpen && (
-        <div
-          className="pos-modal open"
-          role="presentation"
+        <PosModal
           onClick={(e) => {
             if (e.target === e.currentTarget) closeSearch();
-          }}
-        >
+          }}>
           <ModalOverlayClose onClose={closeSearch}>
           <div
             className="pos-modal-panel"
@@ -913,17 +911,15 @@ export function PosPage() {
                 })}
             </div>
           </div></ModalOverlayClose>
-        </div>
+        </PosModal>
       )}
 
       {confirmOpen && (
-        <div
-          className="pos-modal open confirm-dialog no-print"
-          role="presentation"
+        <PosModal
+          className="confirm-dialog no-print"
           onClick={(e) => {
             if (e.target === e.currentTarget) closeFinalizeConfirm();
-          }}
-        >
+          }}>
           <ModalOverlayClose onClose={closeFinalizeConfirm} disabled={busy}>
           <div
             className="pos-modal-panel confirm-dialog-panel pos-finalize-panel"
@@ -1016,7 +1012,7 @@ export function PosPage() {
               </button>
             </div>
           </div></ModalOverlayClose>
-        </div>
+        </PosModal>
       )}
 
       <ConfirmDialog

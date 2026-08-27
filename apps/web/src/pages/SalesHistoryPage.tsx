@@ -2,10 +2,11 @@ import { useCallback, useEffect, useId, useMemo, useRef, useState } from 'react'
 import { Link, useSearchParams } from 'react-router-dom';
 import { InfiniteListFooter } from '../components/InfiniteListFooter';
 import { ModalOverlayClose } from '../components/ModalOverlayClose';
+import { PosModal } from '../components/PosModal';
 import { SaleThermalPrint } from '../components/SaleThermalPrint';
 import { SortableTh } from '../components/SortableTh';
 import { useInfiniteList } from '../hooks/useInfiniteList';
-import { api, money } from '../lib/api';
+import { api, money, moneyClp } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { loadListFilters, saveListFilters } from '../lib/listFiltersPersist';
 import { withPagination } from '../lib/pagination';
@@ -501,7 +502,7 @@ export function SalesHistoryPage() {
           <div className="inv-stats sales-stats" aria-label="Resumen de ventas">
             <div className="inv-stat">
               <span className="inv-stat-label">Total periodo</span>
-              <strong className="inv-stat-value">{money(kpiTotal)}</strong>
+              <strong className="inv-stat-value sales-stat-money">{moneyClp(kpiTotal)}</strong>
               <span className="inv-stat-meta">
                 {filters.period === 'today' && !periodRangeActive
                   ? 'Hoy'
@@ -517,7 +518,7 @@ export function SalesHistoryPage() {
             </div>
             <div className="inv-stat">
               <span className="inv-stat-label">Ticket medio</span>
-              <strong className="inv-stat-value">{money(kpiTicket)}</strong>
+              <strong className="inv-stat-value sales-stat-money">{moneyClp(kpiTicket)}</strong>
               <span className="inv-stat-meta">Por venta</span>
             </div>
           </div>
@@ -616,7 +617,7 @@ export function SalesHistoryPage() {
                     : 'Prueba otro periodo o limpia los filtros.'}
                 </p>
                 {isDefaultEmpty ? (
-                  <Link to="/vender" className="btn secondary" style={{ marginTop: '0.75rem' }}>
+                  <Link to="/vender" className="btn secondary desktop-only" style={{ marginTop: '0.75rem' }}>
                     Ir a ventas
                   </Link>
                 ) : (
@@ -749,13 +750,10 @@ export function SalesHistoryPage() {
       </div>
 
       {drawerOpen && (
-        <div
-          className="pos-modal open"
-          role="presentation"
+        <PosModal
           onClick={(e) => {
             if (e.target === e.currentTarget) closeDrawer();
-          }}
-        >
+          }}>
           <ModalOverlayClose onClose={closeDrawer}>
           <div
             className="pos-modal-panel ing-filters-sheet"
@@ -840,17 +838,15 @@ export function SalesHistoryPage() {
               </button>
             </div>
           </div></ModalOverlayClose>
-        </div>
+        </PosModal>
       )}
 
       {selected && (
-        <div
-          className="pos-modal open no-print"
-          role="presentation"
+        <PosModal
+          className="no-print"
           onClick={(e) => {
             if (e.target === e.currentTarget) closeDetail();
-          }}
-        >
+          }}>
           <ModalOverlayClose onClose={closeDetail}>
           <div
             className="pos-modal-panel sales-detail-modal"
@@ -966,7 +962,7 @@ export function SalesHistoryPage() {
               </div>
             )}
           </div></ModalOverlayClose>
-        </div>
+        </PosModal>
       )}
 
       {printJob ? <SaleThermalPrint job={printJob} /> : null}

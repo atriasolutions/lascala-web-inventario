@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import {
   chileMoneyFromNumber,
+  digitsOnlyMoney,
   formatChileMoneyInput,
   parseChileMoney,
 } from './chileMoney.ts';
@@ -13,8 +14,9 @@ describe('chileMoney', () => {
     assert.equal(formatChileMoneyInput('1.234.567'), '1.234.567');
   });
 
-  it('parsea con o sin puntos', () => {
+  it('parsea con o sin puntos Chile', () => {
     assert.equal(parseChileMoney('19.980'), 19980);
+    assert.equal(parseChileMoney('12.990'), 12990);
     assert.equal(parseChileMoney('19980'), 19980);
     assert.equal(parseChileMoney(''), null);
   });
@@ -25,8 +27,29 @@ describe('chileMoney', () => {
     assert.notEqual(Number('790.000'), 790000);
   });
 
+  it('no multiplica ×100 decimales SQL/JSON (12990.00)', () => {
+    assert.equal(digitsOnlyMoney('12990.00'), '12990');
+    assert.equal(parseChileMoney('12990.00'), 12990);
+    assert.equal(chileMoneyFromNumber('12990.00'), '12.990');
+    assert.equal(chileMoneyFromNumber('25980.00'), '25.980');
+    assert.notEqual(parseChileMoney('12990.00'), 1299000);
+  });
+
+  it('round-trip compra: 12.990 → número → input → display', () => {
+    const typed = '12.990';
+    const saved = parseChileMoney(typed);
+    assert.equal(saved, 12990);
+    // API numeric::text típico
+    const fromApi = `${saved}.00`;
+    assert.equal(chileMoneyFromNumber(fromApi), '12.990');
+    assert.equal(parseChileMoney(fromApi), 12990);
+    // sugerido 2×
+    assert.equal(chileMoneyFromNumber(Math.round((saved ?? 0) * 2)), '25.980');
+  });
+
   it('round-trip desde número', () => {
     assert.equal(chileMoneyFromNumber(45000), '45.000');
+    assert.equal(chileMoneyFromNumber(12990), '12.990');
   });
 });
 

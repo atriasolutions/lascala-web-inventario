@@ -15,6 +15,7 @@ import {
 } from '../components/ProductCodeEntry';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { ModalOverlayClose } from '../components/ModalOverlayClose';
+import { PosModal } from '../components/PosModal';
 import { IconPencil, IconTrash } from '../components/icons';
 import { api, mediaUrl, money } from '../lib/api';
 import { useAuth } from '../lib/auth';
@@ -1130,9 +1131,7 @@ export function ProductsPage() {
       </div>
 
       {modalOpen && (
-        <div
-          className="pos-modal open"
-          role="presentation"
+        <PosModal
           onClick={(e) => {
             if (e.target === e.currentTarget && !labelQtyOpen) requestCloseModal();
           }}
@@ -1581,7 +1580,7 @@ export function ProductsPage() {
             </div>
           </form>
           </div></ModalOverlayClose>
-        </div>
+        </PosModal>
       )}
 
       <ConfirmDialog
@@ -1610,9 +1609,8 @@ export function ProductsPage() {
       />
 
       {labelQtyOpen && (
-        <div
-          className="pos-modal open confirm-dialog no-print"
-          role="presentation"
+        <PosModal
+          className="confirm-dialog no-print"
           onClick={(e) => {
             if (e.target === e.currentTarget) closeLabelQty();
           }}
@@ -1675,13 +1673,11 @@ export function ProductsPage() {
               </button>
             </div>
           </div></ModalOverlayClose>
-        </div>
+        </PosModal>
       )}
 
       {filtersOpen && (
-        <div
-          className="pos-modal open"
-          role="presentation"
+        <PosModal
           onClick={(e) => {
             if (e.target === e.currentTarget) setFiltersOpen(false);
           }}
@@ -1810,7 +1806,7 @@ export function ProductsPage() {
             </div>
           </div>
           </ModalOverlayClose>
-        </div>
+        </PosModal>
       )}
     </div>
   );

@@ -12,7 +12,8 @@ import { OfflineBanner } from './OfflineBanner';
 import { PwaInstallHint } from './PwaInstallHint';
 import { ShellTitleContext } from './shellTitle';
 import { WorkplaceSwitcher } from './WorkplaceSwitcher';
-import { isAdminRole, roleLabel as formatRoleLabel } from '../lib/roles';
+import { canUseMobileApp, isAdminRole, roleLabel as formatRoleLabel } from '../lib/roles';
+import { useMobileViewport } from '../hooks/useMobileViewport';
 import {
   IconAlertTriangle,
   IconBox,
@@ -98,12 +99,12 @@ const helpNavItem: NavItem = {
   helpKey: 'nav.ayuda',
 };
 
-/** Bottom nav móvil (administradora): Inicio, Compras, Gastos, Historial + Más. */
+/** Bottom nav móvil (administradora): Inicio, Compras, Gastos, Ventas + Más. */
 const primaryMobile: NavItem[] = [
   { to: '/', label: 'Inicio', icon: IconHome, helpKey: 'nav.dashboard', end: true, roles: adminOnly },
   { to: '/compras', label: 'Compras', icon: IconReceipt, helpKey: 'nav.compras', roles: adminOnly },
   { to: '/gastos', label: 'Gastos', icon: IconWallet, helpKey: 'nav.gastos', roles: adminOnly },
-  { to: '/ventas', label: 'Historial', icon: IconReceipt, helpKey: 'nav.ventas' },
+  { to: '/ventas', label: 'Ventas', icon: IconReceipt, helpKey: 'nav.ventas' },
 ];
 
 const moreLinks: NavItem[] = [
@@ -161,9 +162,11 @@ export function AppShell() {
   const [titleOverride, setTitleOverride] = useState<string | null>(null);
   const [openSections, setOpenSections] = useState<Record<string, boolean>>(readOpenSections);
   const location = useLocation();
+  const isMobile = useMobileViewport();
   const activeBranch = branches.find((b) => b.id === branchId);
   const role = activeBranch?.role || '';
   const isOwner = isAdminRole(role);
+  const mobileAllowed = canUseMobileApp(user, role);
   const roleLabel = role ? formatRoleLabel(role) : '';
 
   const openLogout = useCallback(() => {
@@ -231,7 +234,7 @@ export function AppShell() {
     if (titleOverride) return titleOverride;
     if (location.pathname.startsWith('/vender')) return 'Ventas';
     if (location.pathname === '/ventas' || location.pathname.startsWith('/ventas?')) {
-      return 'Historial de ventas';
+      return isMobile ? 'Ventas' : 'Historial de ventas';
     }
     if (location.pathname === '/compras/nuevo') return 'Nueva compra';
     if (/^\/compras\/[^/]+$/.test(location.pathname)) return 'Compra';
@@ -247,7 +250,7 @@ export function AppShell() {
       'end' in l && l.end ? location.pathname === l.to : location.pathname.startsWith(l.to),
     );
     return hit ? hit.label : "L'Scala";
-  }, [location.pathname, titleOverride]);
+  }, [location.pathname, titleOverride, isMobile]);
 
   const eyebrow = useMemo(() => {
     if (location.pathname.startsWith('/admin')) return "Boutique L'Scala · administración";
@@ -297,6 +300,34 @@ export function AppShell() {
 
   function offlineNavClass(to: string) {
     return !online && to !== '/vender' ? ' is-nav-offline' : '';
+  }
+
+  if (isMobile && !mobileAllowed) {
+    return (
+      <>
+        <div className="mobile-admin-blocked">
+          <div className="mobile-blocked-screen">
+            <img className="mobile-blocked-logo" src="/brand/lscala-logo.png" alt="L'Scala" />
+            <h1 className="mobile-blocked-title">Operación en computador</h1>
+            <p className="mobile-blocked-copy">
+              Esta versión móvil es solo para administración. Usa un computador para operar en piso.
+            </p>
+            <button type="button" className="btn primary" onClick={openLogout}>
+              Cerrar sesión
+            </button>
+          </div>
+        </div>
+        <ConfirmDialog
+          open={logoutOpen}
+          title="Cerrar sesión"
+          message={logoutMessage}
+          confirmLabel="Cerrar sesión"
+          cancelLabel="Cancelar"
+          onConfirm={doLogout}
+          onCancel={cancelLogout}
+        />
+      </>
+    );
   }
 
   return (

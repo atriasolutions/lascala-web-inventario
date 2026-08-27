@@ -1,3 +1,5 @@
+import { parseChileMoney } from './chileMoney';
+
 export type PurchaseStatus =
   | 'pending_reception'
   | 'partially_received'
@@ -42,6 +44,7 @@ export type PurchaseItem = {
 /**
  * Precio de venta para piso (recepción): el fijado en la compra/línea.
  * No expone ni usa el costo en la UI; el fallback 2× es solo numérico interno.
+ * Usa parseChileMoney: "12990.00" (SQL) y "12.990" (Chile) → entero correcto.
  */
 export function lineFloorSalePrice(
   line: {
@@ -51,17 +54,13 @@ export function lineFloorSalePrice(
   },
   priceMultiplier = 2,
 ): number {
-  const suggested = line.suggested_sale_price;
-  if (suggested != null && suggested !== '' && Number.isFinite(Number(suggested))) {
-    return Number(suggested);
-  }
-  const linked = line.sale_price;
-  if (linked != null && linked !== '' && Number.isFinite(Number(linked))) {
-    return Number(linked);
-  }
-  const cost = Number(line.unit_cost);
-  if (Number.isFinite(cost) && cost >= 0) {
-    return Number((cost * priceMultiplier).toFixed(0));
+  const suggested = parseChileMoney(line.suggested_sale_price);
+  if (suggested != null && suggested >= 0) return suggested;
+  const linked = parseChileMoney(line.sale_price);
+  if (linked != null && linked >= 0) return linked;
+  const cost = parseChileMoney(line.unit_cost);
+  if (cost != null && cost >= 0) {
+    return Math.round(cost * priceMultiplier);
   }
   return 0;
 }

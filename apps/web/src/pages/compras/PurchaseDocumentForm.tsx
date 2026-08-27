@@ -14,6 +14,7 @@ import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { IconTrash } from '../../components/icons';
 import { MarginHint } from '../../components/MarginHint';
 import { ModalOverlayClose } from '../../components/ModalOverlayClose';
+import { PosModal } from '../../components/PosModal';
 import { ProductPhotoInput } from '../../components/ProductPhotoInput';
 import { ProductPhotoPlaceholder } from '../../components/ProductPhotoPlaceholder';
 import { AttachImageField } from '../../components/AttachImageField';
@@ -713,7 +714,7 @@ export function PurchaseDocumentForm({
       )}
 
       {editor && !readOnly && (
-        <div className="pos-modal open" role="presentation">
+        <PosModal>
           <ModalOverlayClose onClose={closeEditor}>
           <div className="ing-line-modal-shell">
             <div
@@ -829,7 +830,7 @@ export function PurchaseDocumentForm({
               </div>
             </div>
           </div></ModalOverlayClose>
-        </div>
+        </PosModal>
       )}
 
       <ConfirmDialog

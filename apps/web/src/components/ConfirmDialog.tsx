@@ -1,5 +1,6 @@
 import { useEffect, useId, useRef } from 'react';
 import { ModalOverlayClose } from './ModalOverlayClose';
+import { PosModal } from './PosModal';
 
 type Props = {
   open: boolean;
@@ -46,49 +47,48 @@ export function ConfirmDialog({
     };
   }, [open, onCancel]);
 
-  if (!open) return null;
-
   return (
-    <div
-      className="pos-modal open confirm-dialog no-print"
-      role="presentation"
+    <PosModal
+      open={open}
+      className="confirm-dialog no-print"
       onClick={(e) => {
         if (e.target === e.currentTarget) onCancel();
       }}
     >
       <ModalOverlayClose onClose={onCancel}>
-      <div
-        className="pos-modal-panel confirm-dialog-panel"
-        role="alertdialog"
-        aria-modal="true"
-        aria-labelledby={titleId}
-        aria-describedby={descId}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="pos-modal-head">
-          <h3 id={titleId}>{title}</h3>
+        <div
+          className="pos-modal-panel confirm-dialog-panel"
+          role="alertdialog"
+          aria-modal="true"
+          aria-labelledby={titleId}
+          aria-describedby={descId}
+          onClick={(e) => e.stopPropagation()}
+        >
+          <div className="pos-modal-head">
+            <h3 id={titleId}>{title}</h3>
+          </div>
+          <p id={descId} className="confirm-dialog-message">
+            {message}
+          </p>
+          <div className="btn-row confirm-dialog-actions">
+            <button
+              ref={cancelRef}
+              type="button"
+              className="btn secondary"
+              onClick={onCancel}
+            >
+              {cancelLabel}
+            </button>
+            <button
+              type="button"
+              className={`btn${danger ? ' confirm-danger' : ''}`}
+              onClick={onConfirm}
+            >
+              {confirmLabel}
+            </button>
+          </div>
         </div>
-        <p id={descId} className="confirm-dialog-message">
-          {message}
-        </p>
-        <div className="btn-row confirm-dialog-actions">
-          <button
-            ref={cancelRef}
-            type="button"
-            className="btn secondary"
-            onClick={onCancel}
-          >
-            {cancelLabel}
-          </button>
-          <button
-            type="button"
-            className={`btn${danger ? ' confirm-danger' : ''}`}
-            onClick={onConfirm}
-          >
-            {confirmLabel}
-          </button>
-        </div>
-      </div></ModalOverlayClose>
-    </div>
+      </ModalOverlayClose>
+    </PosModal>
   );
 }

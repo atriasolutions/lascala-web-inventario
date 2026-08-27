@@ -11,6 +11,7 @@ import { Link, useSearchParams } from 'react-router-dom';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { InfiniteListFooter } from '../components/InfiniteListFooter';
 import { ModalOverlayClose } from '../components/ModalOverlayClose';
+import { PosModal } from '../components/PosModal';
 import { ProductPhotoPlaceholder } from '../components/ProductPhotoPlaceholder';
 import { SortableTh } from '../components/SortableTh';
 import { useInfiniteList } from '../hooks/useInfiniteList';
@@ -885,13 +886,10 @@ export function InventoryPage() {
       </div>
 
       {filtersOpen && (
-        <div
-          className="pos-modal open"
-          role="presentation"
+        <PosModal
           onClick={(e) => {
             if (e.target === e.currentTarget) setFiltersOpen(false);
-          }}
-        >
+          }}>
           <ModalOverlayClose onClose={() => setFiltersOpen(false)}>
           <div
             id="inv-filters-sheet"
@@ -1037,17 +1035,15 @@ export function InventoryPage() {
             </div>
           </div>
           </ModalOverlayClose>
-        </div>
+        </PosModal>
       )}
 
       {adjusting && (
-        <div
-          className="pos-modal open no-print"
-          role="presentation"
+        <PosModal
+          className="no-print"
           onClick={(e) => {
             if (e.target === e.currentTarget && !adjustBusy) closeAdjust();
-          }}
-        >
+          }}>
           <ModalOverlayClose onClose={closeAdjust} disabled={adjustBusy}>
           <form
             className="pos-modal-panel inv-adjust-modal"
@@ -1148,7 +1144,7 @@ export function InventoryPage() {
               </button>
             </div>
           </form></ModalOverlayClose>
-        </div>
+        </PosModal>
       )}
 
       <ConfirmDialog

@@ -93,6 +93,13 @@ export function money(n: number | string) {
   return new Intl.NumberFormat('es-CL', { style: 'currency', currency: 'CLP', maximumFractionDigits: 0 }).format(v);
 }
 
+/** CLP para KPIs compactos: $ + miles (Chile), espacio normal entre símbolo y monto. */
+export function moneyClp(n: number | string) {
+  const v = Math.round(Number(n || 0));
+  const digits = new Intl.NumberFormat('es-CL', { maximumFractionDigits: 0 }).format(v);
+  return `$ ${digits}`;
+}
+
 /**
  * Resuelve URLs de medios para <img>.
  * - http(s) / data: / blob: → tal cual

@@ -135,12 +135,7 @@ export function ProductFichaFields({
       : salePrice.amount != null
         ? salePrice.amount
         : null;
-  const costNum =
-    typeof costPrice === 'number'
-      ? costPrice
-      : costPrice != null && costPrice !== ''
-        ? parseChileMoney(String(costPrice))
-        : null;
+  const costNum = parseChileMoney(costPrice);
 
   const catName =
     categories.find((c) => c.id === values.categoryId)?.name ||

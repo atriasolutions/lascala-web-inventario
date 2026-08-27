@@ -374,6 +374,47 @@ a:focus:not(:focus-visible) {
   min-height: 44px;
 }
 
+.mobile-admin-blocked {
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.5rem 1.25rem;
+  background: var(--color-surface);
+}
+.mobile-blocked-screen {
+  max-width: 22rem;
+  text-align: center;
+}
+.mobile-blocked-logo {
+  width: min(9rem, 60vw);
+  height: auto;
+  margin: 0 auto 1.25rem;
+  display: block;
+}
+.mobile-blocked-title {
+  margin: 0 0 0.65rem;
+  font-size: 1.2rem;
+  font-weight: 700;
+  color: var(--color-ink);
+}
+.mobile-blocked-copy {
+  margin: 0 0 1.25rem;
+  font-size: 0.92rem;
+  line-height: 1.5;
+  color: var(--color-muted);
+}
+.mobile-blocked-screen .btn {
+  min-height: 44px;
+  width: 100%;
+}
+
+.sales-stats .sales-stat-money {
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
 a.is-nav-offline,
 .nav-more.is-nav-offline {
   opacity: 0.45;
@@ -2866,18 +2907,26 @@ a.is-nav-offline,
   white-space: nowrap;
 }
 
-/* Modal overlay */
+/* Modal overlay — z-index sobre bottom-nav (50) y more-sheet (60) */
 .pos-modal {
   position: fixed;
   inset: 0;
-  z-index: 80;
+  z-index: 120;
   display: flex;
   align-items: flex-end;
   justify-content: center;
   padding: 1.5rem 1rem;
   padding-bottom: calc(1rem + var(--safe-bottom));
   background: rgba(10, 4, 8, 0.45);
-  overflow: visible;
+  overflow: hidden;
+  overscroll-behavior: none;
+}
+body.modal-scroll-lock {
+  overflow: hidden !important;
+}
+body.modal-scroll-lock .main-content {
+  overflow: hidden !important;
+  overscroll-behavior: none;
 }
 /* X anclada al recuadro blanco, no al overlay */
 .pos-modal-panel,
@@ -2925,6 +2974,119 @@ a.is-nav-offline,
   .modal-overlay-close {
     top: -10px;
     right: 8px;
+  }
+
+  /*
+   * Patrones unificados mobile (iOS):
+   * - Overlay fija a viewport (PosModal → body); no scrollea la página detrás
+   * - Panel max-height; body interno con overflow-y
+   * - Footer sticky con safe-area (overlay tapa bottom-nav)
+   */
+  .pos-modal.open {
+    align-items: flex-end;
+    justify-content: flex-end;
+    padding: max(0.35rem, env(safe-area-inset-top, 0px)) 0 0;
+    overflow: hidden;
+  }
+  .pos-modal.open.confirm-dialog,
+  .pos-modal.open.print-reminder-modal {
+    align-items: center;
+    justify-content: center;
+    padding: 1rem;
+    padding-bottom: calc(1rem + env(safe-area-inset-bottom, 0px));
+  }
+  .pos-modal.open .ing-line-modal-shell,
+  .pos-modal.open .prod-modal-shell {
+    width: 100%;
+    max-width: none;
+    max-height: 100%;
+    min-height: 0;
+    display: flex;
+    flex-direction: column;
+    overflow: visible;
+  }
+  .pos-modal.open .pos-modal-panel {
+    width: 100%;
+    max-width: none;
+    max-height: min(92dvh, calc(100dvh - env(safe-area-inset-top, 0px)));
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    border-radius: 20px 20px 0 0;
+    box-sizing: border-box;
+  }
+  .pos-modal.open.confirm-dialog .pos-modal-panel,
+  .pos-modal.open.print-reminder-modal .pos-modal-panel {
+    width: min(480px, calc(100vw - 2rem));
+    max-width: min(480px, calc(100vw - 2rem));
+    max-height: min(85dvh, 640px);
+    border-radius: 20px;
+  }
+  .pos-modal.open .pos-modal-head,
+  .pos-modal.open .ing-line-modal-note,
+  .pos-modal.open .ing-nb-tabs {
+    flex-shrink: 0;
+  }
+  .pos-modal.open .prod-modal-body,
+  .pos-modal.open .ing-line-modal-body,
+  .pos-modal.open .ing-filters-sheet-body,
+  .pos-modal.open .ing-nb-body,
+  .pos-modal.open .merma-form-body,
+  .pos-modal.open .gasto-form-body,
+  .pos-modal.open .admin-sheet-form,
+  .pos-modal.open .st-adjust-body,
+  .pos-modal.open .sales-detail-scroll,
+  .pos-modal.open .print-reminder-body,
+  .pos-modal.open .prod-filter-fields,
+  .pos-modal.open .inv-adjust-modal > .field,
+  .pos-modal.open .inv-filters-sheet .ing-filters-sheet-body {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+  .pos-modal.open .ing-line-modal-actions,
+  .pos-modal.open .prod-modal-actions,
+  .pos-modal.open .gasto-form-actions,
+  .pos-modal.open .merma-form-actions,
+  .pos-modal.open .ing-filters-sheet-actions,
+  .pos-modal.open .prod-filters-sheet-actions,
+  .pos-modal.open .admin-sheet-actions,
+  .pos-modal.open .inv-adjust-actions,
+  .pos-modal.open .sales-detail-footer,
+  .pos-modal.open .confirm-dialog-actions,
+  .pos-modal.open .ing-nb-actions {
+    flex-shrink: 0;
+    position: relative;
+    z-index: 2;
+    padding-bottom: calc(0.75rem + env(safe-area-inset-bottom, 0px));
+  }
+  .pos-modal.open .ing-line-modal-actions .btn,
+  .pos-modal.open .prod-modal-actions .btn,
+  .pos-modal.open .gasto-form-actions .btn,
+  .pos-modal.open .merma-form-actions .btn,
+  .pos-modal.open .confirm-dialog-actions .btn {
+    min-height: 48px;
+  }
+  /* Paneles-formulario sin body interno: permiten scroll del propio panel */
+  .pos-modal.open .pos-modal-panel.inv-adjust-modal,
+  .pos-modal.open .pos-modal-panel.st-adjust-modal {
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+  }
+  /* Acciones dentro del body scrolleable: sticky al fondo del panel */
+  .pos-modal.open .gasto-form-actions,
+  .pos-modal.open .merma-form-actions {
+    position: sticky;
+    bottom: 0;
+    background: #fff8fb;
+    border-top: 1px solid var(--color-line);
+    margin-top: auto;
   }
 }
 /* Modal línea de compra: aire y overflow para que la X quede fuera del card */
@@ -7663,6 +7825,9 @@ button.inv-stat.is-active {
     font-size: 0.92rem;
     line-height: 1.15;
   }
+  .sales-stats .sales-stat-money {
+    font-size: clamp(0.78rem, 3.4vw, 0.92rem);
+  }
   .inv-stat-meta {
     display: none;
   }
@@ -11568,17 +11733,6 @@ body.help-mode-touch::after {
   .modal-overlay-close {
     top: 8px;
     right: 8px;
-  }
-  .pos-modal:has(.prod-modal-shell),
-  .pos-modal:has(.ing-line-modal-shell) {
-    padding-top: calc(0.75rem + env(safe-area-inset-top, 0px));
-    padding-left: 0.75rem;
-    padding-right: 0.75rem;
-  }
-  .gasto-form-actions,
-  .prod-modal-actions,
-  .ing-line-modal-actions {
-    padding-bottom: calc(0.35rem + env(safe-area-inset-bottom, 0px));
   }
 }
 

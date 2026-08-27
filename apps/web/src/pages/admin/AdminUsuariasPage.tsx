@@ -1,6 +1,7 @@
 import { type FormEvent, useEffect, useId, useMemo, useState } from 'react';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { ModalOverlayClose } from '../../components/ModalOverlayClose';
+import { PosModal } from '../../components/PosModal';
 import { api, userFacingError } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { isHiddenSuperAdmin } from '../../lib/authPassword';
@@ -458,13 +459,10 @@ export function AdminUsuariasPage() {
       )}
 
       {sheetOpen ? (
-        <div
-          className="pos-modal open"
-          role="presentation"
+        <PosModal
           onClick={(e) => {
             if (e.target === e.currentTarget) closeSheet();
-          }}
-        >
+          }}>
           <ModalOverlayClose onClose={closeSheet}>
           <div
             className="pos-modal-panel admin-sheet admin-sheet-wide"
@@ -608,17 +606,14 @@ export function AdminUsuariasPage() {
               </div>
             </form>
           </div></ModalOverlayClose>
-        </div>
+        </PosModal>
       ) : null}
 
       {resetTarget ? (
-        <div
-          className="pos-modal open"
-          role="presentation"
+        <PosModal
           onClick={(e) => {
             if (e.target === e.currentTarget) closeResetPassword();
-          }}
-        >
+          }}>
           <ModalOverlayClose onClose={closeResetPassword}>
             <div
               className="pos-modal-panel admin-sheet"
@@ -671,7 +666,7 @@ export function AdminUsuariasPage() {
               </form>
             </div>
           </ModalOverlayClose>
-        </div>
+        </PosModal>
       ) : null}
 
       <ConfirmDialog

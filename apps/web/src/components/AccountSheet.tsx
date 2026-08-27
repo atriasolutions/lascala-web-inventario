@@ -1,5 +1,6 @@
 import { type FormEvent, useEffect, useId, useState } from 'react';
 import { ModalOverlayClose } from './ModalOverlayClose';
+import { PosModal } from './PosModal';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { toast } from '../lib/toast';
@@ -22,8 +23,6 @@ export function AccountSheet({ open, onClose }: Props) {
     setFullName(user?.fullName || '');
     setPassword('');
   }, [open, user?.fullName]);
-
-  if (!open) return null;
 
   async function onSubmit(e: FormEvent) {
     e.preventDefault();
@@ -52,9 +51,8 @@ export function AccountSheet({ open, onClose }: Props) {
   }
 
   return (
-    <div
-      className="pos-modal open"
-      role="presentation"
+    <PosModal
+      open={open}
       onClick={(e) => {
         if (e.target === e.currentTarget) onClose();
       }}
@@ -110,6 +108,6 @@ export function AccountSheet({ open, onClose }: Props) {
           </div>
         </form>
       </div></ModalOverlayClose>
-    </div>
+    </PosModal>
   );
 }
