@@ -878,7 +878,7 @@ opsRouter.post(
     const body = z
       .object({
         category: z.string().trim().min(1).max(80),
-        description: z.string().trim().min(1).max(500),
+        description: z.string().trim().min(1).max(800),
         amount: z.number().nonnegative(),
         incurredOn: z.string().optional(),
       })

@@ -1,4 +1,5 @@
 import { chileMoneyFromNumber, parseChileMoney } from '../../lib/chileMoney';
+import { packComprobante } from '../../lib/comprobanteEmbed';
 
 export type DocType = 'factura' | 'boleta' | 'guia' | 'otro';
 
@@ -25,6 +26,8 @@ export type PurchaseFormValues = {
   notes: string;
   /** Sucursal donde se recibirá la mercadería */
   destinationBranchId: string;
+  /** URL subida; se embebe en notes al guardar (sin columna nueva). */
+  attachmentUrl: string;
   lines: LineDraft[];
 };
 
@@ -92,12 +95,13 @@ export async function fileToDataUrl(file: File): Promise<string> {
 }
 
 export function toApiPayload(values: PurchaseFormValues) {
+  const notesPacked = packComprobante(values.notes, values.attachmentUrl);
   return {
     documentType: values.docType,
     invoiceNumber: values.invoice.trim(),
     supplierId: values.supplierId || null,
     purchasedAt: values.purchasedAt || null,
-    notes: values.notes.trim() || null,
+    notes: notesPacked || null,
     destinationBranchId: values.destinationBranchId || undefined,
     items: values.lines.map((l) => ({
       description: l.description,

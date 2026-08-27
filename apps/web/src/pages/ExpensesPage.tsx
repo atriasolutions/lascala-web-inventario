@@ -13,7 +13,7 @@ import { InfiniteListFooter } from '../components/InfiniteListFooter';
 import { ModalOverlayClose } from '../components/ModalOverlayClose';
 import { SortableTh } from '../components/SortableTh';
 import { useInfiniteList } from '../hooks/useInfiniteList';
-import { api, money } from '../lib/api';
+import { api, mediaUrl, money } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import {
   nextExpenseSort,
@@ -36,6 +36,8 @@ import {
 } from './reportes/reportsPeriod';
 import { parseChileMoney } from '../lib/chileMoney';
 import { ChileMoneyInput } from '../components/ChileMoneyInput';
+import { AttachImageField } from '../components/AttachImageField';
+import { packComprobante, unpackComprobante } from '../lib/comprobanteEmbed';
 
 /** Categorías del diagnóstico ATR-DIAG-001 §8.6 */
 const CATEGORIES = [
@@ -218,9 +220,11 @@ export function ExpensesPage() {
   const [category, setCategory] = useState<(typeof CATEGORIES)[number]>('Arriendo');
   const [description, setDescription] = useState('');
   const [amount, setAmount] = useState('');
+  const [attachmentUrl, setAttachmentUrl] = useState('');
   const [incurredOn, setIncurredOn] = useState(todayISO);
   const [saving, setSaving] = useState(false);
   const [confirmOpen, setConfirmOpen] = useState(false);
+  const [cancelFormConfirm, setCancelFormConfirm] = useState(false);
   const formTitleId = useId();
   const formRef = useRef<HTMLDivElement>(null);
 
@@ -371,12 +375,19 @@ export function ExpensesPage() {
     setCategory('Arriendo');
     setDescription('');
     setAmount('');
+    setAttachmentUrl('');
     setIncurredOn(todayISO());
     setFormOpen(true);
   }
 
-  function closeForm() {
+  function closeForm(force = false) {
     if (saving) return;
+    const dirty = Boolean(description.trim() || amount.trim() || attachmentUrl.trim());
+    if (!force && dirty) {
+      setCancelFormConfirm(true);
+      return;
+    }
+    setCancelFormConfirm(false);
     setFormOpen(false);
   }
 
@@ -424,7 +435,7 @@ export function ExpensesPage() {
         method: 'POST',
         body: {
           category,
-          description: description.trim(),
+          description: packComprobante(description, attachmentUrl) || description.trim(),
           amount: n,
           incurredOn: incurredOn || undefined,
         },
@@ -684,13 +695,25 @@ export function ExpensesPage() {
                 </p>
 
                 <div className="list-cards mobile-only gasto-cards">
-                  {sorted.map((x) => (
+                  {sorted.map((x) => {
+                    const { text: desc, url: foto } = unpackComprobante(x.description);
+                    return (
                     <article key={x.id} className="list-card gasto-card">
                       <div className="gasto-card-head">
                         <span className="badge brand">{x.category}</span>
                         <span className="muted">{fmtDay(x.incurred_on)}</span>
                       </div>
-                      <strong className="gasto-card-desc">{x.description}</strong>
+                      <strong className="gasto-card-desc">{desc}</strong>
+                      {foto ? (
+                        <a
+                          className="meta"
+                          href={mediaUrl(foto) || '#'}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                        >
+                          Ver comprobante
+                        </a>
+                      ) : null}
                       {x.created_by_name ? (
                         <div className="meta muted">{x.created_by_name}</div>
                       ) : null}
@@ -699,7 +722,8 @@ export function ExpensesPage() {
                         <span className="muted">Monto</span>
                       </div>
                     </article>
-                  ))}
+                    );
+                  })}
                 </div>
 
                 <div className="table-wrap desktop-only gasto-table-wrap">
@@ -771,8 +795,21 @@ export function ExpensesPage() {
                           <td>
                             <span className="badge brand">{x.category}</span>
                           </td>
-                          <td title={x.description}>
-                            <span className="gasto-desc-text">{x.description}</span>
+                          <td title={unpackComprobante(x.description).text}>
+                            <span className="gasto-desc-text">
+                              {unpackComprobante(x.description).text}
+                            </span>
+                            {unpackComprobante(x.description).url ? (
+                              <a
+                                className="meta"
+                                href={mediaUrl(unpackComprobante(x.description).url) || '#'}
+                                target="_blank"
+                                rel="noopener noreferrer"
+                              >
+                                {' '}
+                                Comprobante
+                              </a>
+                            ) : null}
                           </td>
                           <td className="gasto-col-num gasto-card-amount">{money(x.amount)}</td>
                           <td>{x.created_by_name || '—'}</td>
@@ -961,6 +998,12 @@ export function ExpensesPage() {
                 </div>
               </div>
 
+              <AttachImageField
+                value={attachmentUrl}
+                onChange={setAttachmentUrl}
+                disabled={saving}
+              />
+
               <div className="btn-row gasto-form-actions">
                 <button type="button" className="btn secondary" onClick={closeForm} disabled={saving}>
                   Cancelar
@@ -973,6 +1016,17 @@ export function ExpensesPage() {
           </div></ModalOverlayClose>
         </div>
       )}
+
+      <ConfirmDialog
+        open={cancelFormConfirm}
+        title="¿Cancelar?"
+        message="¿Estás seguro de que deseas cancelar? Los datos ingresados se perderán."
+        confirmLabel="Sí, cancelar"
+        cancelLabel="Seguir editando"
+        danger
+        onCancel={() => setCancelFormConfirm(false)}
+        onConfirm={() => closeForm(true)}
+      />
 
       <ConfirmDialog
         open={confirmOpen}

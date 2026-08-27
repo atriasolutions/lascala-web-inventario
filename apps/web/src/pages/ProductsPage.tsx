@@ -6,7 +6,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { ProductPhotoPlaceholder } from '../components/ProductPhotoPlaceholder';
+import { ProductPhotoInput } from '../components/ProductPhotoInput';
 import { ProductFichaFields } from '../components/ProductFichaFields';
 import {
   ProductCodeEntry,
@@ -274,6 +274,7 @@ export function ProductsPage() {
   const [labelQtyError, setLabelQtyError] = useState('');
   const [printBusy, setPrintBusy] = useState(false);
   const [archiveConfirm, setArchiveConfirm] = useState(false);
+  const [cancelConfirm, setCancelConfirm] = useState(false);
   const [archiving, setArchiving] = useState(false);
 
   const modalTitleId = useId();
@@ -346,7 +347,7 @@ export function ProductsPage() {
     if (!modalOpen) return;
     const t = window.setTimeout(() => nameRef.current?.focus(), 40);
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') closeModal();
+      if (e.key === 'Escape') requestCloseModal();
     };
     document.addEventListener('keydown', onKey);
     return () => {
@@ -526,6 +527,7 @@ export function ProductsPage() {
   }
 
   function closeModal() {
+    setCancelConfirm(false);
     setModalOpen(false);
     setEditing(null);
     setModalMode('create');
@@ -546,6 +548,32 @@ export function ProductsPage() {
     const el = triggerRef.current;
     triggerRef.current = null;
     window.setTimeout(() => el?.focus(), 40);
+  }
+
+  function isFormDirty() {
+    if (modalMode === 'view') return false;
+    if (modalMode === 'create') {
+      return (
+        Boolean(form.name.trim()) ||
+        Boolean(form.categoryId) ||
+        Boolean(form.salePrice.trim()) ||
+        Boolean(form.photoUrl || photoPreview) ||
+        Boolean(form.barcode.trim())
+      );
+    }
+    if (modalMode === 'edit' && formSnapshot) {
+      return JSON.stringify(form) !== JSON.stringify(formSnapshot);
+    }
+    return false;
+  }
+
+  function requestCloseModal() {
+    if (saving || photoBusy || printBusy || archiving) return;
+    if (isFormDirty()) {
+      setCancelConfirm(true);
+      return;
+    }
+    closeModal();
   }
 
   async function archiveProduct() {
@@ -1060,10 +1088,10 @@ export function ProductsPage() {
           className="pos-modal open"
           role="presentation"
           onClick={(e) => {
-            if (e.target === e.currentTarget && !labelQtyOpen) closeModal();
+            if (e.target === e.currentTarget && !labelQtyOpen) requestCloseModal();
           }}
         >
-          <ModalOverlayClose onClose={closeModal}>
+          <ModalOverlayClose onClose={requestCloseModal}>
           <div className="ing-line-modal-shell prod-modal-shell">
           <form
             className="pos-modal-panel ing-line-modal prod-modal"
@@ -1108,20 +1136,12 @@ export function ProductsPage() {
                   </div>
                 ) : (
                   <div className="prod-modal-photo-actions">
-                    <label className="ing-photo-btn">
-                      <input
-                        type="file"
-                        accept="image/*"
-                        capture="environment"
-                        hidden
-                        disabled={photoBusy || saving}
-                        onChange={(e) => {
-                          void onPhoto(e.target.files?.[0] ?? null);
-                          e.target.value = '';
-                        }}
-                      />
-                      {photoBusy ? 'Subiendo…' : photoSrc ? 'Cambiar foto' : 'Agregar foto'}
-                    </label>
+                    <ProductPhotoInput
+                      hasPhoto={Boolean(photoSrc)}
+                      busy={photoBusy}
+                      disabled={saving}
+                      onPick={(file) => void onPhoto(file)}
+                    />
                     {photoSrc ? (
                       <button
                         type="button"
@@ -1402,7 +1422,7 @@ export function ProductsPage() {
                   <button
                     type="button"
                     className="btn secondary"
-                    onClick={closeModal}
+                    onClick={requestCloseModal}
                     disabled={saving || printBusy}
                   >
                     Cancelar
@@ -1441,7 +1461,7 @@ export function ProductsPage() {
                   <button
                     type="button"
                     className="btn secondary"
-                    onClick={closeModal}
+                    onClick={requestCloseModal}
                     disabled={printBusy || archiving}
                   >
                     Cerrar
@@ -1453,6 +1473,20 @@ export function ProductsPage() {
           </div></ModalOverlayClose>
         </div>
       )}
+
+      <ConfirmDialog
+        open={cancelConfirm}
+        title="¿Cancelar?"
+        message="¿Estás seguro de que deseas cancelar? Los datos ingresados se perderán."
+        confirmLabel="Sí, cancelar"
+        cancelLabel="Seguir editando"
+        danger
+        onCancel={() => setCancelConfirm(false)}
+        onConfirm={() => {
+          setCancelConfirm(false);
+          closeModal();
+        }}
+      />
 
       <ConfirmDialog
         open={archiveConfirm}

@@ -15,6 +15,7 @@ import {
   type DocType,
   type PurchaseFormValues,
 } from './purchaseFormTypes';
+import { unpackComprobante } from '../../lib/comprobanteEmbed';
 
 function toFormValues(purchase: Purchase, items: PurchaseItem[]): PurchaseFormValues {
   const rawType = (purchase.document_type || 'factura').toLowerCase();
@@ -23,14 +24,17 @@ function toFormValues(purchase: Purchase, items: PurchaseItem[]): PurchaseFormVa
       ? rawType
       : 'otro';
 
+  const { text: notes, url: attachmentUrl } = unpackComprobante(purchase.notes);
+
   return {
     docType,
     invoice: purchase.invoice_number || '',
     supplierId: purchase.supplier_id || '',
     supplierName: purchase.supplier_name || '',
     purchasedAt: dateInputValue(purchase.purchased_at),
-    notes: purchase.notes || '',
+    notes,
     destinationBranchId: purchase.destination_branch_id || '',
+    attachmentUrl,
     lines: items.map((item) => ({
       key: item.id,
       description: item.description,

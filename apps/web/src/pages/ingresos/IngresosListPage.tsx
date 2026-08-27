@@ -7,6 +7,7 @@ import { useInfiniteList } from '../../hooks/useInfiniteList';
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { withPagination } from '../../lib/pagination';
+import { unpackComprobante } from '../../lib/comprobanteEmbed';
 import {
   nextSort,
   sortPurchases,
@@ -348,8 +349,10 @@ export function IngresosListPage() {
                     <tr key={p.id} className="ing-row">
                       <td>
                         <strong>{purchaseRef(p)}</strong>
-                        {p.notes?.trim() ? (
-                          <div className="meta muted ing-notes-preview">{p.notes.trim()}</div>
+                        {unpackComprobante(p.notes).text ? (
+                          <div className="meta muted ing-notes-preview">
+                            {unpackComprobante(p.notes).text}
+                          </div>
                         ) : null}
                       </td>
                       <td className="ing-td-supplier">

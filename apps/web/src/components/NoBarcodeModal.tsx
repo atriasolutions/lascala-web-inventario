@@ -6,7 +6,8 @@ import {
   type ProductCodeMode,
 } from './ProductCodeEntry';
 import { ProductFichaFields } from './ProductFichaFields';
-import { ProductPhotoPlaceholder } from './ProductPhotoPlaceholder';
+import { ConfirmDialog } from './ConfirmDialog';
+import { ProductPhotoInput } from './ProductPhotoInput';
 import { api, mediaUrl, money } from '../lib/api';
 import { lineFloorSalePrice, type PurchaseItem } from '../lib/purchasesStatus';
 import { fileToDataUrl } from '../pages/compras/purchaseFormTypes';
@@ -118,6 +119,7 @@ export function NoBarcodeModal({
   const [searchHits, setSearchHits] = useState<ProductSearchHit[]>([]);
   const [searchBusy, setSearchBusy] = useState(false);
   const [selected, setSelected] = useState<ProductSearchHit | null>(null);
+  const [cancelConfirm, setCancelConfirm] = useState(false);
 
   const selectedLine = useMemo(
     () => lines.find((l) => l.id === pickLineId) ?? null,
@@ -128,6 +130,24 @@ export function NoBarcodeModal({
   const pendingOnLine = selectedLine ? linePending(selectedLine) : 0;
   const scannedCreate = Boolean(presetBarcode?.trim());
   const photoSrc = photoPreview || (photoUrl ? mediaUrl(photoUrl) : null);
+
+  const hasDraft =
+    Boolean(name.trim()) ||
+    Boolean(color.trim()) ||
+    Boolean(sizeLabel.trim()) ||
+    Boolean(categoryId) ||
+    Boolean(brand.trim()) ||
+    Boolean(photoUrl || photoPreview) ||
+    Boolean(barcode.trim() && codeMode === 'scan');
+
+  function requestClose() {
+    if (busy || printBusy || photoBusy) return;
+    if (hasDraft) {
+      setCancelConfirm(true);
+      return;
+    }
+    onClose();
+  }
 
   function revokeBlob() {
     if (blobRef.current) {
@@ -459,13 +479,13 @@ export function NoBarcodeModal({
       className="pos-modal open no-print"
       role="presentation"
       onClick={(e) => {
-        if (e.target === e.currentTarget) onClose();
+        if (e.target === e.currentTarget) requestClose();
       }}
     >
-      <ModalOverlayClose onClose={onClose}>
-      <div className="ing-line-modal-shell">
+      <ModalOverlayClose onClose={requestClose}>
+      <div className="ing-line-modal-shell prod-modal-shell">
       <div
-        className="pos-modal-panel ing-nb-panel"
+        className="pos-modal-panel ing-nb-panel prod-modal ing-line-modal"
         ref={panelRef}
         role="dialog"
         aria-modal="true"
@@ -513,173 +533,173 @@ export function NoBarcodeModal({
         ) : null}
 
         {mode === 'new' ? (
-          <div className="ing-nb-body" role="tabpanel">
-            {!lines.length ? (
-              <p className="ing-hint">
-                No hay líneas sin vincular. Usa “Buscar existente” para reimprimir una etiqueta.
-              </p>
-            ) : (
-              <>
+          <>
+            <div className="ing-nb-body" role="tabpanel">
+              {!lines.length ? (
                 <p className="ing-hint">
-                  {scannedCreate
-                    ? 'Completa la ficha con el código escaneado y elige la línea del ingreso.'
-                    : 'Elige la línea y completa la ficha. El código (LS…) es el de la etiqueta y de la pistola.'}
+                  No hay líneas sin vincular. Usa “Buscar existente” para reimprimir una etiqueta.
                 </p>
+              ) : (
+                <>
+                  <div className="ing-nb-setup">
+                    <p className="ing-hint">
+                      {scannedCreate
+                        ? 'Completa la ficha con el código escaneado y elige la línea del ingreso.'
+                        : 'Elige la línea y completa la ficha. El código (LS…) es el de la etiqueta y de la pistola.'}
+                    </p>
 
-                <div className="ing-line-picks" role="radiogroup" aria-label="Líneas pendientes">
-                  {lines.map((l) => (
-                    <button
-                      key={l.id}
-                      type="button"
-                      role="radio"
-                      aria-checked={pickLineId === l.id}
-                      className={`ing-line-pick${pickLineId === l.id ? ' is-selected' : ''}`}
-                      onClick={() => setPickLineId(l.id)}
-                    >
-                      <strong>{l.description}</strong>
-                      <span>
-                        {l.draftReceived}/{l.quantity_ordered} · quedan {linePending(l)}
-                        {lineFloorSalePrice(l) > 0
-                          ? ` · P. venta ${money(lineFloorSalePrice(l))}`
-                          : ''}
-                      </span>
-                    </button>
-                  ))}
-                </div>
+                    <div className="ing-line-picks" role="radiogroup" aria-label="Líneas pendientes">
+                      {lines.map((l) => (
+                        <button
+                          key={l.id}
+                          type="button"
+                          role="radio"
+                          aria-checked={pickLineId === l.id}
+                          className={`ing-line-pick${pickLineId === l.id ? ' is-selected' : ''}`}
+                          onClick={() => setPickLineId(l.id)}
+                        >
+                          <strong>{l.description}</strong>
+                          <span>
+                            {l.draftReceived}/{l.quantity_ordered} · quedan {linePending(l)}
+                            {lineFloorSalePrice(l) > 0
+                              ? ` · P. venta ${money(lineFloorSalePrice(l))}`
+                              : ''}
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
 
-                <div className="prod-modal-photo ing-nb-photo">
-                  {photoSrc ? (
-                    <img src={photoSrc} alt="" />
-                  ) : (
-                    <ProductPhotoPlaceholder className="prod-modal-photo-empty" />
-                  )}
-                  <div className="prod-modal-photo-actions">
-                    <label className="ing-photo-btn">
-                      <input
-                        type="file"
-                        accept="image/*"
-                        capture="environment"
-                        hidden
-                        disabled={busy || photoBusy}
-                        onChange={(e) => {
-                          void onPhoto(e.target.files?.[0] ?? null);
-                          e.target.value = '';
+                  <div className="prod-modal-body">
+                    <div className="prod-modal-photo">
+                      {photoSrc ? (
+                        <img src={photoSrc} alt="" />
+                      ) : (
+                        <ProductPhotoPlaceholder className="prod-modal-photo-empty" />
+                      )}
+                      <div className="prod-modal-photo-actions">
+                        <ProductPhotoInput
+                          hasPhoto={Boolean(photoSrc)}
+                          busy={photoBusy}
+                          disabled={busy}
+                          onPick={(file) => void onPhoto(file)}
+                        />
+                        {photoSrc ? (
+                          <button
+                            type="button"
+                            className="btn ghost"
+                            disabled={busy || photoBusy}
+                            onClick={clearPhoto}
+                          >
+                            Quitar
+                          </button>
+                        ) : null}
+                      </div>
+                    </div>
+
+                    <div className="prod-modal-fields">
+                      <ProductFichaFields
+                        idPrefix="ing-nb"
+                        values={{
+                          name,
+                          categoryId,
+                          brand,
+                          productType,
+                          sizeLabel,
+                          color,
+                          season,
+                          description,
                         }}
+                        onChange={(partial) => {
+                          if (partial.name !== undefined) setName(partial.name);
+                          if (partial.categoryId !== undefined) setCategoryId(partial.categoryId);
+                          if (partial.brand !== undefined) setBrand(partial.brand);
+                          if (partial.productType !== undefined) setProductType(partial.productType);
+                          if (partial.sizeLabel !== undefined) setSizeLabel(partial.sizeLabel);
+                          if (partial.color !== undefined) setColor(partial.color);
+                          if (partial.season !== undefined) setSeason(partial.season);
+                          if (partial.description !== undefined) setDescription(partial.description);
+                        }}
+                        categories={categories}
+                        disabled={busy || photoBusy}
+                        code={{
+                          locked: false,
+                          value: barcode,
+                          onChange: (v) => {
+                            setBarcode(v);
+                            setCodeAvailability('idle');
+                          },
+                          helper: '',
+                          slot: (
+                            <ProductCodeEntry
+                              id="ing-nb-code"
+                              value={barcode}
+                              mode={codeMode}
+                              onModeChange={(m) => {
+                                setCodeMode(m);
+                                setCodeAvailability('idle');
+                                if (m === 'scan' && !scannedCreate) setBarcode('');
+                              }}
+                              onChange={(v) => {
+                                setBarcode(v);
+                                setCodeAvailability('idle');
+                              }}
+                              onAutogenerate={fetchNextCode}
+                              disabled={busy || photoBusy}
+                              generating={codeGenerating}
+                              availability={codeAvailability}
+                              onBlurCheck={() => void checkScanBarcode()}
+                            />
+                          ),
+                        }}
+                        salePrice={{
+                          mode: 'locked',
+                          display: displaySale > 0 ? money(displaySale) : '—',
+                          amount: displaySale > 0 ? displaySale : undefined,
+                          hint: 'Fijado en la compra · no editable en recepción',
+                        }}
+                        costPrice={selectedLine ? Number(selectedLine.unit_cost) : null}
                       />
-                      {photoBusy ? 'Subiendo…' : photoSrc ? 'Cambiar foto' : 'Agregar foto'}
-                    </label>
-                    {photoSrc ? (
-                      <button
-                        type="button"
-                        className="btn ghost"
-                        disabled={busy || photoBusy}
-                        onClick={clearPhoto}
-                      >
-                        Quitar
-                      </button>
-                    ) : null}
+                      <div className="ing-nb-grid">
+                        <div className="field">
+                          <label htmlFor="ing-nb-qty">Cantidad</label>
+                          <input
+                            id="ing-nb-qty"
+                            type="number"
+                            min={1}
+                            max={Math.max(1, pendingOnLine)}
+                            value={receiveQty}
+                            onChange={(e) => {
+                              const v = Number(e.target.value);
+                              setReceiveQty(v);
+                              if (Number.isFinite(v) && v >= 1) setLabelCopies(v);
+                            }}
+                          />
+                          {pendingOnLine > 1 ? (
+                            <span className="ing-hint">Máximo {pendingOnLine} en esta línea</span>
+                          ) : null}
+                        </div>
+                        <div className="field">
+                          <label htmlFor="ing-nb-labels">Etiquetas</label>
+                          <input
+                            id="ing-nb-labels"
+                            type="number"
+                            min={1}
+                            max={999}
+                            value={labelCopies}
+                            onChange={(e) => setLabelCopies(Number(e.target.value))}
+                          />
+                        </div>
+                      </div>
+                    </div>
                   </div>
-                </div>
+                </>
+              )}
 
-                <ProductFichaFields
-                  idPrefix="ing-nb"
-                  values={{
-                    name,
-                    categoryId,
-                    brand,
-                    productType,
-                    sizeLabel,
-                    color,
-                    season,
-                    description,
-                  }}
-                  onChange={(partial) => {
-                    if (partial.name !== undefined) setName(partial.name);
-                    if (partial.categoryId !== undefined) setCategoryId(partial.categoryId);
-                    if (partial.brand !== undefined) setBrand(partial.brand);
-                    if (partial.productType !== undefined) setProductType(partial.productType);
-                    if (partial.sizeLabel !== undefined) setSizeLabel(partial.sizeLabel);
-                    if (partial.color !== undefined) setColor(partial.color);
-                    if (partial.season !== undefined) setSeason(partial.season);
-                    if (partial.description !== undefined) setDescription(partial.description);
-                  }}
-                  categories={categories}
-                  disabled={busy || photoBusy}
-                  code={{
-                    locked: false,
-                    value: barcode,
-                    onChange: (v) => {
-                      setBarcode(v);
-                      setCodeAvailability('idle');
-                    },
-                    helper: '',
-                    slot: (
-                      <ProductCodeEntry
-                        id="ing-nb-code"
-                        value={barcode}
-                        mode={codeMode}
-                        onModeChange={(m) => {
-                          setCodeMode(m);
-                          setCodeAvailability('idle');
-                          if (m === 'scan' && !scannedCreate) setBarcode('');
-                        }}
-                        onChange={(v) => {
-                          setBarcode(v);
-                          setCodeAvailability('idle');
-                        }}
-                        onAutogenerate={fetchNextCode}
-                        disabled={busy || photoBusy}
-                        generating={codeGenerating}
-                        availability={codeAvailability}
-                        onBlurCheck={() => void checkScanBarcode()}
-                      />
-                    ),
-                  }}
-                  salePrice={{
-                    mode: 'locked',
-                    display: displaySale > 0 ? money(displaySale) : '—',
-                    amount: displaySale > 0 ? displaySale : undefined,
-                    hint: 'Fijado en la compra · no editable en recepción',
-                  }}
-                  costPrice={selectedLine ? Number(selectedLine.unit_cost) : null}
-                />
-                <div className="ing-nb-grid">
-                  <div className="field">
-                    <label htmlFor="ing-nb-qty">Cantidad</label>
-                    <input
-                      id="ing-nb-qty"
-                      type="number"
-                      min={1}
-                      max={Math.max(1, pendingOnLine)}
-                      value={receiveQty}
-                      onChange={(e) => {
-                        const v = Number(e.target.value);
-                        setReceiveQty(v);
-                        if (Number.isFinite(v) && v >= 1) setLabelCopies(v);
-                      }}
-                    />
-                    {pendingOnLine > 1 ? (
-                      <span className="ing-hint">Máximo {pendingOnLine} en esta línea</span>
-                    ) : null}
-                  </div>
-                  <div className="field">
-                    <label htmlFor="ing-nb-labels">Etiquetas</label>
-                    <input
-                      id="ing-nb-labels"
-                      type="number"
-                      min={1}
-                      max={999}
-                      value={labelCopies}
-                      onChange={(e) => setLabelCopies(Number(e.target.value))}
-                    />
-                  </div>
-                </div>
-              </>
-            )}
+              {error ? <p className="error">{error}</p> : null}
+            </div>
 
-            {error ? <p className="error">{error}</p> : null}
-
-            <div className="btn-row ing-nb-actions">
+            <div className="btn-row ing-nb-actions prod-modal-actions ing-line-modal-actions">
               <button
                 type="button"
                 className="btn secondary"
@@ -721,9 +741,10 @@ export function NoBarcodeModal({
                 {busy ? 'Guardando…' : 'Crear y recibir'}
               </button>
             </div>
-          </div>
+          </>
         ) : (
-          <div className="ing-nb-body" role="tabpanel">
+          <>
+            <div className="ing-nb-body" role="tabpanel">
             <p className="ing-hint">
               Busca por nombre, marca, categoría o código interno. Puedes reimprimir o vincular a una
               línea pendiente.
@@ -838,8 +859,9 @@ export function NoBarcodeModal({
             ) : null}
 
             {error ? <p className="error">{error}</p> : null}
+            </div>
 
-            <div className="btn-row ing-nb-actions">
+            <div className="btn-row ing-nb-actions prod-modal-actions ing-line-modal-actions">
               <button
                 type="button"
                 className="btn secondary"
@@ -864,14 +886,27 @@ export function NoBarcodeModal({
               ) : null}
             </div>
             {lines.length > 0 ? (
-              <p className="ing-hint" style={{ marginTop: '0.5rem' }}>
+              <p className="ing-hint ing-nb-foot-hint">
                 Vincular deja la cantidad en borrador: usa «Confirmar recepción» para sumar al stock.
               </p>
             ) : null}
-          </div>
+          </>
         )}
       </div>
       </div></ModalOverlayClose>
+      <ConfirmDialog
+        open={cancelConfirm}
+        title="¿Cancelar?"
+        message="¿Estás seguro de que deseas cancelar? Los datos ingresados se perderán."
+        confirmLabel="Sí, cancelar"
+        cancelLabel="Seguir editando"
+        danger
+        onCancel={() => setCancelConfirm(false)}
+        onConfirm={() => {
+          setCancelConfirm(false);
+          onClose();
+        }}
+      />
     </div>
   );
 }

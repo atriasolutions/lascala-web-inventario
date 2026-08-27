@@ -1884,6 +1884,21 @@ a.is-nav-offline,
   cursor: not-allowed;
 }
 
+/* Safari iOS: date/month/time ignoran width:100% sin min-width:0 */
+.field input[type='date'],
+.field input[type='time'],
+.field input[type='datetime-local'],
+.field input[type='month'],
+.field input[type='week'],
+.reports-filter-field input[type='date'],
+.gasto-period-field input[type='date'] {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  display: block;
+}
+
 /* Combobox unificado: mismo look nativo en toda la app */
 .field select,
 .context-selects select,
@@ -4224,6 +4239,7 @@ a.is-nav-offline,
   flex-direction: column;
   gap: 0.85rem;
   padding-bottom: 5.5rem;
+  min-width: 0;
 }
 
 /* Identidad del documento (folio) — no es título de ruta duplicado */
@@ -4867,10 +4883,13 @@ a.ing-row:hover { border-color: #e3b7cf; }
   display: grid;
   gap: 1rem;
   align-items: start;
+  min-width: 0;
 }
 
 .ing-new-doc {
   padding: 1rem 1.05rem 1.1rem;
+  min-width: 0;
+  overflow: hidden;
 }
 .ing-new-doc h3,
 .ing-lines-head h3 {
@@ -4904,8 +4923,11 @@ a.ing-row:hover { border-color: #e3b7cf; }
 
 .ing-new-meta {
   display: grid;
-  grid-template-columns: 1fr 1fr;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
   gap: 0.75rem;
+}
+.ing-new-meta .field {
+  min-width: 0;
 }
 
 .ing-save-steps {
@@ -5308,15 +5330,18 @@ a.ing-row:hover { border-color: #e3b7cf; }
   }
 }
 
+@media (max-width: 900px) {
+  .ing-new-meta {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+
 @media (max-width: 640px) {
   .ing-doc-types {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
   .ing-doc-type {
     min-height: 48px;
-  }
-  .ing-new-meta {
-    grid-template-columns: 1fr;
   }
   .ing-save-steps {
     display: none;
@@ -5715,10 +5740,24 @@ a.ing-row:hover { border-color: #e3b7cf; }
 .ing-nb-actions {
   flex-shrink: 0;
   flex-wrap: wrap;
-  margin-top: 0.85rem;
+  margin-top: 0;
   padding-bottom: calc(0.25rem + env(safe-area-inset-bottom, 0px));
 }
 
+.ing-nb-setup {
+  display: grid;
+  gap: 0.65rem;
+  margin-bottom: 0.85rem;
+}
+
+.ing-nb-foot-hint {
+  margin: 0.35rem 0 0;
+  padding: 0 0.15rem calc(0.35rem + env(safe-area-inset-bottom, 0px));
+  font-size: 0.82rem;
+}
+
+.ing-nb-body .prod-modal-fields .prod-section + .prod-section,
+.ing-nb-body .prod-modal-fields .prod-section + .ing-nb-grid,
 .ing-nb-body .prod-section + .prod-section,
 .ing-nb-body .prod-section + .ing-nb-grid {
   margin-top: 1rem;
@@ -5733,6 +5772,13 @@ a.ing-row:hover { border-color: #e3b7cf; }
   overflow: hidden;
   padding-bottom: 0;
 }
+
+.ing-nb-panel.prod-modal.ing-line-modal {
+  width: 100%;
+  max-width: 100%;
+  padding: 1.15rem 1.25rem 0;
+}
+
 .ing-nb-body {
   flex: 1 1 auto;
   min-height: 0;
@@ -5740,7 +5786,14 @@ a.ing-row:hover { border-color: #e3b7cf; }
   overflow-y: auto;
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
-  padding-bottom: 1.15rem;
+  padding-bottom: 0.85rem;
+}
+
+.ing-nb-panel .ing-nb-actions.prod-modal-actions {
+  margin: 0 -1.25rem;
+  padding: 0.85rem 1.25rem calc(0.85rem + env(safe-area-inset-bottom, 0px));
+  background: #fff8fb;
+  border-top: 1px solid var(--color-line);
 }
 
 .ing-nb-tabs {
@@ -8424,13 +8477,13 @@ button.inv-stat.is-active {
     gap: 1.5rem;
     align-items: start;
   }
-  .prod-modal-photo {
+  .prod-modal-body .prod-modal-photo {
     position: sticky;
     top: 0;
   }
-  .prod-modal-photo img,
-  .prod-modal-photo .product-no-photo,
-  .prod-modal-photo-empty {
+  .prod-modal-body .prod-modal-photo img,
+  .prod-modal-body .prod-modal-photo .product-no-photo,
+  .prod-modal-body .prod-modal-photo-empty {
     max-height: min(68vh, 520px);
   }
   .prod-section-grid {
@@ -8505,6 +8558,13 @@ button.inv-stat.is-active {
     max-height: min(92dvh, 100%);
     padding: 1rem 1rem 0;
     overflow: hidden;
+  }
+  .ing-nb-panel.prod-modal.ing-line-modal {
+    padding: 1rem 1rem 0;
+  }
+  .ing-nb-panel .ing-nb-actions.prod-modal-actions {
+    margin: 0 -1rem;
+    padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom, 0px));
   }
   .prod-modal-shell {
     width: 100%;
@@ -11312,5 +11372,164 @@ body.help-mode-touch::after {
   width: 100%;
   height: 100%;
   border: 0;
+}
+
+/* ——— iPhone v2 extras ——— */
+.prod-photo-input {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+}
+.ing-photo-btn-secondary {
+  background: #fff;
+  color: var(--color-ink);
+  border: 1px solid var(--color-line);
+}
+
+.tax-doc-field .tax-doc-hint {
+  margin: 0.2rem 0 0.45rem;
+  font-size: 0.82rem;
+}
+.attach-image-field {
+  display: grid;
+  gap: 0.45rem;
+}
+.attach-image-label {
+  font-weight: 650;
+  font-size: 0.92rem;
+}
+.attach-image-preview img {
+  max-width: min(100%, 220px);
+  max-height: 140px;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 1px solid var(--color-line);
+}
+.attach-image-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem;
+  align-items: center;
+}
+
+.compras-stock-summary {
+  border: 1px solid var(--color-line);
+  border-radius: 14px;
+  background: #fff;
+  overflow: hidden;
+}
+.compras-stock-summary-toggle {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.65rem;
+  padding: 0.65rem 0.85rem;
+  border: none;
+  background: #fff8fb;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+  min-height: 44px;
+}
+.compras-stock-summary-list {
+  list-style: none;
+  margin: 0;
+  padding: 0 0.85rem 0.65rem;
+  max-height: 12rem;
+  overflow-y: auto;
+}
+.compras-stock-summary-list li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  padding: 0.4rem 0;
+  border-bottom: 1px solid #f0e8ec;
+  font-size: 0.9rem;
+}
+.compras-stock-summary-qty {
+  color: var(--color-muted);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+@media (max-width: 900px) {
+  /* Gastos: scroll de toda la vista (no solo la lista) */
+  .main:has(.gasto-list) {
+    height: auto;
+    max-height: none;
+    overflow: visible;
+  }
+  .main:has(.gasto-list) .main-content {
+    overflow: visible;
+    flex: none;
+  }
+  .main:has(.gasto-list) .ing-list-scroll {
+    overflow: visible;
+    flex: none;
+  }
+
+  /* Reportes: filtros compactos */
+  .reports-page .admin-lede {
+    font-size: 0.85rem;
+    margin-bottom: 0.15rem;
+  }
+  .reports-filters {
+    gap: 0.35rem;
+    padding: 0.35rem 0 0.5rem;
+  }
+  .reports-filters-chips {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    padding-bottom: 0.15rem;
+  }
+  .reports-filters-chips .ing-chip {
+    flex: 0 0 auto;
+    min-height: 36px;
+    padding: 0.3rem 0.65rem;
+    font-size: 0.82rem;
+  }
+  .reports-filters-range {
+    margin: 0;
+    font-size: 0.82rem;
+  }
+
+  /* Ayuda: botones visibles */
+  .help-lede {
+    font-size: 0.88rem;
+    line-height: 1.45;
+  }
+  .help-lede-btn {
+    display: inline-flex;
+    margin: 0.35rem 0 0;
+    width: auto;
+    max-width: 100%;
+  }
+
+  /* Ajustes / usuarios: modal con scroll */
+  .admin-sheet .admin-sheet-body,
+  .pos-modal-panel.admin-sheet form {
+    max-height: min(72vh, 640px);
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  /* Modales: X visible dentro del card */
+  .modal-overlay-close {
+    top: 8px;
+    right: 8px;
+  }
+  .pos-modal:has(.prod-modal-shell),
+  .pos-modal:has(.ing-line-modal-shell) {
+    padding-top: calc(0.75rem + env(safe-area-inset-top, 0px));
+    padding-left: 0.75rem;
+    padding-right: 0.75rem;
+  }
+  .gasto-form-actions,
+  .prod-modal-actions,
+  .ing-line-modal-actions {
+    padding-bottom: calc(0.35rem + env(safe-area-inset-bottom, 0px));
+  }
 }
 

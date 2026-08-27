@@ -15,7 +15,8 @@ import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { IconTrash } from '../../components/icons';
 import { MarginHint } from '../../components/MarginHint';
 import { ModalOverlayClose } from '../../components/ModalOverlayClose';
-import { ProductPhotoPlaceholder } from '../../components/ProductPhotoPlaceholder';
+import { ProductPhotoInput } from '../../components/ProductPhotoInput';
+import { AttachImageField } from '../../components/AttachImageField';
 import { SupplierLookup } from '../../components/SupplierLookup';
 import { api, mediaUrl, money } from '../../lib/api';
 import { parseChileMoney } from '../../lib/chileMoney';
@@ -58,6 +59,7 @@ const EMPTY: PurchaseFormValues = {
   purchasedAt: '',
   notes: '',
   destinationBranchId: '',
+  attachmentUrl: '',
   lines: [],
 };
 
@@ -68,6 +70,7 @@ function snapshotOf(v: {
   purchasedAt: string;
   notes: string;
   destinationBranchId: string;
+  attachmentUrl: string;
   lines: LineDraft[];
 }) {
   return JSON.stringify({
@@ -77,6 +80,7 @@ function snapshotOf(v: {
     purchasedAt: v.purchasedAt,
     notes: v.notes.trim(),
     destinationBranchId: v.destinationBranchId,
+    attachmentUrl: v.attachmentUrl.trim(),
     lines: v.lines.map((l) => ({
       key: l.key,
       description: l.description,
@@ -115,6 +119,7 @@ export function PurchaseDocumentForm({
   const [supplierId, setSupplierId] = useState(seed.supplierId);
   const [purchasedAt, setPurchasedAt] = useState(seed.purchasedAt);
   const [notes, setNotes] = useState(seed.notes);
+  const [attachmentUrl, setAttachmentUrl] = useState(seed.attachmentUrl || '');
   const [destinationBranchId, setDestinationBranchId] = useState(
     () => seed.destinationBranchId || branchId || branches[0]?.id || '',
   );
@@ -129,6 +134,7 @@ export function PurchaseDocumentForm({
       supplierId: seed.supplierId,
       purchasedAt: seed.purchasedAt,
       notes: seed.notes,
+      attachmentUrl: seed.attachmentUrl || '',
       destinationBranchId: seed.destinationBranchId || branchId || branches[0]?.id || '',
       lines: seed.lines,
     }),
@@ -146,6 +152,7 @@ export function PurchaseDocumentForm({
     setSupplierId(initial.supplierId);
     setPurchasedAt(initial.purchasedAt);
     setNotes(initial.notes);
+    setAttachmentUrl(initial.attachmentUrl || '');
     setDestinationBranchId(initial.destinationBranchId || branchId || branches[0]?.id || '');
     setLines(initial.lines);
     setBaseline(
@@ -155,6 +162,7 @@ export function PurchaseDocumentForm({
         supplierId: initial.supplierId,
         purchasedAt: initial.purchasedAt,
         notes: initial.notes,
+        attachmentUrl: initial.attachmentUrl || '',
         destinationBranchId: initial.destinationBranchId || branchId || branches[0]?.id || '',
         lines: initial.lines,
       }),
@@ -199,10 +207,10 @@ export function PurchaseDocumentForm({
   const dirty = useMemo(() => {
     if (readOnly) return false;
     return (
-      snapshotOf({ docType, invoice, supplierId, purchasedAt, notes, destinationBranchId, lines }) !==
+      snapshotOf({ docType, invoice, supplierId, purchasedAt, notes, attachmentUrl, destinationBranchId, lines }) !==
       baseline
     );
-  }, [readOnly, docType, invoice, supplierId, purchasedAt, notes, destinationBranchId, lines, baseline]);
+  }, [readOnly, docType, invoice, supplierId, purchasedAt, notes, attachmentUrl, destinationBranchId, lines, baseline]);
 
   const blocker = useBlocker(
     ({ currentLocation, nextLocation }) =>
@@ -351,6 +359,7 @@ export function PurchaseDocumentForm({
           supplierId,
           purchasedAt,
           notes,
+          attachmentUrl,
           destinationBranchId,
           lines,
         }),
@@ -361,6 +370,7 @@ export function PurchaseDocumentForm({
         supplierId,
         purchasedAt,
         notes,
+        attachmentUrl,
         destinationBranchId,
         lines,
       });
@@ -510,6 +520,16 @@ export function PurchaseDocumentForm({
               Ahí se recibirá la mercadería a stock (puede ser distinta a la sucursal de la barra).
             </span>
           </div>
+
+          {!readOnly ? (
+            <AttachImageField
+              value={attachmentUrl}
+              onChange={setAttachmentUrl}
+              disabled={busy}
+            />
+          ) : attachmentUrl ? (
+            <AttachImageField value={attachmentUrl} onChange={() => {}} disabled />
+          ) : null}
 
           <div className="field">
             <label htmlFor="compra-notes">Notas</label>
@@ -716,20 +736,12 @@ export function PurchaseDocumentForm({
                     <ProductPhotoPlaceholder className="ing-line-photo-empty" />
                   )}
                   <div className="ing-line-photo-actions">
-                    <label className="ing-photo-btn">
-                      <input
-                        type="file"
-                        accept="image/*"
-                        capture="environment"
-                        hidden
-                        onChange={(e) => void onPhoto(e.target.files?.[0] ?? null)}
-                      />
-                      {editor.photoBusy
-                        ? 'Subiendo…'
-                        : editor.photoUrl
-                          ? 'Cambiar foto'
-                          : 'Agregar foto'}
-                    </label>
+                    <ProductPhotoInput
+                      hasPhoto={Boolean(editor.photoUrl)}
+                      busy={editor.photoBusy}
+                      disabled={false}
+                      onPick={(file) => void onPhoto(file)}
+                    />
                     {editor.photoUrl ? (
                       <button
                         type="button"

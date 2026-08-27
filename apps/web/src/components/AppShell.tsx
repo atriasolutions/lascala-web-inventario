@@ -103,18 +103,22 @@ const navSections: { id: string; label: string; items: NavItem[] }[] = [
   },
 ];
 
-/** Bottom nav móvil: sin Ventas (POS), Ingresos, Mermas ni historial. */
+/** Bottom nav móvil (administradora): Inicio, Compras, Gastos, Historial + Más. */
 const primaryMobile: NavItem[] = [
   { to: '/', label: 'Inicio', icon: IconHome, helpKey: 'nav.dashboard', end: true, roles: adminOnly },
-  { to: '/inventario', label: 'Stock', icon: IconBox, helpKey: 'nav.stock', end: true },
-  { to: '/productos', label: 'Productos', icon: IconShirt, helpKey: 'nav.productos' },
-  { to: '/movimientos', label: 'Movimientos', icon: IconSwap, helpKey: 'nav.movimientos' },
+  { to: '/compras', label: 'Compras', icon: IconReceipt, helpKey: 'nav.compras', roles: adminOnly },
+  { to: '/gastos', label: 'Gastos', icon: IconWallet, helpKey: 'nav.gastos', roles: adminOnly },
+  { to: '/ventas', label: 'Historial de ventas', icon: IconReceipt, helpKey: 'nav.ventas' },
 ];
 
 const moreLinks: NavItem[] = [
-  { to: '/compras', label: 'Compras', icon: IconReceipt, helpKey: 'nav.compras', roles: adminOnly },
+  { to: '/vender', label: 'Ventas', icon: IconPos, helpKey: 'nav.caja' },
+  { to: '/ingresos', label: 'Ingresos', icon: IconTruck, helpKey: 'nav.ingresos' },
+  { to: '/productos', label: 'Productos', icon: IconShirt, helpKey: 'nav.productos' },
+  { to: '/inventario', label: 'Stock', icon: IconBox, helpKey: 'nav.stock', end: true },
   { to: '/inventarios', label: 'Inventarios', icon: IconClipboardList, helpKey: 'nav.inventarios' },
-  { to: '/gastos', label: 'Gastos', icon: IconWallet, helpKey: 'nav.gastos', roles: adminOnly },
+  { to: '/movimientos', label: 'Movimientos', icon: IconSwap, helpKey: 'nav.movimientos' },
+  { to: '/mermas', label: 'Mermas y cambios', icon: IconAlertTriangle, helpKey: 'nav.mermas' },
   { to: '/reportes', label: 'Reportes', icon: IconChart, helpKey: 'nav.reportes', roles: adminOnly },
   { to: '/ayuda', label: 'Ayuda', icon: IconHelp, helpKey: 'nav.ayuda' },
   { to: '/admin', label: 'Ajustes', icon: IconUsers, helpKey: 'nav.ajustes' },

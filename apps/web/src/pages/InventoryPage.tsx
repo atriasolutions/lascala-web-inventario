@@ -447,9 +447,6 @@ export function InventoryPage() {
                 <span className="inv-intro-extra"> · valor a precio de venta</span>
               </p>
             </div>
-            <Link className="btn secondary inv-mov-btn" to="/movimientos" data-help="cta.stock.movimientos">
-              Movimientos
-            </Link>
           </div>
 
           <div className="inv-stats" aria-label="Resumen de inventario">

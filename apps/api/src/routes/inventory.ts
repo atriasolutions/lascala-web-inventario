@@ -400,6 +400,41 @@ inventoryRouter.get(
 );
 
 inventoryRouter.get(
+  '/stock-by-category',
+  asyncHandler(async (req, res) => {
+    const result = await query<{
+      category_id: string | null;
+      category_name: string;
+      sku_count: string;
+      total_units: string;
+    }>(
+      `SELECT COALESCE(c.id::text, '') AS category_id,
+              COALESCE(NULLIF(TRIM(c.name), ''), 'Sin categoría') AS category_name,
+              COUNT(DISTINCT p.id)::text AS sku_count,
+              COALESCE(SUM(ib.quantity), 0)::text AS total_units
+       FROM inventory_balances ib
+       JOIN products p ON p.id = ib.product_id
+       LEFT JOIN categories c ON c.id = p.category_id
+       WHERE ib.branch_id = $1
+         AND p.status NOT IN ('archived', 'merma', 'returned_to_supplier')
+         AND COALESCE(p.tracks_stock, true) = true
+       GROUP BY c.id, c.name
+       HAVING COALESCE(SUM(ib.quantity), 0) > 0
+       ORDER BY total_units DESC, category_name ASC`,
+      [req.activeBranchId],
+    );
+    res.json({
+      categories: result.rows.map((r) => ({
+        categoryId: r.category_id || null,
+        categoryName: r.category_name,
+        skuCount: Number(r.sku_count || 0),
+        totalUnits: Number(r.total_units || 0),
+      })),
+    });
+  }),
+);
+
+inventoryRouter.get(
   '/alerts',
   asyncHandler(async (req, res) => {
     const [lowStock, noMovement] = await Promise.all([
