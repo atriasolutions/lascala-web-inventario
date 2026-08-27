@@ -927,7 +927,7 @@ export function ExpensesPage() {
             if (e.target === e.currentTarget) closeForm();
           }}
         >
-          <ModalOverlayClose onClose={closeForm}>
+          <ModalOverlayClose onClose={() => closeForm()}>
           <div
             className="pos-modal-panel gasto-form-sheet"
             ref={formRef}
@@ -1005,7 +1005,12 @@ export function ExpensesPage() {
               />
 
               <div className="btn-row gasto-form-actions">
-                <button type="button" className="btn secondary" onClick={closeForm} disabled={saving}>
+                <button
+                  type="button"
+                  className="btn secondary"
+                  onClick={() => closeForm()}
+                  disabled={saving}
+                >
                   Cancelar
                 </button>
                 <button type="submit" className="btn" disabled={saving}>

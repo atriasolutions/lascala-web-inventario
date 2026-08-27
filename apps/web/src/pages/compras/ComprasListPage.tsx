@@ -4,7 +4,7 @@ import { InfiniteListFooter } from '../../components/InfiniteListFooter';
 import { ModalOverlayClose } from '../../components/ModalOverlayClose';
 import { SortableTh } from '../../components/SortableTh';
 import { useInfiniteList } from '../../hooks/useInfiniteList';
-import { api, money } from '../../lib/api';
+import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
 import { withPagination } from '../../lib/pagination';
 import {

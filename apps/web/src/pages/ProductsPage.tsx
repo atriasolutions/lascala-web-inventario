@@ -7,6 +7,7 @@ import {
   useState,
 } from 'react';
 import { ProductPhotoInput } from '../components/ProductPhotoInput';
+import { ProductPhotoPlaceholder } from '../components/ProductPhotoPlaceholder';
 import { ProductFichaFields } from '../components/ProductFichaFields';
 import {
   ProductCodeEntry,

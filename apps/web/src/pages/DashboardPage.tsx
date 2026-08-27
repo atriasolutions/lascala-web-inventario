@@ -415,10 +415,7 @@ export function DashboardPage() {
         <div className="dash-attention">
           {attention.map((item) => {
             const hideOnMobile =
-              item.to === '/ingresos' ||
-              item.to.startsWith('/ingresos?') ||
-              item.to === '/ventas' ||
-              item.to.startsWith('/ventas?');
+              item.to === '/ingresos' || item.to.startsWith('/ingresos?');
             return (
               <Link
                 key={item.to + item.label}

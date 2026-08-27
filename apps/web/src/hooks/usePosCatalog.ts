@@ -90,7 +90,8 @@ export function usePosCatalog(branchId: string | null | undefined) {
   );
 
   const syncFromApi = useCallback(
-    async (id: string, opts?: { force?: boolean }) => {
+    async (id: string, _opts?: { force?: boolean }) => {
+      void _opts;
       if (syncInFlightRef.current) return null;
       syncInFlightRef.current = true;
       setSyncing(true);

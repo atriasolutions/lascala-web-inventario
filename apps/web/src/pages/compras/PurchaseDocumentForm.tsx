@@ -15,6 +15,7 @@ import { IconTrash } from '../../components/icons';
 import { MarginHint } from '../../components/MarginHint';
 import { ModalOverlayClose } from '../../components/ModalOverlayClose';
 import { ProductPhotoInput } from '../../components/ProductPhotoInput';
+import { ProductPhotoPlaceholder } from '../../components/ProductPhotoPlaceholder';
 import { AttachImageField } from '../../components/AttachImageField';
 import { SupplierLookup } from '../../components/SupplierLookup';
 import { api, mediaUrl, money } from '../../lib/api';

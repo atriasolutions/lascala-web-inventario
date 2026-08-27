@@ -8,6 +8,7 @@ import {
 import { ProductFichaFields } from './ProductFichaFields';
 import { ConfirmDialog } from './ConfirmDialog';
 import { ProductPhotoInput } from './ProductPhotoInput';
+import { ProductPhotoPlaceholder } from './ProductPhotoPlaceholder';
 import { api, mediaUrl, money } from '../lib/api';
 import { lineFloorSalePrice, type PurchaseItem } from '../lib/purchasesStatus';
 import { fileToDataUrl } from '../pages/compras/purchaseFormTypes';
