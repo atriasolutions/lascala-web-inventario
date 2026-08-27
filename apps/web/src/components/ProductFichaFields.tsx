@@ -18,7 +18,6 @@ export type ProductFichaValues = {
   name: string;
   categoryId: string;
   brand: string;
-  productType: string;
   sizeLabel: string;
   color: string;
   season: string;
@@ -33,7 +32,6 @@ export type ProductFichaFieldKey =
   | 'categoryId'
   | 'salePrice'
   | 'brand'
-  | 'productType'
   | 'sizeLabel'
   | 'color'
   | 'season'
@@ -289,20 +287,6 @@ export function ProductFichaFields({
               id={`${idPrefix}-brand`}
               value={values.brand}
               onChange={(e) => onChange({ brand: e.target.value })}
-              autoComplete="off"
-              disabled={disabled}
-            />,
-          )}
-          {field(
-            'productType',
-            'Tipología',
-            `${idPrefix}-type`,
-            displayOrDash(values.productType),
-            <input
-              id={`${idPrefix}-type`}
-              value={values.productType}
-              onChange={(e) => onChange({ productType: e.target.value })}
-              placeholder="Ej. vestido, jeans"
               autoComplete="off"
               disabled={disabled}
             />,

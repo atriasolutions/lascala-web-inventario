@@ -12,7 +12,7 @@ export const HELP_TIPS: Record<string, string> = {
   'nav.ventas':
     'Historial de tickets cobrados en la sucursal activa. No sirve para registrar una venta nueva: eso es Ventas.',
   'nav.productos':
-    'Catálogo: ficha, foto, código LS… y tipología. El Precio costo no se inventa acá; vive en Ingresos.',
+    'Catálogo: ficha, foto y código LS…. El Precio costo no se inventa acá; vive en Ingresos.',
   'nav.stock':
     'Stock de vitrina de la sucursal activa: cuántas unidades hay y a cuánto suman a precio de venta.',
   'nav.inventarios':

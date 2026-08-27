@@ -63,7 +63,6 @@ type FormState = {
   brand: string;
   sizeLabel: string;
   color: string;
-  productType: string;
   season: string;
   description: string;
   notes: string;
@@ -87,7 +86,6 @@ const emptyForm = (): FormState => ({
   brand: '',
   sizeLabel: '',
   color: '',
-  productType: '',
   season: '',
   description: '',
   notes: '',
@@ -504,7 +502,6 @@ export function ProductsPage() {
       brand: product.brand || '',
       sizeLabel: product.size_label || '',
       color: product.color || '',
-      productType: product.product_type || '',
       season: product.season || '',
       description: product.description || '',
       notes: product.notes || '',
@@ -799,7 +796,6 @@ export function ProductsPage() {
       brand: form.brand.trim() || null,
       sizeLabel: form.sizeLabel.trim() || null,
       color: form.color.trim() || null,
-      productType: form.productType.trim() || null,
       season: form.season.trim() || null,
       description: form.description.trim() || null,
       notes: form.notes.trim() || null,
@@ -811,9 +807,12 @@ export function ProductsPage() {
         ? Math.max(0, Math.round(Number(form.lowStockThreshold) || 1))
         : 1,
       noMovementAlertDays: form.tracksStock
-        ? form.noMovementAlertDays.trim()
-          ? Math.max(1, Math.round(Number(form.noMovementAlertDays)) || 30)
-          : null
+        ? (() => {
+            const raw = form.noMovementAlertDays.trim();
+            if (!raw) return null;
+            const n = Math.round(Number(raw));
+            return Number.isFinite(n) && n > 0 ? n : null;
+          })()
         : null,
     };
     if (canEditSalePrice) body.salePrice = sale;
@@ -854,7 +853,6 @@ export function ProductsPage() {
           brand: (body.brand as string | null) ?? null,
           size_label: (body.sizeLabel as string | null) ?? null,
           color: (body.color as string | null) ?? null,
-          product_type: (body.productType as string | null) ?? null,
           season: (body.season as string | null) ?? null,
           description: (body.description as string | null) ?? null,
           notes: (body.notes as string | null) ?? null,
@@ -1114,7 +1112,6 @@ export function ProductsPage() {
                       : p.barcode || p.internal_code}
                     {p.brand ? ` · ${p.brand}` : ''}
                     {p.size_label ? ` · ${p.size_label}` : ''}
-                    {p.product_type ? ` · ${p.product_type}` : ''}
                   </div>
                   <PolicyLine
                     className="prod-card-policy"
@@ -1211,7 +1208,6 @@ export function ProductsPage() {
                     name: form.name,
                     categoryId: form.categoryId,
                     brand: form.brand,
-                    productType: form.productType,
                     sizeLabel: form.sizeLabel,
                     color: form.color,
                     season: form.season,
@@ -1454,13 +1450,17 @@ export function ProductsPage() {
                             <label htmlFor="prod-modal-nomov">Alerta sin mov. (días)</label>
                             <input
                               id="prod-modal-nomov"
-                              type="number"
-                              min={1}
-                              step={1}
+                              type="text"
                               inputMode="numeric"
+                              pattern="[0-9]*"
+                              autoComplete="off"
                               value={form.noMovementAlertDays}
-                              onChange={(e) => patchForm({ noMovementAlertDays: e.target.value })}
-                              placeholder="Org. default"
+                              onChange={(e) =>
+                                patchForm({
+                                  noMovementAlertDays: e.target.value.replace(/[^\d]/g, ''),
+                                })
+                              }
+                              placeholder="Ej. 30"
                             />
                           </div>
                         </div>

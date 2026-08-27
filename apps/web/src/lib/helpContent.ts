@@ -422,7 +422,7 @@ export const HELP_CHAPTERS: HelpChapter[] = [
         items: [
           'Búsqueda y filtros',
           'Nueva prenda',
-          'En la ficha: foto, código, tipología y si es vestido de fiesta',
+          'En la ficha: foto, código y si es vestido de fiesta',
         ],
       },
       {

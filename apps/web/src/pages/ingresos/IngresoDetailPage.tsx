@@ -516,7 +516,6 @@ export function IngresoDetailPage() {
     brand: string | null;
     sizeLabel: string | null;
     color: string | null;
-    productType: string | null;
     season: string | null;
     description: string | null;
     photoUrl: string | null;
@@ -543,7 +542,6 @@ export function IngresoDetailPage() {
               brand: payload.brand,
               sizeLabel: payload.sizeLabel,
               color: payload.color,
-              productType: payload.productType,
               season: payload.season,
               description: payload.description,
               photoUrl: payload.photoUrl,

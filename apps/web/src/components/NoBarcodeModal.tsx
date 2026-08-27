@@ -54,7 +54,6 @@ type Props = {
     brand: string | null;
     sizeLabel: string | null;
     color: string | null;
-    productType: string | null;
     season: string | null;
     description: string | null;
     photoUrl: string | null;
@@ -110,7 +109,6 @@ export function NoBarcodeModal({
   const [sizeLabel, setSizeLabel] = useState('');
   const [categoryId, setCategoryId] = useState('');
   const [brand, setBrand] = useState('');
-  const [productType, setProductType] = useState('');
   const [season, setSeason] = useState('');
   const [description, setDescription] = useState('');
   const [photoUrl, setPhotoUrl] = useState('');
@@ -190,7 +188,6 @@ export function NoBarcodeModal({
     setSizeLabel(first?.size_label || '');
     setCategoryId('');
     setBrand('');
-    setProductType('');
     setSeason('');
     setDescription(first?.description || '');
     setReceiveQty(1);
@@ -350,7 +347,6 @@ export function NoBarcodeModal({
         brand: brand.trim() || null,
         sizeLabel: sizeLabel.trim() || null,
         color: color.trim() || null,
-        productType: productType.trim() || null,
         season: season.trim() || null,
         description: description.trim() || null,
         photoUrl: photoUrl.trim() || null,
@@ -607,7 +603,6 @@ export function NoBarcodeModal({
                           name,
                           categoryId,
                           brand,
-                          productType,
                           sizeLabel,
                           color,
                           season,
@@ -617,7 +612,6 @@ export function NoBarcodeModal({
                           if (partial.name !== undefined) setName(partial.name);
                           if (partial.categoryId !== undefined) setCategoryId(partial.categoryId);
                           if (partial.brand !== undefined) setBrand(partial.brand);
-                          if (partial.productType !== undefined) setProductType(partial.productType);
                           if (partial.sizeLabel !== undefined) setSizeLabel(partial.sizeLabel);
                           if (partial.color !== undefined) setColor(partial.color);
                           if (partial.season !== undefined) setSeason(partial.season);
