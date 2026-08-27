@@ -17,12 +17,13 @@ export default defineConfig({
       ],
       manifest: {
         name: "L'Scala Inventarios",
-        short_name: "L'Scala Caja",
+        short_name: "L'Scala",
         description:
           "Gestión de inventarios y caja para Boutique L'Scala (Calama). Atria Solutions SpA.",
         lang: 'es-CL',
         dir: 'ltr',
-        start_url: '/',
+        /** Landing canónico; reopen iOS puede restaurar última URL — ver OwnerColdBootAwayFromPos. */
+        start_url: '/?utm_source=pwa',
         scope: '/',
         display: 'standalone',
         orientation: 'any',

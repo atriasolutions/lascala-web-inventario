@@ -1,10 +1,12 @@
-import { Suspense, lazy, type ReactNode } from 'react';
+import { Suspense, lazy, type ReactNode, useEffect } from 'react';
 import { Navigate, createBrowserRouter } from 'react-router-dom';
 import { AppShell } from './components/AppShell';
 import { BoutiqueLoader } from './components/BoutiqueLoader';
 import { RequireOnline } from './components/RequireOnline';
 import { useAuth } from './lib/auth';
+import { endColdBoot, isColdBoot } from './lib/appBoot';
 import { userMustChangePassword } from './lib/authPassword';
+import { isAdminRole } from './lib/roles';
 import { LoginPage } from './pages/LoginPage';
 import { ForceChangePasswordPage } from './pages/ForceChangePasswordPage';
 import { PosPage } from './pages/PosPage';
@@ -54,6 +56,39 @@ function OnlineOnly({ children }: { children: ReactNode }) {
   return <RequireOnline>{children}</RequireOnline>;
 }
 
+function useIsOwnerUser() {
+  const { branches, branchId, user } = useAuth();
+  const activeRole = branches.find((b) => b.id === branchId)?.role;
+  return (
+    Boolean(user?.isSuperadmin) ||
+    isAdminRole(activeRole || '') ||
+    branches.some((b) => isAdminRole(b.role || ''))
+  );
+}
+
+/**
+ * PWA/iOS restaura la última URL al reopen. Si Admin quedó en /vender,
+ * al cold boot (nuevo contexto JS) lo mandamos a Inicio.
+ * Navegación SPA a Ventas dentro de la misma sesión no se toca.
+ */
+function OwnerColdBootAwayFromPos({ children }: { children: ReactNode }) {
+  const { loading } = useAuth();
+  const isOwner = useIsOwnerUser();
+  if (loading) return <BoutiqueLoader label="Preparando sesión…" variant="page" />;
+  if (isOwner && isColdBoot()) {
+    return <Navigate to="/" replace />;
+  }
+  return children;
+}
+
+/** Marca fin de cold boot tras el primer paint del shell autenticado. */
+function BootAwareShell() {
+  useEffect(() => {
+    endColdBoot();
+  }, []);
+  return <AppShell />;
+}
+
 function Protected({ children }: { children: React.ReactNode }) {
   const { token, loading, branchId, user } = useAuth();
   if (loading) return <BoutiqueLoader label="Preparando sesión…" variant="page" />;
@@ -98,8 +133,8 @@ function HomeRedirect() {
   const activeRole = branches.find((b) => b.id === branchId)?.role;
   const isOwner =
     Boolean(user?.isSuperadmin) ||
-    activeRole === 'owner' ||
-    branches.some((b) => b.role === 'owner');
+    isAdminRole(activeRole || '') ||
+    branches.some((b) => isAdminRole(b.role || ''));
   if (isOwner) {
     return (
       <OnlineOnly>
@@ -124,7 +159,7 @@ export const router = createBrowserRouter([
     path: '/',
     element: (
       <Protected>
-        <AppShell />
+        <BootAwareShell />
       </Protected>
     ),
     children: [
@@ -132,7 +167,14 @@ export const router = createBrowserRouter([
         index: true,
         element: <HomeRedirect />,
       },
-      { path: 'vender', element: <PosPage /> },
+      {
+        path: 'vender',
+        element: (
+          <OwnerColdBootAwayFromPos>
+            <PosPage />
+          </OwnerColdBootAwayFromPos>
+        ),
+      },
       {
         path: 'ventas',
         element: (
