@@ -56,13 +56,12 @@ const pinnedNav: NavItem = {
 
 /**
  * Sidebar desktop — grupos colapsables.
- * Piso: cobrar + recepción + mermas juntos (inicio operativo).
- * Mobile bottom/Más: sin Ventas(/vender), Ingresos, Mermas ni Historial (/ventas).
+ * Tienda / Administración / Control logístico; Ayuda suelta (sin acordeón).
  */
 const navSections: { id: string; label: string; items: NavItem[] }[] = [
   {
-    id: 'piso',
-    label: 'Piso',
+    id: 'tienda',
+    label: 'Tienda',
     items: [
       { to: '/vender', label: 'Ventas', icon: IconPos, helpKey: 'nav.caja' },
       { to: '/ingresos', label: 'Ingresos', icon: IconTruck, helpKey: 'nav.ingresos' },
@@ -70,17 +69,19 @@ const navSections: { id: string; label: string; items: NavItem[] }[] = [
     ],
   },
   {
-    id: 'operacion',
-    label: 'Operación',
+    id: 'administracion',
+    label: 'Administración',
     items: [
       { to: '/compras', label: 'Compras', icon: IconReceipt, helpKey: 'nav.compras', roles: adminOnly },
       { to: '/ventas', label: 'Historial de ventas', icon: IconReceipt, helpKey: 'nav.ventas' },
       { to: '/gastos', label: 'Gastos', icon: IconWallet, helpKey: 'nav.gastos', roles: adminOnly },
+      { to: '/reportes', label: 'Reportes', icon: IconChart, helpKey: 'nav.reportes', roles: adminOnly },
+      { to: '/admin', label: 'Ajustes', icon: IconUsers, helpKey: 'nav.ajustes' },
     ],
   },
   {
-    id: 'inventario',
-    label: 'Inventario',
+    id: 'logistica',
+    label: 'Control logístico',
     items: [
       { to: '/productos', label: 'Productos', icon: IconShirt, helpKey: 'nav.productos' },
       { to: '/inventario', label: 'Stock', icon: IconBox, helpKey: 'nav.stock', end: true },
@@ -88,27 +89,21 @@ const navSections: { id: string; label: string; items: NavItem[] }[] = [
       { to: '/movimientos', label: 'Movimientos', icon: IconSwap, helpKey: 'nav.movimientos' },
     ],
   },
-  {
-    id: 'control',
-    label: 'Control',
-    items: [
-      { to: '/reportes', label: 'Reportes', icon: IconChart, helpKey: 'nav.reportes', roles: adminOnly },
-      { to: '/ayuda', label: 'Ayuda', icon: IconHelp, helpKey: 'nav.ayuda' },
-    ],
-  },
-  {
-    id: 'admin',
-    label: 'Administración',
-    items: [{ to: '/admin', label: 'Ajustes', icon: IconUsers, helpKey: 'nav.ajustes' }],
-  },
 ];
+
+const helpNavItem: NavItem = {
+  to: '/ayuda',
+  label: 'Ayuda',
+  icon: IconHelp,
+  helpKey: 'nav.ayuda',
+};
 
 /** Bottom nav móvil (administradora): Inicio, Compras, Gastos, Historial + Más. */
 const primaryMobile: NavItem[] = [
   { to: '/', label: 'Inicio', icon: IconHome, helpKey: 'nav.dashboard', end: true, roles: adminOnly },
   { to: '/compras', label: 'Compras', icon: IconReceipt, helpKey: 'nav.compras', roles: adminOnly },
   { to: '/gastos', label: 'Gastos', icon: IconWallet, helpKey: 'nav.gastos', roles: adminOnly },
-  { to: '/ventas', label: 'Historial de ventas', icon: IconReceipt, helpKey: 'nav.ventas' },
+  { to: '/ventas', label: 'Historial', icon: IconReceipt, helpKey: 'nav.ventas' },
 ];
 
 const moreLinks: NavItem[] = [
@@ -127,11 +122,9 @@ const moreLinks: NavItem[] = [
 const NAV_SECTIONS_LS_KEY = 'lscala-nav-sections-open';
 
 const DEFAULT_OPEN_SECTIONS: Record<string, boolean> = {
-  piso: true,
-  operacion: true,
-  inventario: true,
-  control: false,
-  admin: false,
+  tienda: true,
+  administracion: true,
+  logistica: true,
 };
 
 function canSeeNav(item: NavItem, role: string) {
@@ -258,9 +251,13 @@ export function AppShell() {
 
   const eyebrow = useMemo(() => {
     if (location.pathname.startsWith('/admin')) return "Boutique L'Scala · administración";
-    if (location.pathname.startsWith('/compras')) return "Boutique L'Scala · operación";
-    if (location.pathname.startsWith('/ingresos')) return "Boutique L'Scala · piso de venta";
-    return "Boutique L'Scala · piso de venta";
+    if (location.pathname.startsWith('/compras') || location.pathname.startsWith('/reportes')) {
+      return "Boutique L'Scala · administración";
+    }
+    if (location.pathname.startsWith('/productos') || location.pathname.startsWith('/inventario')) {
+      return "Boutique L'Scala · control logístico";
+    }
+    return "Boutique L'Scala · tienda";
   }, [location.pathname]);
 
   const visibleSections = useMemo(
@@ -331,7 +328,7 @@ export function AppShell() {
               return (
                 <div
                   className={`nav-section${isOpen ? ' is-open' : ''}${
-                    section.id === 'piso' ? ' is-piso' : ''
+                    section.id === 'tienda' ? ' is-piso' : ''
                   }`}
                   key={section.id}
                 >
@@ -361,7 +358,7 @@ export function AppShell() {
                         data-help={l.helpKey}
                         className={({ isActive }) =>
                           `${isActive ? 'active' : ''}${
-                            section.id === 'piso' ? ' nav-link-piso' : ''
+                            section.id === 'tienda' ? ' nav-link-piso' : ''
                           }${offlineNavClass(l.to)}`.trim()
                         }
                         title={!online && l.to !== '/vender' ? 'Se necesita conexión' : undefined}
@@ -374,6 +371,19 @@ export function AppShell() {
                 </div>
               );
             })}
+            <NavLink
+              to={helpNavItem.to}
+              data-help={helpNavItem.helpKey}
+              className={({ isActive }) =>
+                `nav-help-link${isActive ? ' active' : ''}${offlineNavClass(helpNavItem.to)}`
+              }
+              title={!online ? 'Se necesita conexión' : undefined}
+            >
+              <span className="nav-ico">
+                <helpNavItem.icon size={18} />
+              </span>
+              {helpNavItem.label}
+            </NavLink>
           </nav>
         </aside>
 

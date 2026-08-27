@@ -41,7 +41,12 @@ export function LoginPage() {
         </div>
       </section>
 
-      <form className="login-card" onSubmit={(e) => void onSubmit(e)} aria-label="Ingreso al sistema">
+      <form
+        className="login-card"
+        onSubmit={(e) => void onSubmit(e)}
+        aria-label="Ingreso al sistema"
+        autoComplete="off"
+      >
         <div className="login-card-glow" aria-hidden="true" />
         <div className="login-card-inner">
           <div className="login-brand">
@@ -68,7 +73,8 @@ export function LoginPage() {
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 type="email"
-                autoComplete="username"
+                autoComplete="off"
+                name="lscala-login-email"
                 inputMode="email"
                 required
               />
@@ -77,10 +83,11 @@ export function LoginPage() {
               <label htmlFor="login-password">Contraseña</label>
               <input
                 id="login-password"
+                name="lscala-login-password"
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 type="password"
-                autoComplete="current-password"
+                autoComplete="off"
                 required
               />
             </div>

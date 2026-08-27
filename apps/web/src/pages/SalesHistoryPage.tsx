@@ -493,7 +493,7 @@ export function SalesHistoryPage() {
             <div className="page-intro" style={{ marginBottom: 0 }}>
               <p>Comprobantes de la sucursal activa</p>
             </div>
-            <Link className="btn secondary sales-pos-btn" to="/vender">
+            <Link className="btn secondary sales-pos-btn desktop-only" to="/vender">
               Ir a ventas
             </Link>
           </div>

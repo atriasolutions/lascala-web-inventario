@@ -1819,17 +1819,21 @@ export function MermasPage() {
                   ) : (
                     <div className="merma-wizard-actions-col">
                       <div className="field merma-qty-field">
-                        <label htmlFor="merma-qty">Cantidad</label>
-                        <input
+                        <label htmlFor="merma-qty">Unidades a dar de baja</label>
+                        <select
                           id="merma-qty"
-                          type="number"
-                          min={1}
-                          max={mermaStock}
-                          inputMode="numeric"
                           value={mermaQty}
                           onChange={(e) => setMermaQty(e.target.value)}
-                        />
-                        <span className="muted">Máximo {mermaStock}</span>
+                        >
+                          {Array.from({ length: Math.max(1, mermaStock) }, (_, i) => i + 1).map(
+                            (n) => (
+                              <option key={n} value={String(n)}>
+                                {n} {n === 1 ? 'unidad' : 'unidades'}
+                              </option>
+                            ),
+                          )}
+                        </select>
+                        <span className="muted">Máximo en stock: {mermaStock}</span>
                       </div>
                       <div className="merma-choice" role="group" aria-label="Destino de la prenda">
                         {MERMA_DESTINATIONS.map((d) => (

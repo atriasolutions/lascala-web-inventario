@@ -31,7 +31,7 @@ type JwtPayload = { sub: string; organizationId: string };
 
 /** Rutas permitidas mientras debe cambiar contraseña. */
 const MUST_CHANGE_ALLOW =
-  /^\/api\/auth\/(me|change-password|refresh)(\/|$)/;
+  /^\/api\/auth\/(me|change-password|refresh|context\/branches)(\/|$)/;
 
 export function resolveSessionTtl(input: { client?: unknown; persistent?: unknown }): {
   persistent: boolean;

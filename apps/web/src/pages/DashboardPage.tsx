@@ -256,10 +256,6 @@ export function DashboardPage() {
       </section>
 
       <nav className="dash-action-strip desktop-only" aria-label="Acciones rápidas">
-        <Link to="/gastos" className="btn secondary dash-action-btn">
-          <IconWallet size={18} />
-          Gastos
-        </Link>
         <Link to="/compras" className="btn secondary dash-action-btn">
           <IconReceipt size={18} />
           Compras
@@ -510,9 +506,6 @@ export function DashboardPage() {
                 <div>
                   <strong>Todavía no hay ventas por categoría</strong>
                   <p>Cuando registres ventas, aquí verás cuánto se vende de cada tipo de prenda.</p>
-                  <Link to="/vender" className="dash-text-link">
-                    Ir a ventas →
-                  </Link>
                 </div>
               </div>
             ) : (

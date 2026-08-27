@@ -643,7 +643,7 @@ a.is-nav-offline,
   min-width: 0;
   min-height: var(--bottom-nav-h);
   height: var(--bottom-nav-h);
-  padding: 0.25rem 0.15rem;
+  padding: 0.25rem 0.2rem;
   border: none;
   border-radius: 12px;
   background: transparent;
@@ -652,7 +652,11 @@ a.is-nav-offline,
   font-size: 0.62rem;
   font-weight: 650;
   letter-spacing: 0.01em;
-  line-height: 1.1;
+  line-height: 1.15;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
   cursor: pointer;
   appearance: none;
   transition: background 140ms ease, color 140ms ease;
@@ -3086,7 +3090,7 @@ a.is-nav-offline,
   width: 100%;
   height: 100%;
   object-fit: cover;
-  object-position: center 18%;
+  object-position: center 32%;
   animation: loginBanner 14s ease-out both;
 }
 
@@ -6537,6 +6541,29 @@ a.ing-row:hover { border-color: #e3b7cf; }
   min-height: 44px;
   white-space: nowrap;
 }
+.prod-price-audit {
+  margin-top: 0.65rem;
+  display: grid;
+  gap: 0.65rem;
+}
+.prod-price-audit-block {
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--color-line);
+  border-radius: var(--radius-sm);
+  background: rgba(255, 248, 251, 0.85);
+}
+.prod-price-audit-list {
+  list-style: none;
+  margin: 0.35rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.4rem;
+}
+.prod-price-audit-list li {
+  display: grid;
+  gap: 0.1rem;
+  font-size: 0.86rem;
+}
 .sales-stats {
   margin: 0;
 }
@@ -7532,17 +7559,34 @@ button.inv-stat.is-active {
   box-shadow: inset 3px 0 0 #b00040;
 }
 
-/* Figura Inventario = misma escala que Compras (regla compartida .ing-list-figure) */
+/* Figura Inventario reemplazada: panel de stats a la derecha */
 @media (min-width: 1100px) {
-  .main:has(.inv-list) .inv-list-figure {
-    background: transparent !important;
-    box-shadow: none;
-    border: none;
+  .main:has(.inv-list) .ing-list-workspace {
+    grid-template-columns: minmax(0, 1fr) minmax(200px, 240px);
+  }
+  .main:has(.inv-list) .inv-side-panel {
+    display: flex;
+    flex-direction: column;
+    gap: 0.65rem;
+    align-self: start;
+    position: sticky;
+    top: 0.5rem;
+  }
+  .main:has(.inv-list) .inv-stats-side {
+    display: grid;
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+  }
+  .main:has(.inv-list) .inv-stats-mobile {
+    display: none;
   }
 }
 @media (max-width: 1099px) {
-  .main:has(.inv-list) .inv-list-figure {
+  .main:has(.inv-list) .inv-side-panel {
     display: none;
+  }
+  .main:has(.inv-list) .inv-stats-mobile {
+    display: grid;
   }
 }
 
@@ -10959,6 +11003,11 @@ body.help-mode-touch::after {
 .nav-primary a[href="/ayuda"] .nav-ico,
 .more-grid a[href="/ayuda"] .nav-ico {
   color: #e6007e;
+}
+.nav-help-link {
+  margin-top: 0.45rem;
+  border-top: 1px solid rgba(42, 26, 34, 0.08);
+  padding-top: 0.45rem !important;
 }
 .help-mode-banner {
   flex-shrink: 0;

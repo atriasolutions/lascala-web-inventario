@@ -61,7 +61,13 @@ function Protected({ children }: { children: React.ReactNode }) {
   if (userMustChangePassword(user)) {
     return <ForceChangePasswordPage />;
   }
-  if (!branchId) return <p className="muted" style={{ padding: '2rem' }}>Sin sucursal asignada</p>;
+  if (!branchId) {
+    return (
+      <p className="muted" style={{ padding: '2rem' }}>
+        Sin sucursal asignada. Pide a quien administra que te asigne una sucursal y una caja.
+      </p>
+    );
+  }
   return children;
 }
 
@@ -76,7 +82,7 @@ function RequireRoles({
   if (loading) return <BoutiqueLoader label="Cargando…" variant="page" />;
   const role = branches.find((b) => b.id === branchId)?.role;
   if (!role || !allow.includes(role as 'owner' | 'branch_manager' | 'seller')) {
-    return <Navigate to="/vender" replace />;
+    return <Navigate to={role === 'owner' ? '/' : '/vender'} replace />;
   }
   return children;
 }
@@ -87,10 +93,14 @@ function RequireAdmin({ children }: { children: React.ReactNode }) {
 
 /** Landing `/` según rol y viewport (mismo corte ~900px del AppShell). */
 function HomeRedirect() {
-  const { branches, branchId, loading } = useAuth();
+  const { branches, branchId, loading, user } = useAuth();
   if (loading) return <BoutiqueLoader label="Cargando…" variant="page" />;
-  const role = branches.find((b) => b.id === branchId)?.role;
-  if (role === 'owner') {
+  const activeRole = branches.find((b) => b.id === branchId)?.role;
+  const isOwner =
+    Boolean(user?.isSuperadmin) ||
+    activeRole === 'owner' ||
+    branches.some((b) => b.role === 'owner');
+  if (isOwner) {
     return (
       <OnlineOnly>
         <Lazy>
@@ -101,7 +111,7 @@ function HomeRedirect() {
   }
   const isMobile =
     typeof window !== 'undefined' && window.matchMedia('(max-width: 900px)').matches;
-  if (role === 'branch_manager' || role === 'seller') {
+  if (activeRole === 'branch_manager' || activeRole === 'seller') {
     return <Navigate to={isMobile ? '/productos' : '/vender'} replace />;
   }
   return <Navigate to="/vender" replace />;

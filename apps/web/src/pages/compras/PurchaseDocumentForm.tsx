@@ -9,7 +9,6 @@ import {
   useState,
 } from 'react';
 import { Link, useBlocker, useNavigate } from 'react-router-dom';
-import { BoutiqueMood } from '../../components/BoutiqueMood';
 import { ChileMoneyInput } from '../../components/ChileMoneyInput';
 import { ConfirmDialog } from '../../components/ConfirmDialog';
 import { IconTrash } from '../../components/icons';
@@ -21,6 +20,7 @@ import { SupplierLookup } from '../../components/SupplierLookup';
 import { api, mediaUrl, money } from '../../lib/api';
 import { parseChileMoney } from '../../lib/chileMoney';
 import { useAuth } from '../../lib/auth';
+import { computeMargin, MIN_SALE_COST_MULTIPLIER } from '../../lib/margin';
 import { toast } from '../../lib/toast';
 import {
   blankEditor,
@@ -100,10 +100,12 @@ export function PurchaseDocumentForm({
   submitLabel = 'Guardar compra',
   successToast = 'Compra guardada',
   banner,
-  moodTitle = 'Documento de compra',
-  moodCopy = 'Registra factura o boleta y las prendas. La recepción a stock se hace después en Ingresos.',
+  moodTitle: _moodTitle = 'Documento de compra',
+  moodCopy: _moodCopy = 'Registra factura o boleta y las prendas. La recepción a stock se hace después en Ingresos.',
   onSubmit,
 }: Props) {
+  void _moodTitle;
+  void _moodCopy;
   const readOnly = mode === 'view';
   const navigate = useNavigate();
   const { branches, branchId } = useAuth();
@@ -144,6 +146,7 @@ export function PurchaseDocumentForm({
   const [editor, setEditor] = useState<LineEditor | null>(null);
   const [editorMode, setEditorMode] = useState<'create' | 'edit'>('create');
   const [editorError, setEditorError] = useState('');
+  const [lowMarginOpen, setLowMarginOpen] = useState(false);
 
   useEffect(() => {
     if (!initial) return;
@@ -299,11 +302,18 @@ export function PurchaseDocumentForm({
     }
   }
 
-  function commitLineToList() {
+  function commitLineToList(opts?: { skipMarginCheck?: boolean }) {
     if (!editor || readOnly) return;
     const msg = validateEditor(editor);
     if (msg) {
       setEditorError(msg);
+      return;
+    }
+    const cost = parseChileMoney(editor.unitCost);
+    const sale = parseChileMoney(editor.salePrice);
+    const margin = computeMargin(cost, sale);
+    if (!opts?.skipMarginCheck && margin?.isLow) {
+      setLowMarginOpen(true);
       return;
     }
     const saved: LineDraft = {
@@ -320,6 +330,7 @@ export function PurchaseDocumentForm({
       return [...prev, saved];
     });
     setListNudge(editorMode === 'edit' ? 'updated' : 'added');
+    setLowMarginOpen(false);
     closeEditor();
   }
 
@@ -653,13 +664,6 @@ export function PurchaseDocumentForm({
             </button>
           )}
         </section>
-
-        <BoutiqueMood
-          className="ing-new-mood desktop-only"
-          image="/brand/ingresos-mood.jpg"
-          title={moodTitle}
-          copy={moodCopy}
-        />
       </div>
 
       {error && <p className="error">{error}</p>}
@@ -816,7 +820,7 @@ export function PurchaseDocumentForm({
                 <button
                   type="button"
                   className="btn"
-                  onClick={commitLineToList}
+                  onClick={() => commitLineToList()}
                   disabled={editor.photoBusy}
                 >
                   {editorMode === 'create' ? 'Agregar a la lista' : 'Actualizar en la lista'}
@@ -836,6 +840,16 @@ export function PurchaseDocumentForm({
         danger
         onCancel={cancelLeave}
         onConfirm={confirmLeave}
+      />
+      <ConfirmDialog
+        open={lowMarginOpen}
+        title="Margen bajo"
+        message={`El precio de venta queda bajo ${MIN_SALE_COST_MULTIPLIER}× el Precio costo. ¿Confirmas que no es un error y quieres agregar la prenda igual?`}
+        cancelLabel="Revisar precio"
+        confirmLabel="Sí, agregar con margen bajo"
+        danger
+        onCancel={() => setLowMarginOpen(false)}
+        onConfirm={() => commitLineToList({ skipMarginCheck: true })}
       />
     </form>
   );

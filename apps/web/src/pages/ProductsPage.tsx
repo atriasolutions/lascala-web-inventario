@@ -276,6 +276,21 @@ export function ProductsPage() {
   const [archiveConfirm, setArchiveConfirm] = useState(false);
   const [cancelConfirm, setCancelConfirm] = useState(false);
   const [archiving, setArchiving] = useState(false);
+  const [priceAudit, setPriceAudit] = useState<{
+    salePriceHistory: Array<{
+      at: string;
+      from: number;
+      to: number;
+      userName: string;
+    }>;
+    purchaseCosts: Array<{
+      unit_cost: string;
+      purchased_at: string | null;
+      invoice_number: string | null;
+      quantity: string;
+    }>;
+  } | null>(null);
+  const [priceAuditLoading, setPriceAuditLoading] = useState(false);
 
   const modalTitleId = useId();
   const filtersTitleId = useId();
@@ -507,7 +522,35 @@ export function ProductsPage() {
     setModalPhotoFailed(false);
     setPhotoBusy(false);
     setFormError('');
+    setPriceAudit(null);
     setModalOpen(true);
+    if (isLeadRole(role)) {
+      setPriceAuditLoading(true);
+      void api<{
+        salePriceHistory: Array<{
+          at: string;
+          from: number;
+          to: number;
+          userName: string;
+        }>;
+        purchaseCosts: Array<{
+          unit_cost: string;
+          purchased_at: string | null;
+          invoice_number: string | null;
+          quantity: string;
+        }>;
+      }>(`/api/products/${product.id}/price-history`)
+        .then((data) => {
+          setPriceAudit({
+            salePriceHistory: data.salePriceHistory || [],
+            purchaseCosts: data.purchaseCosts || [],
+          });
+        })
+        .catch(() => {
+          setPriceAudit(null);
+        })
+        .finally(() => setPriceAuditLoading(false));
+    }
   }
 
   function enterEditMode() {
@@ -542,6 +585,8 @@ export function ProductsPage() {
     setLabelQtyError('');
     setPrintBusy(false);
     setLabelCopies('1');
+    setPriceAudit(null);
+    setPriceAuditLoading(false);
     revokeBlob();
     setPhotoPreview(null);
     setModalPhotoFailed(false);
@@ -1229,16 +1274,80 @@ export function ProductsPage() {
                         }
                   }
                   extraAfterIdentity={
-                    showLastCost ? (
-                      <p className="ing-hint prod-cost-hint">
-                        Último Precio costo (desde ingreso): {money(lastCost)}. Se define al
-                        ingresar mercadería, no en el catálogo.
-                      </p>
-                    ) : (
-                      <p className="ing-hint prod-cost-hint">
-                        El Precio costo se registra en Ingresos, no en la ficha del catálogo.
-                      </p>
-                    )
+                    <>
+                      {showLastCost ? (
+                        <p className="ing-hint prod-cost-hint">
+                          Último Precio costo (desde ingreso): {money(lastCost)}. Se define al
+                          ingresar mercadería, no en el catálogo.
+                        </p>
+                      ) : (
+                        <p className="ing-hint prod-cost-hint">
+                          El Precio costo se registra en Ingresos, no en la ficha del catálogo.
+                        </p>
+                      )}
+                      {editing && isLeadRole(role) ? (
+                        <div className="prod-price-audit">
+                          {priceAuditLoading ? (
+                            <p className="muted">Cargando historial de precios…</p>
+                          ) : null}
+                          {priceAudit?.purchaseCosts?.length ? (
+                            <div className="prod-price-audit-block">
+                              <h4 className="prod-section-title" style={{ fontSize: '0.85rem' }}>
+                                Precio costo en compras
+                              </h4>
+                              <ul className="prod-price-audit-list">
+                                {priceAudit.purchaseCosts.slice(0, 5).map((row, i) => (
+                                  <li key={`${row.purchased_at}-${i}`}>
+                                    <strong>{money(row.unit_cost)}</strong>
+                                    <span className="muted">
+                                      {row.purchased_at
+                                        ? new Date(row.purchased_at).toLocaleDateString('es-CL', {
+                                            day: '2-digit',
+                                            month: 'short',
+                                            year: 'numeric',
+                                          })
+                                        : 'Sin fecha'}
+                                      {row.invoice_number ? ` · Doc. ${row.invoice_number}` : ''}
+                                      {row.quantity ? ` · ${row.quantity} un.` : ''}
+                                    </span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          ) : null}
+                          {priceAudit?.salePriceHistory?.length ? (
+                            <div className="prod-price-audit-block">
+                              <h4 className="prod-section-title" style={{ fontSize: '0.85rem' }}>
+                                Historial precio de venta
+                              </h4>
+                              <ul className="prod-price-audit-list">
+                                {priceAudit.salePriceHistory.slice(0, 8).map((row, i) => (
+                                  <li key={`${row.at}-${i}`}>
+                                    <strong>
+                                      {money(row.from)} → {money(row.to)}
+                                    </strong>
+                                    <span className="muted">
+                                      {new Date(row.at).toLocaleString('es-CL', {
+                                        day: '2-digit',
+                                        month: 'short',
+                                        year: 'numeric',
+                                        hour: '2-digit',
+                                        minute: '2-digit',
+                                      })}
+                                      {row.userName ? ` · ${row.userName}` : ''}
+                                    </span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          ) : editing && !priceAuditLoading ? (
+                            <p className="ing-hint">
+                              Aún no hay cambios de precio de venta registrados en esta ficha.
+                            </p>
+                          ) : null}
+                        </div>
+                      ) : null}
+                    </>
                   }
                   extraAfterCode={
                     editing ? (

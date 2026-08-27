@@ -22,7 +22,7 @@ export default defineConfig({
           "Gestión de inventarios y caja para Boutique L'Scala (Calama). Atria Solutions SpA.",
         lang: 'es-CL',
         dir: 'ltr',
-        start_url: '/vender',
+        start_url: '/',
         scope: '/',
         display: 'standalone',
         orientation: 'any',

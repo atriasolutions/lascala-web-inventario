@@ -316,6 +316,75 @@ productsRouter.post(
   }),
 );
 
+productsRouter.get(
+  '/:id/price-history',
+  requireBranch,
+  requireRoles('owner', 'branch_manager'),
+  asyncHandler(async (req, res) => {
+    const productId = z.string().uuid().parse(req.params.id);
+    const product = await query<{
+      id: string;
+      sale_price: string;
+      cost_price: string;
+      name: string;
+    }>(
+      `SELECT id, sale_price::text AS sale_price, cost_price::text AS cost_price, name
+       FROM products WHERE id = $1 AND organization_id = $2`,
+      [productId, req.user!.organizationId],
+    );
+    if (!product.rows[0]) throw new HttpError(404, 'Producto no encontrado');
+
+    const key = `sale_price_log:${productId}`;
+    const logRes = await query<{ value: { entries?: unknown } }>(
+      `SELECT value FROM system_settings
+       WHERE organization_id = $1 AND branch_id IS NULL AND key = $2`,
+      [req.user!.organizationId, key],
+    );
+    const raw = logRes.rows[0]?.value?.entries;
+    const salePriceHistory = Array.isArray(raw)
+      ? raw.filter(
+          (e): e is {
+            at: string;
+            from: number;
+            to: number;
+            userId: string;
+            userName: string;
+          } =>
+            Boolean(
+              e &&
+                typeof e === 'object' &&
+                typeof (e as { at?: unknown }).at === 'string' &&
+                typeof (e as { to?: unknown }).to === 'number',
+            ),
+        )
+      : [];
+
+    const purchases = await query<{
+      unit_cost: string;
+      purchased_at: string | null;
+      invoice_number: string | null;
+      quantity: string;
+    }>(
+      `SELECT pi.unit_cost::text AS unit_cost,
+              COALESCE(pu.purchased_at::text, pu.created_at::text) AS purchased_at,
+              pu.invoice_number,
+              pi.quantity_ordered::text AS quantity
+       FROM purchase_items pi
+       JOIN purchases pu ON pu.id = pi.purchase_id
+       WHERE pi.product_id = $1 AND pu.organization_id = $2
+       ORDER BY pu.purchased_at DESC NULLS LAST, pu.created_at DESC
+       LIMIT 8`,
+      [productId, req.user!.organizationId],
+    );
+
+    res.json({
+      product: product.rows[0],
+      salePriceHistory,
+      purchaseCosts: purchases.rows,
+    });
+  }),
+);
+
 productsRouter.patch(
   '/:id',
   requireBranch,
@@ -356,8 +425,13 @@ productsRouter.patch(
 
     const productId = String(req.params.id);
 
-    const current = await query<{ internal_code: string; barcode: string | null }>(
-      `SELECT internal_code, barcode FROM products WHERE id = $1 AND organization_id = $2`,
+    const current = await query<{
+      internal_code: string;
+      barcode: string | null;
+      sale_price: string;
+    }>(
+      `SELECT internal_code, barcode, sale_price::text AS sale_price
+       FROM products WHERE id = $1 AND organization_id = $2`,
       [productId, req.user!.organizationId],
     );
     const currentRow = current.rows[0];
@@ -370,6 +444,9 @@ productsRouter.patch(
         throw new HttpError(400, 'El código de la prenda no se puede modificar.');
       }
     }
+
+    const prevSale = Number(currentRow.sale_price);
+    const nextSale = body.salePrice;
 
     const result = await query(
       `UPDATE products SET
@@ -429,6 +506,45 @@ productsRouter.patch(
       ],
     );
     if (!result.rows[0]) throw new HttpError(404, 'Producto no encontrado');
+
+    if (
+      nextSale !== undefined &&
+      Number.isFinite(nextSale) &&
+      Number.isFinite(prevSale) &&
+      Math.round(nextSale) !== Math.round(prevSale)
+    ) {
+      const key = `sale_price_log:${productId}`;
+      const logRes = await query<{ value: { entries?: unknown[] } }>(
+        `SELECT value FROM system_settings
+         WHERE organization_id = $1 AND branch_id IS NULL AND key = $2`,
+        [req.user!.organizationId, key],
+      );
+      const prevEntries = Array.isArray(logRes.rows[0]?.value?.entries)
+        ? logRes.rows[0]!.value.entries!
+        : [];
+      const entry = {
+        at: new Date().toISOString(),
+        from: Math.round(prevSale),
+        to: Math.round(nextSale),
+        userId: req.user!.id,
+        userName: req.user!.fullName,
+      };
+      const value = { entries: [entry, ...prevEntries].slice(0, 40) };
+      if (logRes.rows[0]) {
+        await query(
+          `UPDATE system_settings
+           SET value = $1::jsonb, updated_at = now()
+           WHERE organization_id = $2 AND branch_id IS NULL AND key = $3`,
+          [JSON.stringify(value), req.user!.organizationId, key],
+        );
+      } else {
+        await query(
+          `INSERT INTO system_settings (organization_id, branch_id, key, value)
+           VALUES ($1, NULL, $2, $3::jsonb)`,
+          [req.user!.organizationId, key, JSON.stringify(value)],
+        );
+      }
+    }
 
     if (body.lowStockThreshold !== undefined && req.activeBranchId) {
       await query(

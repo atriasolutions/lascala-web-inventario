@@ -449,7 +449,7 @@ export function InventoryPage() {
             </div>
           </div>
 
-          <div className="inv-stats" aria-label="Resumen de inventario">
+          <div className="inv-stats inv-stats-mobile" aria-label="Resumen de inventario">
             <div className="inv-stat">
               <span className="inv-stat-label">Unidades</span>
               <strong className="inv-stat-value">{totalUnits}</strong>
@@ -729,12 +729,6 @@ export function InventoryPage() {
                             Ajustar
                           </button>
                           ) : null}
-                          <Link
-                            className="btn ghost inv-mov-link"
-                            to={`/movimientos?productId=${encodeURIComponent(b.product_id)}&productLabel=${encodeURIComponent(`${b.internal_code} · ${b.name}`)}`}
-                          >
-                            Ver movimientos
-                          </Link>
                         </div>
                       </article>
                     );
@@ -842,12 +836,6 @@ export function InventoryPage() {
                                   Ajustar
                                 </button>
                                 ) : null}
-                                <Link
-                                  className="btn ghost"
-                                  to={`/movimientos?productId=${encodeURIComponent(b.product_id)}&productLabel=${encodeURIComponent(`${b.internal_code} · ${b.name}`)}`}
-                                >
-                                  Movimientos
-                                </Link>
                               </div>
                             </td>
                           </tr>
@@ -867,16 +855,32 @@ export function InventoryPage() {
           </div>
         </div>
 
-        <aside className="ing-list-figure inv-list-figure" aria-hidden="true">
-          <img
-            className="ing-list-figure-img"
-            src="/brand/inventario-modelo.png"
-            alt=""
-            width={1024}
-            height={1536}
-            decoding="async"
-            loading="lazy"
-          />
+        <aside className="inv-side-panel" aria-label="Resumen de inventario">
+          <div className="inv-stats inv-stats-side">
+            <div className="inv-stat">
+              <span className="inv-stat-label">Unidades</span>
+              <strong className="inv-stat-value">{totalUnits}</strong>
+              <span className="inv-stat-meta">{summary.count} referencias</span>
+            </div>
+            <div className="inv-stat">
+              <span className="inv-stat-label">Valor</span>
+              <strong className="inv-stat-value">{money(totalValue)}</strong>
+              <span className="inv-stat-meta">A precio de venta</span>
+            </div>
+            <button
+              type="button"
+              className={`inv-stat inv-stat-alert${filters.onlyLow ? ' is-active' : ''}`}
+              aria-pressed={filters.onlyLow}
+              onClick={() => patchFilters({ onlyLow: !filters.onlyLow })}
+              title="Filtrar stock bajo"
+            >
+              <span className="inv-stat-label">Stock bajo</span>
+              <strong className="inv-stat-value">{lowCount}</strong>
+              <span className="inv-stat-meta">
+                {filters.onlyLow ? 'Filtro activo' : 'Toca para filtrar'}
+              </span>
+            </button>
+          </div>
         </aside>
       </div>
 
