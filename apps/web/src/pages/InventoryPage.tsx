@@ -887,9 +887,11 @@ export function InventoryPage() {
 
       {filtersOpen && (
         <PosModal
+          className="inv-filters-modal"
           onClick={(e) => {
             if (e.target === e.currentTarget) setFiltersOpen(false);
-          }}>
+          }}
+        >
           <ModalOverlayClose onClose={() => setFiltersOpen(false)}>
           <div
             id="inv-filters-sheet"

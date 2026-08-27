@@ -2923,10 +2923,18 @@ a.is-nav-offline,
 }
 body.modal-scroll-lock {
   overflow: hidden !important;
+  overscroll-behavior: none;
+  touch-action: none;
 }
 body.modal-scroll-lock .main-content {
   overflow: hidden !important;
   overscroll-behavior: none;
+  touch-action: none;
+}
+/* El panel del modal sí recibe gestos de scroll */
+body.modal-scroll-lock .pos-modal,
+body.modal-scroll-lock .pos-modal * {
+  touch-action: auto;
 }
 /* X anclada al recuadro blanco, no al overlay */
 .pos-modal-panel,
@@ -8153,12 +8161,19 @@ button.inv-stat.is-active {
   max-height: min(88vh, 720px);
   display: flex;
   flex-direction: column;
-  overflow: visible;
+  min-height: 0;
+  overflow: hidden;
 }
 .prod-filter-fields {
   display: grid;
   gap: 1rem;
   margin-top: 0.45rem;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 .prod-filter-group {
   display: grid;
@@ -8173,12 +8188,14 @@ button.inv-stat.is-active {
   color: var(--color-muted);
 }
 .prod-filters-sheet-actions {
-  margin-top: 1.1rem;
+  flex-shrink: 0;
+  margin-top: 0.35rem;
   gap: 0.65rem;
-  position: sticky;
-  bottom: 0;
+  position: relative;
+  z-index: 2;
   padding-top: 0.65rem;
   background: #fff8fb;
+  border-top: 1px solid var(--color-line);
 }
 .prod-filters-sheet-actions .btn {
   min-height: 48px;
@@ -8739,26 +8756,54 @@ button.inv-stat.is-active {
   .pos-modal:has(.prod-filters-sheet) {
     align-items: flex-end;
     padding: 0;
-    padding-top: calc(1.35rem + env(safe-area-inset-top, 0px));
-    padding-bottom: env(safe-area-inset-bottom, 0);
+    padding-top: max(0.35rem, env(safe-area-inset-top, 0px));
+    overflow: hidden;
+    overscroll-behavior: none;
   }
-  .prod-filters-sheet {
+  .prod-filters-sheet,
+  .pos-modal.open .pos-modal-panel.prod-filters-sheet,
+  .pos-modal.open .pos-modal-panel.inv-filters-sheet {
     width: 100%;
     max-width: none;
     border-radius: 20px 20px 0 0;
-    max-height: min(92dvh, 100%);
-    padding: 1rem 1rem calc(1rem + env(safe-area-inset-bottom, 0));
+    /* Evitar max-height: … 100% — en iOS el % no resuelve y el panel no limita altura */
+    max-height: min(92dvh, calc(100dvh - env(safe-area-inset-top, 0px) - 0.35rem));
+    min-height: 0;
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+    padding: 1rem 1rem 0;
+    box-sizing: border-box;
+  }
+  .prod-filters-sheet .prod-filter-fields,
+  .inv-filters-sheet .prod-filter-fields {
+    flex: 1 1 auto;
+    min-height: 0;
+    overflow-x: hidden;
+    overflow-y: auto;
+    -webkit-overflow-scrolling: touch;
+    overscroll-behavior: contain;
+    padding-bottom: 0.5rem;
   }
   .prod-filters-sheet select,
-  .prod-filters-sheet input {
+  .prod-filters-sheet input,
+  .inv-filters-sheet select {
     font-size: 16px;
     min-height: 48px;
+    max-width: 100%;
   }
   .prod-filters-sheet-actions {
-    flex-direction: column-reverse;
+    flex-shrink: 0;
+    flex-direction: row;
+    margin: 0 -1rem 0;
+    padding: 0.65rem 1rem calc(0.75rem + env(safe-area-inset-bottom, 0px));
+    background: #fff8fb;
+    border-top: 1px solid var(--color-line);
   }
   .prod-filters-sheet-actions .btn {
-    width: 100%;
+    width: auto;
+    flex: 1 1 0;
+    min-height: 48px;
   }
   .prod-modal.ing-line-modal {
     width: 100%;
@@ -11624,47 +11669,6 @@ body.help-mode-touch::after {
   flex-wrap: wrap;
   gap: 0.45rem;
   align-items: center;
-}
-
-.compras-stock-summary {
-  border: 1px solid var(--color-line);
-  border-radius: 14px;
-  background: #fff;
-  overflow: hidden;
-}
-.compras-stock-summary-toggle {
-  width: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 0.65rem;
-  padding: 0.65rem 0.85rem;
-  border: none;
-  background: #fff8fb;
-  font: inherit;
-  text-align: left;
-  cursor: pointer;
-  min-height: 44px;
-}
-.compras-stock-summary-list {
-  list-style: none;
-  margin: 0;
-  padding: 0 0.85rem 0.65rem;
-  max-height: 12rem;
-  overflow-y: auto;
-}
-.compras-stock-summary-list li {
-  display: flex;
-  justify-content: space-between;
-  gap: 0.75rem;
-  padding: 0.4rem 0;
-  border-bottom: 1px solid #f0e8ec;
-  font-size: 0.9rem;
-}
-.compras-stock-summary-qty {
-  color: var(--color-muted);
-  font-variant-numeric: tabular-nums;
-  white-space: nowrap;
 }
 
 @media (max-width: 900px) {

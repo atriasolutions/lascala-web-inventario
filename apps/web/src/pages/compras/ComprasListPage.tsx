@@ -62,18 +62,9 @@ function rowAction(status: PurchaseStatus) {
   return status === 'pending_reception' ? 'Editar' : 'Ver';
 }
 
-type StockCategoryRow = {
-  categoryId: string | null;
-  categoryName: string;
-  skuCount: number;
-  totalUnits: number;
-};
-
 export function ComprasListPage() {
   const { branchId } = useAuth();
   const [filters, setFilters] = useState<AppliedFilters>(DEFAULT_FILTERS);
-  const [stockByCategory, setStockByCategory] = useState<StockCategoryRow[]>([]);
-  const [stockOpen, setStockOpen] = useState(true);
 
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [draftDateFrom, setDraftDateFrom] = useState('');
@@ -170,13 +161,6 @@ export function ComprasListPage() {
   }
 
   useEffect(() => {
-    if (!branchId) return;
-    void api<{ categories: StockCategoryRow[] }>('/api/inventory/stock-by-category')
-      .then((d) => setStockByCategory(d.categories || []))
-      .catch(() => setStockByCategory([]));
-  }, [branchId]);
-
-  useEffect(() => {
     if (!drawerOpen) return;
     const panel = modalRef.current;
     const t = window.setTimeout(() => {
@@ -208,32 +192,6 @@ export function ComprasListPage() {
               Nueva compra
             </Link>
           </div>
-
-          {stockByCategory.length > 0 ? (
-            <section className="compras-stock-summary" aria-label="Stock por tipo de prenda">
-              <button
-                type="button"
-                className="compras-stock-summary-toggle"
-                aria-expanded={stockOpen}
-                onClick={() => setStockOpen((v) => !v)}
-              >
-                <strong>Stock por categoría</strong>
-                <span className="muted">{stockByCategory.length} tipos · sucursal activa</span>
-              </button>
-              {stockOpen ? (
-                <ul className="compras-stock-summary-list">
-                  {stockByCategory.map((row) => (
-                    <li key={row.categoryId || row.categoryName}>
-                      <span>{row.categoryName}</span>
-                      <span className="compras-stock-summary-qty">
-                        {row.totalUnits} uds · {row.skuCount} ref.
-                      </span>
-                    </li>
-                  ))}
-                </ul>
-              ) : null}
-            </section>
-          ) : null}
 
           <div className="ing-filters" role="toolbar" aria-label="Filtros de compras">
             <button
