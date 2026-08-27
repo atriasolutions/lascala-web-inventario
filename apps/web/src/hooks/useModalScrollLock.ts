@@ -31,7 +31,7 @@ function applyLock() {
 
     if (main) {
       main.style.overflow = 'hidden';
-      main.style.touchAction = 'none';
+      /* No touch-action:none — bloqueaba taps en X/Cancelar del modal en iOS */
     }
   }
   lockCount += 1;

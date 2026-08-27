@@ -253,7 +253,9 @@ export function ProductFichaFields({
                   placeholder="0"
                   disabled={disabled}
                 />
-                <MarginHint cost={costNum} sale={saleNum} />
+                <div className="prod-ficha-sale-hint">
+                  <MarginHint cost={costNum} sale={saleNum} />
+                </div>
               </>
             ) : (
               <>

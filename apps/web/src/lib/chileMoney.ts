@@ -33,9 +33,13 @@ export function digitsOnlyMoney(raw: string): string {
     .replace(/[^\d]/g, '');
 }
 
-/** Formatea mientras se escribe: "1234567" → "1.234.567". */
+/** Formatea mientras se escribe o al pegar: solo dígitos → miles Chile.
+ *  No usa la heurística SQL de `digitsOnlyMoney` (rompe ediciones tipo `13.50`). */
 export function formatChileMoneyInput(raw: string): string {
-  const digits = digitsOnlyMoney(raw);
+  const digits = String(raw ?? '')
+    .replace(/\$/g, '')
+    .replace(/\s/g, '')
+    .replace(/\D/g, '');
   if (!digits) return '';
   const n = Number(digits);
   if (!Number.isFinite(n)) return '';

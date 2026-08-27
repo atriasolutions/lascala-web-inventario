@@ -183,12 +183,6 @@ function fmtDay(d: string) {
   });
 }
 
-function categoryShort(cat: string) {
-  if (cat === 'Servicios básicos') return 'Servicios';
-  if (cat === 'Remuneraciones') return 'Remunerac.';
-  return cat;
-}
-
 export function ExpensesPage() {
   const { branches, branchId } = useAuth();
   const activeBranch = branches.find((b) => b.id === branchId);
@@ -209,6 +203,10 @@ export function ExpensesPage() {
   });
 
   const [drawerOpen, setDrawerOpen] = useState(false);
+  const [draftPeriodPreset, setDraftPeriodPreset] = useState<PeriodPreset | 'all'>('all');
+  const [draftPeriodDay, setDraftPeriodDay] = useState(chileIsoDate());
+  const [draftPeriodMonth, setDraftPeriodMonth] = useState(chileYearMonth().month);
+  const [draftPeriodYear, setDraftPeriodYear] = useState(chileYearMonth().year);
   const [draftDateFrom, setDraftDateFrom] = useState('');
   const [draftDateTo, setDraftDateTo] = useState('');
   const [draftDescription, setDraftDescription] = useState('');
@@ -284,35 +282,22 @@ export function ExpensesPage() {
 
   const years = useMemo(() => yearOptions(), []);
 
-  const hasExtraFilters = Boolean(
-    filters.dateFrom ||
-      filters.dateTo ||
-      filters.description.trim() ||
-      filters.user.trim() ||
-      filters.category !== 'all',
-  );
-
-  const summaryChips = useMemo(() => {
-    const chips: { key: string; label: string }[] = [];
-    if (filters.category !== 'all') chips.push({ key: 'cat', label: filters.category });
-    if (filters.periodPreset !== 'all' && filters.dateFrom && filters.dateTo) {
-      const label =
-        filters.dateFrom === filters.dateTo
-          ? fmtDay(filters.dateFrom)
-          : `${fmtDay(filters.dateFrom)} – ${fmtDay(filters.dateTo)}`;
-      chips.push({ key: 'period', label });
-    } else {
-      if (filters.dateFrom) chips.push({ key: 'from', label: `Desde ${fmtDay(filters.dateFrom)}` });
-      if (filters.dateTo) chips.push({ key: 'to', label: `Hasta ${fmtDay(filters.dateTo)}` });
-    }
-    if (filters.description.trim()) {
-      chips.push({ key: 'description', label: filters.description.trim() });
-    }
-    if (filters.user.trim()) chips.push({ key: 'user', label: filters.user.trim() });
-    return chips;
+  const sheetFilterCount = useMemo(() => {
+    let n = 0;
+    if (filters.category !== 'all') n += 1;
+    if (filters.periodPreset !== 'all' || filters.dateFrom || filters.dateTo) n += 1;
+    if (filters.description.trim()) n += 1;
+    if (filters.user.trim()) n += 1;
+    return n;
   }, [filters]);
 
+  const hasExtraFilters = sheetFilterCount > 0;
+
   function openDrawer() {
+    setDraftPeriodPreset(filters.periodPreset);
+    setDraftPeriodDay(filters.periodDay || chileIsoDate());
+    setDraftPeriodMonth(filters.periodMonth || chileYearMonth().month);
+    setDraftPeriodYear(filters.periodYear || chileYearMonth().year);
     setDraftDateFrom(filters.dateFrom);
     setDraftDateTo(filters.dateTo);
     setDraftDescription(filters.description);
@@ -325,19 +310,47 @@ export function ExpensesPage() {
     setDrawerOpen(false);
   }
 
+  function patchDraftPeriod(
+    preset: PeriodPreset | 'all',
+    patch?: Partial<Pick<Filters, 'periodDay' | 'periodMonth' | 'periodYear' | 'dateFrom' | 'dateTo'>>,
+  ) {
+    const base: Filters = {
+      ...filters,
+      category: draftCategory,
+      description: draftDescription,
+      user: draftUser,
+      periodPreset: draftPeriodPreset,
+      periodDay: draftPeriodDay,
+      periodMonth: draftPeriodMonth,
+      periodYear: draftPeriodYear,
+      dateFrom: draftDateFrom,
+      dateTo: draftDateTo,
+    };
+    const next = applyPeriodPreset(base, preset, patch);
+    setDraftPeriodPreset(next.periodPreset);
+    setDraftPeriodDay(next.periodDay);
+    setDraftPeriodMonth(next.periodMonth);
+    setDraftPeriodYear(next.periodYear);
+    setDraftDateFrom(next.dateFrom);
+    setDraftDateTo(next.dateTo);
+  }
+
   function applyDrawer() {
-    setFilters((prev) =>
-      applyPeriodPreset(
-        {
-          ...prev,
-          category: draftCategory,
-          description: draftDescription,
-          user: draftUser,
-        },
-        'range',
-        { dateFrom: draftDateFrom, dateTo: draftDateTo },
-      ),
-    );
+    setFilters((prev) => {
+      const withText = {
+        ...prev,
+        category: draftCategory,
+        description: draftDescription,
+        user: draftUser,
+      };
+      return applyPeriodPreset(withText, draftPeriodPreset, {
+        periodDay: draftPeriodDay,
+        periodMonth: draftPeriodMonth,
+        periodYear: draftPeriodYear,
+        dateFrom: draftDateFrom,
+        dateTo: draftDateTo,
+      });
+    });
     setDrawerOpen(false);
   }
 
@@ -345,8 +358,17 @@ export function ExpensesPage() {
     setFilters(DEFAULT_FILTERS);
   }
 
-  function setCategoryChip(cat: CategoryFilter) {
-    setFilters((prev) => ({ ...prev, category: cat }));
+  function clearDraftFilters() {
+    const cleared = DEFAULT_FILTERS;
+    setDraftPeriodPreset(cleared.periodPreset);
+    setDraftPeriodDay(cleared.periodDay);
+    setDraftPeriodMonth(cleared.periodMonth);
+    setDraftPeriodYear(cleared.periodYear);
+    setDraftDateFrom(cleared.dateFrom);
+    setDraftDateTo(cleared.dateTo);
+    setDraftDescription(cleared.description);
+    setDraftUser(cleared.user);
+    setDraftCategory(cleared.category);
   }
 
   useEffect(() => {
@@ -487,133 +509,17 @@ export function ExpensesPage() {
             </div>
           </div>
 
-          <div className="ing-filters gasto-filters" role="toolbar" aria-label="Filtros de gastos">
+          <div className="inv-toolbar gasto-toolbar" role="toolbar" aria-label="Filtros de gastos">
             <button
               type="button"
-              className={`ing-chip${filters.periodPreset === 'all' ? ' is-active' : ''}`}
-              aria-pressed={filters.periodPreset === 'all'}
-              onClick={() => setFilters((prev) => applyPeriodPreset(prev, 'all'))}
+              className={`btn secondary inv-filters-btn${sheetFilterCount > 0 ? ' has-count' : ''}`}
+              onClick={openDrawer}
+              aria-expanded={drawerOpen}
             >
-              Todo
-            </button>
-            {PERIOD_CHIPS.map((chip) => (
-              <button
-                key={chip.id}
-                type="button"
-                className={`ing-chip${filters.periodPreset === chip.id ? ' is-active' : ''}`}
-                aria-pressed={filters.periodPreset === chip.id}
-                onClick={() => setFilters((prev) => applyPeriodPreset(prev, chip.id))}
-              >
-                {chip.label}
-              </button>
-            ))}
-            {filters.periodPreset === 'day' ? (
-              <label className="field gasto-period-field">
-                <span className="sr-only">Día</span>
-                <input
-                  type="date"
-                  value={filters.periodDay}
-                  onChange={(e) =>
-                    setFilters((prev) =>
-                      applyPeriodPreset(prev, 'day', { periodDay: e.target.value }),
-                    )
-                  }
-                />
-              </label>
-            ) : null}
-            {filters.periodPreset === 'month' ? (
-              <label className="field gasto-period-field">
-                <span className="sr-only">Mes</span>
-                <input
-                  type="month"
-                  value={filters.periodMonth}
-                  onChange={(e) =>
-                    setFilters((prev) =>
-                      applyPeriodPreset(prev, 'month', { periodMonth: e.target.value }),
-                    )
-                  }
-                />
-              </label>
-            ) : null}
-            {filters.periodPreset === 'year' ? (
-              <label className="field gasto-period-field">
-                <span className="sr-only">Año</span>
-                <select
-                  value={filters.periodYear}
-                  onChange={(e) =>
-                    setFilters((prev) =>
-                      applyPeriodPreset(prev, 'year', { periodYear: e.target.value }),
-                    )
-                  }
-                >
-                  {years.map((y) => (
-                    <option key={y} value={y}>
-                      {y}
-                    </option>
-                  ))}
-                </select>
-              </label>
-            ) : null}
-            {filters.periodPreset === 'range' ? (
-              <>
-                <label className="field gasto-period-field">
-                  <span className="sr-only">Desde</span>
-                  <input
-                    type="date"
-                    value={filters.dateFrom}
-                    onChange={(e) =>
-                      setFilters((prev) =>
-                        applyPeriodPreset(prev, 'range', {
-                          dateFrom: e.target.value,
-                          dateTo: prev.dateTo || e.target.value,
-                        }),
-                      )
-                    }
-                  />
-                </label>
-                <label className="field gasto-period-field">
-                  <span className="sr-only">Hasta</span>
-                  <input
-                    type="date"
-                    value={filters.dateTo}
-                    onChange={(e) =>
-                      setFilters((prev) =>
-                        applyPeriodPreset(prev, 'range', {
-                          dateFrom: prev.dateFrom || e.target.value,
-                          dateTo: e.target.value,
-                        }),
-                      )
-                    }
-                  />
-                </label>
-              </>
-            ) : null}
-            <button
-              type="button"
-              className={`ing-chip${filters.category === 'all' ? ' is-active' : ''}`}
-              aria-pressed={filters.category === 'all'}
-              onClick={() => setCategoryChip('all')}
-            >
-              Todas
-            </button>
-            {CATEGORIES.map((cat) => (
-              <button
-                key={cat}
-                type="button"
-                className={`ing-chip gasto-cat-chip${filters.category === cat ? ' is-active' : ''}`}
-                aria-pressed={filters.category === cat}
-                onClick={() => setCategoryChip(cat)}
-                title={cat}
-              >
-                <span className="gasto-cat-full">{cat}</span>
-                <span className="gasto-cat-short">{categoryShort(cat)}</span>
-              </button>
-            ))}
-            <button type="button" className="btn secondary ing-filters-btn" onClick={openDrawer}>
               Filtros
-              {hasExtraFilters ? (
-                <span className="prod-filters-badge" aria-label="Filtros activos">
-                  {summaryChips.length}
+              {sheetFilterCount > 0 ? (
+                <span className="prod-filters-badge" aria-label={`${sheetFilterCount} filtros activos`}>
+                  {sheetFilterCount}
                 </span>
               ) : null}
             </button>
@@ -642,19 +548,6 @@ export function ExpensesPage() {
               </select>
             </div>
           </div>
-
-          {hasExtraFilters && (
-            <div className="ing-filter-summary" aria-label="Filtros activos">
-              {summaryChips.map((c) => (
-                <span key={c.key} className="ing-chip is-active ing-chip-static">
-                  {c.label}
-                </span>
-              ))}
-              <button type="button" className="btn ghost" onClick={clearFilters}>
-                Limpiar
-              </button>
-            </div>
-          )}
 
           {error && <p className="error">{error}</p>}
 
@@ -849,7 +742,130 @@ export function ExpensesPage() {
               <h3 id={filtersTitleId}>Filtros</h3>
             </div>
             <div className="ing-filters-sheet-body">
-              <div className="ing-filter-fields">
+              <div className="ing-filter-fields gasto-filter-fields">
+                <div className="field">
+                  <span className="gasto-filter-label" id="gasto-f-period-label">
+                    Período
+                  </span>
+                  <div
+                    className="gasto-period-chips"
+                    role="group"
+                    aria-labelledby="gasto-f-period-label"
+                  >
+                    <button
+                      type="button"
+                      className={`ing-chip${draftPeriodPreset === 'all' ? ' is-active' : ''}`}
+                      aria-pressed={draftPeriodPreset === 'all'}
+                      onClick={() => patchDraftPeriod('all')}
+                    >
+                      Todo
+                    </button>
+                    {PERIOD_CHIPS.map((chip) => (
+                      <button
+                        key={chip.id}
+                        type="button"
+                        className={`ing-chip${draftPeriodPreset === chip.id ? ' is-active' : ''}`}
+                        aria-pressed={draftPeriodPreset === chip.id}
+                        onClick={() => patchDraftPeriod(chip.id)}
+                      >
+                        {chip.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                {draftPeriodPreset === 'day' ? (
+                  <div className="field field-date">
+                    <label htmlFor="gasto-f-day">Día</label>
+                    <div className="field-date-control">
+                      <input
+                        id="gasto-f-day"
+                        type="date"
+                        value={draftPeriodDay}
+                        onChange={(e) =>
+                          patchDraftPeriod('day', { periodDay: e.target.value })
+                        }
+                      />
+                    </div>
+                  </div>
+                ) : null}
+
+                {draftPeriodPreset === 'month' ? (
+                  <div className="field">
+                    <label htmlFor="gasto-f-month">Mes</label>
+                    <input
+                      id="gasto-f-month"
+                      type="month"
+                      value={draftPeriodMonth}
+                      onChange={(e) =>
+                        patchDraftPeriod('month', { periodMonth: e.target.value })
+                      }
+                    />
+                  </div>
+                ) : null}
+
+                {draftPeriodPreset === 'year' ? (
+                  <div className="field">
+                    <label htmlFor="gasto-f-year">Año</label>
+                    <select
+                      id="gasto-f-year"
+                      value={draftPeriodYear}
+                      onChange={(e) =>
+                        patchDraftPeriod('year', { periodYear: e.target.value })
+                      }
+                    >
+                      {years.map((y) => (
+                        <option key={y} value={y}>
+                          {y}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                ) : null}
+
+                <div className="field field-date">
+                  <label htmlFor="gasto-f-from">Fecha desde</label>
+                  <div className="field-date-control">
+                    <input
+                      id="gasto-f-from"
+                      type="date"
+                      value={draftDateFrom}
+                      onChange={(e) => {
+                        const dateFrom = e.target.value;
+                        if (!dateFrom && !draftDateTo) {
+                          patchDraftPeriod('all');
+                          return;
+                        }
+                        patchDraftPeriod('range', {
+                          dateFrom,
+                          dateTo: draftDateTo || dateFrom,
+                        });
+                      }}
+                    />
+                  </div>
+                </div>
+                <div className="field field-date">
+                  <label htmlFor="gasto-f-to">Fecha hasta</label>
+                  <div className="field-date-control">
+                    <input
+                      id="gasto-f-to"
+                      type="date"
+                      value={draftDateTo}
+                      onChange={(e) => {
+                        const dateTo = e.target.value;
+                        if (!dateTo && !draftDateFrom) {
+                          patchDraftPeriod('all');
+                          return;
+                        }
+                        patchDraftPeriod('range', {
+                          dateFrom: draftDateFrom || dateTo,
+                          dateTo,
+                        });
+                      }}
+                    />
+                  </div>
+                </div>
+
                 <div className="field">
                   <label htmlFor="gasto-f-cat">Categoría</label>
                   <select
@@ -864,24 +880,6 @@ export function ExpensesPage() {
                       </option>
                     ))}
                   </select>
-                </div>
-                <div className="field">
-                  <label htmlFor="gasto-f-from">Fecha desde</label>
-                  <input
-                    id="gasto-f-from"
-                    type="date"
-                    value={draftDateFrom}
-                    onChange={(e) => setDraftDateFrom(e.target.value)}
-                  />
-                </div>
-                <div className="field">
-                  <label htmlFor="gasto-f-to">Fecha hasta</label>
-                  <input
-                    id="gasto-f-to"
-                    type="date"
-                    value={draftDateTo}
-                    onChange={(e) => setDraftDateTo(e.target.value)}
-                  />
                 </div>
                 <div className="field">
                   <label htmlFor="gasto-f-description">Descripción</label>
@@ -905,12 +903,25 @@ export function ExpensesPage() {
                 </div>
               </div>
             </div>
-            <div className="btn-row ing-filters-sheet-actions">
-              <button type="button" className="btn secondary" onClick={closeDrawer}>
-                Cancelar
-              </button>
-              <button type="button" className="btn" onClick={applyDrawer}>
-                Aplicar
+            <div className="ing-filters-sheet-actions gasto-filters-sheet-actions">
+              <div className="btn-row">
+                <button type="button" className="btn secondary" onClick={closeDrawer}>
+                  Cancelar
+                </button>
+                <button type="button" className="btn" onClick={applyDrawer}>
+                  Aplicar
+                </button>
+              </div>
+              <button
+                type="button"
+                className="btn ghost gasto-filters-clear"
+                onClick={() => {
+                  clearDraftFilters();
+                  setFilters(DEFAULT_FILTERS);
+                  setDrawerOpen(false);
+                }}
+              >
+                Limpiar filtros
               </button>
             </div>
           </div></ModalOverlayClose>
@@ -933,7 +944,8 @@ export function ExpensesPage() {
             <div className="pos-modal-head">
               <h3 id={formTitleId}>Nuevo gasto</h3>
             </div>
-            <form className="gasto-form-body" onSubmit={onSubmitForm}>
+            <form className="gasto-form-layout" onSubmit={onSubmitForm}>
+              <div className="gasto-form-body">
               <span className="ing-chip is-active ing-chip-static form-branch-chip" role="status">
                 Sucursal: {branchName}
               </span>
@@ -981,15 +993,17 @@ export function ExpensesPage() {
                     placeholder="0"
                   />
                 </div>
-                <div className="field">
+                <div className="field field-date">
                   <label htmlFor="gasto-date">Fecha</label>
-                  <input
-                    id="gasto-date"
-                    type="date"
-                    value={incurredOn}
-                    onChange={(e) => setIncurredOn(e.target.value)}
-                    required
-                  />
+                  <div className="field-date-control">
+                    <input
+                      id="gasto-date"
+                      type="date"
+                      value={incurredOn}
+                      onChange={(e) => setIncurredOn(e.target.value)}
+                      required
+                    />
+                  </div>
                 </div>
               </div>
 
@@ -998,6 +1012,7 @@ export function ExpensesPage() {
                 onChange={setAttachmentUrl}
                 disabled={saving}
               />
+              </div>
 
               <div className="btn-row gasto-form-actions">
                 <button

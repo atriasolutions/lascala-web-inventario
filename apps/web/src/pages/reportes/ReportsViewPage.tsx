@@ -13,6 +13,7 @@ import {
   XAxis,
   YAxis,
 } from 'recharts';
+import { useMobileViewport } from '../../hooks/useMobileViewport';
 import { api, money, userFacingError } from '../../lib/api';
 import { chartColor } from '../../lib/chartColors';
 import { statusLabel } from '../../lib/purchasesStatus';
@@ -92,11 +93,30 @@ function timePointsFromSeries(
   };
 }
 
-/** day: 1, 8, 15, 22… y el último. week/month: todos. */
-function xTicksForGrain(grain: ReportGrain, periods: string[]): string[] {
+/** day: muestreo. week/month: en mobile menos ticks para no solapar. */
+function xTicksForGrain(grain: ReportGrain, periods: string[], compact = false): string[] {
   const n = periods.length;
-  if (grain !== 'day' || n <= 8) return periods;
-  const step = n <= 20 ? 4 : 7;
+  const maxCompact = 5;
+  if (!compact) {
+    if (grain !== 'day' || n <= 8) return periods;
+    const step = n <= 20 ? 4 : 7;
+    const ticks: string[] = [];
+    for (let i = 0; i < n; i += step) ticks.push(periods[i]!);
+    const last = periods[n - 1]!;
+    if (ticks[ticks.length - 1] !== last) ticks.push(last);
+    return ticks;
+  }
+  // Mobile: máx. ~5 etiquetas legibles
+  if (n <= maxCompact) return periods;
+  if (grain === 'day') {
+    const step = Math.max(1, Math.ceil((n - 1) / (maxCompact - 1)));
+    const ticks: string[] = [];
+    for (let i = 0; i < n; i += step) ticks.push(periods[i]!);
+    const last = periods[n - 1]!;
+    if (ticks[ticks.length - 1] !== last) ticks.push(last);
+    return ticks;
+  }
+  const step = Math.max(1, Math.ceil((n - 1) / (maxCompact - 1)));
   const ticks: string[] = [];
   for (let i = 0; i < n; i += step) ticks.push(periods[i]!);
   const last = periods[n - 1]!;
@@ -104,22 +124,51 @@ function xTicksForGrain(grain: ReportGrain, periods: string[]): string[] {
   return ticks;
 }
 
-function timeXAxis(grain: ReportGrain, points: TimePoint[]) {
-  const ticks = xTicksForGrain(grain, points.map((p) => p.period));
+function shortAxisLabel(label: string): string {
+  // "ene 2026" / "Ene 2026" → "ene"
+  const m = label.trim().match(/^([A-Za-zÁÉÍÓÚáéíóúÑñ]{3})\s+\d{4}$/);
+  if (m) return m[1]!.toLowerCase();
+  // "1–7 ene" ya corto
+  if (label.length <= 8) return label;
+  return label.slice(0, 7);
+}
+
+function TimeChartXAxis({ grain, points }: { grain: ReportGrain; points: TimePoint[] }) {
+  const compact = useMobileViewport();
+  const ticks = xTicksForGrain(
+    grain,
+    points.map((p) => p.period),
+    compact,
+  );
   const labelBy = new Map(points.map((p) => [p.period, p.label]));
+  const angled = compact && ticks.length > 4;
   return (
     <XAxis
       dataKey="period"
       ticks={ticks}
       interval={0}
-      minTickGap={24}
-      angle={0}
-      tick={{ fontSize: 11, fill: '#6e5a64' }}
+      minTickGap={compact ? 4 : 24}
+      angle={angled ? -40 : 0}
+      textAnchor={angled ? 'end' : 'middle'}
+      height={angled ? 52 : 28}
+      tick={{ fontSize: compact ? 10 : 11, fill: '#6e5a64' }}
       axisLine={false}
       tickLine={false}
-      tickFormatter={(period: string) => labelBy.get(period) || period}
+      tickFormatter={(period: string) => {
+        const label = labelBy.get(period) || period;
+        return compact ? shortAxisLabel(label) : label;
+      }}
     />
   );
+}
+
+function timeChartMargin(compact: boolean) {
+  return {
+    top: 12,
+    right: compact ? 10 : 20,
+    bottom: compact ? 12 : 8,
+    left: compact ? 4 : 12,
+  };
 }
 
 function formatCivilDate(iso: string) {
@@ -351,6 +400,7 @@ function useReport<T>(
 }
 
 function VentasPanel({ data }: { data: VentasReport }) {
+  const compact = useMobileViewport();
   const { grain, points } = useMemo(
     () => timePointsFromSeries(data.grain, data.series, data.monthly),
     [data.grain, data.series, data.monthly],
@@ -389,7 +439,7 @@ function VentasPanel({ data }: { data: VentasReport }) {
         ) : (
           <div className="chart-shell reports-chart">
             <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={points} margin={{ top: 12, right: 20, bottom: 8, left: 12 }}>
+              <AreaChart data={points} margin={timeChartMargin(compact)}>
                 <defs>
                   <linearGradient id="repVentasFill" x1="0" y1="0" x2="0" y2="1">
                     <stop offset="0%" stopColor="#E6007E" stopOpacity={0.28} />
@@ -397,13 +447,13 @@ function VentasPanel({ data }: { data: VentasReport }) {
                   </linearGradient>
                 </defs>
                 <CartesianGrid vertical={false} stroke="#f2d5e4" strokeDasharray="4 6" />
-                {timeXAxis(grain, points)}
+                <TimeChartXAxis grain={grain} points={points} />
                 <YAxis
-                  tick={{ fontSize: 11, fill: '#6e5a64' }}
+                  tick={{ fontSize: compact ? 10 : 11, fill: '#6e5a64' }}
                   axisLine={false}
                   tickLine={false}
                   tickFormatter={formatAxisClp}
-                  width={88}
+                  width={compact ? 56 : 88}
                   tickMargin={6}
                 />
                 <Tooltip {...TOOLTIP_PROPS} />
@@ -596,6 +646,7 @@ function StockPanel({ data }: { data: StockReport }) {
 }
 
 function IngresosPanel({ data }: { data: IngresosReport }) {
+  const compact = useMobileViewport();
   const { grain, points } = useMemo(
     () => timePointsFromSeries(data.grain, data.series, data.monthly),
     [data.grain, data.series, data.monthly],
@@ -631,15 +682,15 @@ function IngresosPanel({ data }: { data: IngresosReport }) {
         ) : (
           <div className="chart-shell reports-chart">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={points} margin={{ top: 12, right: 20, bottom: 8, left: 12 }}>
+              <BarChart data={points} margin={timeChartMargin(compact)}>
                 <CartesianGrid vertical={false} stroke="#f2d5e4" />
-                {timeXAxis(grain, points)}
+                <TimeChartXAxis grain={grain} points={points} />
                 <YAxis
-                  tick={{ fontSize: 11, fill: '#6e5a64' }}
+                  tick={{ fontSize: compact ? 10 : 11, fill: '#6e5a64' }}
                   axisLine={false}
                   tickLine={false}
                   tickFormatter={formatAxisClp}
-                  width={88}
+                  width={compact ? 56 : 88}
                   tickMargin={6}
                 />
                 <Tooltip {...TOOLTIP_PROPS} cursor={{ fill: 'rgba(230,0,126,0.06)' }} />
@@ -691,6 +742,7 @@ function IngresosPanel({ data }: { data: IngresosReport }) {
 }
 
 function GastosPanel({ data }: { data: GastosReport }) {
+  const compact = useMobileViewport();
   const { grain, points } = useMemo(
     () => timePointsFromSeries(data.grain, data.series, undefined),
     [data.grain, data.series],
@@ -742,27 +794,29 @@ function GastosPanel({ data }: { data: GastosReport }) {
           <>
           <div className="chart-shell reports-chart reports-chart-gastos">
             <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={chartRows} margin={{ top: 12, right: 20, bottom: 8, left: 12 }}>
+              <BarChart data={chartRows} margin={timeChartMargin(compact)}>
                 <CartesianGrid vertical={false} stroke="#f2d5e4" />
-                {points.length
-                  ? timeXAxis(grain, points)
-                  : (
+                {points.length ? (
+                  <TimeChartXAxis grain={grain} points={points} />
+                ) : (
                   <XAxis
                     dataKey="label"
-                    tick={{ fontSize: 11, fill: '#6e5a64' }}
+                    tick={{ fontSize: compact ? 10 : 11, fill: '#6e5a64' }}
                     axisLine={false}
                     tickLine={false}
-                    minTickGap={24}
-                    interval={0}
-                    angle={0}
+                    minTickGap={compact ? 8 : 24}
+                    interval="preserveStartEnd"
+                    angle={compact ? -30 : 0}
+                    textAnchor={compact ? 'end' : 'middle'}
+                    height={compact ? 48 : 28}
                   />
                 )}
                 <YAxis
-                  tick={{ fontSize: 11, fill: '#6e5a64' }}
+                  tick={{ fontSize: compact ? 10 : 11, fill: '#6e5a64' }}
                   axisLine={false}
                   tickLine={false}
                   tickFormatter={formatAxisClp}
-                  width={88}
+                  width={compact ? 56 : 88}
                   tickMargin={6}
                 />
                 <Tooltip {...TOOLTIP_PROPS} cursor={{ fill: 'rgba(230,0,126,0.06)' }} />

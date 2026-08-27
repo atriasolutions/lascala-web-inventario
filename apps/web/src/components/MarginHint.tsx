@@ -10,11 +10,14 @@ type Props = {
 /** Margen en vivo al ingresar Precio costo / p. venta. */
 export function MarginHint({ cost, sale, className = '' }: Props) {
   const info = computeMargin(cost, sale);
+  // Siempre el mismo root (<div>) para no remountar hermanos del input al tipiar.
   if (!info) {
     return (
-      <p className={`ing-hint margin-hint${className ? ` ${className}` : ''}`}>
-        Con Precio costo y p. venta verás el margen. Sugerido ≈ 2× Precio costo.
-      </p>
+      <div className={`margin-hint${className ? ` ${className}` : ''}`}>
+        <p className="ing-hint margin-hint">
+          Con Precio costo y p. venta verás el margen. Sugerido ≈ 2× Precio costo.
+        </p>
+      </div>
     );
   }
 

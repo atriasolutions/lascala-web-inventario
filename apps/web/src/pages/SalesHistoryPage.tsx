@@ -581,21 +581,7 @@ export function SalesHistoryPage() {
               </select>
             </div>
           </div>
-
-          {hasExtraFilters && (
-            <div className="ing-filter-summary" aria-label="Filtros activos">
-              {summaryChips.map((c) => (
-                <span key={c.key} className="ing-chip is-active ing-chip-static">
-                  {c.label}
-                </span>
-              ))}
-              <button type="button" className="btn ghost" onClick={clearFilters}>
-                Limpiar
-              </button>
-            </div>
-          )}
-
-          {error && <p className="error">{error}</p>}
+{error && <p className="error">{error}</p>}
 
           <div className="ing-list-scroll" ref={scrollRef}>
             {loading && (

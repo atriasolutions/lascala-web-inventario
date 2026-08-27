@@ -47,6 +47,13 @@ describe('chileMoney', () => {
     assert.equal(chileMoneyFromNumber(Math.round((saved ?? 0) * 2)), '25.980');
   });
 
+  it('edición a medias no interpreta 13.50 como decimal SQL', () => {
+    // "13.500" (13500) → borrar un dígito → "13.50" NO debe virar a 14
+    assert.equal(formatChileMoneyInput('13.50'), '1.350');
+    assert.equal(formatChileMoneyInput('13.5'), '135');
+    assert.equal(parseChileMoney('13.500'), 13500);
+  });
+
   it('round-trip desde número', () => {
     assert.equal(chileMoneyFromNumber(45000), '45.000');
     assert.equal(chileMoneyFromNumber(12990), '12.990');

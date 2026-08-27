@@ -466,16 +466,18 @@ export function PurchaseDocumentForm({
                 disabled={readOnly}
               />
             </div>
-            <div className="field">
+            <div className="field field-date">
               <label htmlFor="compra-date">Fecha</label>
-              <input
-                id="compra-date"
-                type="date"
-                value={purchasedAt}
-                onChange={(e) => setPurchasedAt(e.target.value)}
-                readOnly={readOnly}
-                disabled={readOnly}
-              />
+              <div className="field-date-control">
+                <input
+                  id="compra-date"
+                  type="date"
+                  value={purchasedAt}
+                  onChange={(e) => setPurchasedAt(e.target.value)}
+                  readOnly={readOnly}
+                  disabled={readOnly}
+                />
+              </div>
             </div>
           </div>
 

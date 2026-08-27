@@ -287,22 +287,6 @@ export function InventoryPage() {
 
   const filtersActive = sheetFilterCount > 0 || Boolean(q.trim());
 
-  const filterSummary = useMemo(() => {
-    const chips: { key: string; label: string }[] = [];
-    if (filters.categoryId) {
-      const name = categories.find((c) => c.id === filters.categoryId)?.name || 'Categoría';
-      chips.push({ key: 'cat', label: name });
-    }
-    if (filters.onlyLow) chips.push({ key: 'low', label: 'Stock bajo' });
-    if (filters.photo === '0') chips.push({ key: 'nophoto', label: 'Sin foto' });
-    if (filters.photo === '1') chips.push({ key: 'photo', label: 'Con foto' });
-    if (filters.tracksStock === '1') chips.push({ key: 'tracks', label: 'Con control stock' });
-    if (filters.tracksStock === '0') chips.push({ key: 'notracks', label: 'Sin control stock' });
-    if (filters.stockPresence === 'in') chips.push({ key: 'in', label: 'Con stock' });
-    if (filters.stockPresence === 'zero') chips.push({ key: 'zero', label: 'Stock en cero' });
-    return chips;
-  }, [filters, categories]);
-
   function toggleSort(column: InventorySortKey) {
     const next = nextInventorySort(sortKey, sortDir, column);
     setSortKey(next.key);
@@ -620,19 +604,6 @@ export function InventoryPage() {
               Sin control stock
             </button>
           </div>
-
-          {sheetFilterCount > 0 && (
-            <div className="inv-filter-summary" aria-label="Filtros activos">
-              {filterSummary.map((c) => (
-                <span key={c.key} className="prod-chip is-active prod-chip-static">
-                  {c.label}
-                </span>
-              ))}
-              <button type="button" className="btn ghost" onClick={clearFilters}>
-                Limpiar
-              </button>
-            </div>
-          )}
 
           {error && <p className="error">{error}</p>}
 

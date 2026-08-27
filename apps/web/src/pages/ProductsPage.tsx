@@ -310,18 +310,6 @@ export function ProductsPage() {
 
   const filtersActive = Boolean(qDebounced || sheetFilterCount > 0);
 
-  const filterSummary: { key: string; label: string }[] = [];
-  if (categoryId) {
-    const catName = categories.find((c) => c.id === categoryId)?.name || 'Categoría';
-    filterSummary.push({ key: 'cat', label: catName });
-  }
-  if (lowStock) filterSummary.push({ key: 'low', label: 'Stock bajo' });
-  if (pendingPhoto) filterSummary.push({ key: 'photo', label: 'Sin foto' });
-  if (allowsReturn === '0') filterSummary.push({ key: 'ret0', label: 'Devolución: No' });
-  if (allowsReturn === '1') filterSummary.push({ key: 'ret1', label: 'Devolución: Sí' });
-  if (tracksStockFilter === '1') filterSummary.push({ key: 'tr1', label: 'Con control stock' });
-  if (tracksStockFilter === '0') filterSummary.push({ key: 'tr0', label: 'Sin control stock' });
-
   useEffect(() => {
     const t = window.setTimeout(() => setQDebounced(q), 280);
     return () => window.clearTimeout(t);
@@ -360,7 +348,13 @@ export function ProductsPage() {
 
   useEffect(() => {
     if (!modalOpen) return;
-    const t = window.setTimeout(() => nameRef.current?.focus(), 40);
+    // Solo al abrir: no re-enfocar Nombre en cada re-render / keystroke
+    const t = window.setTimeout(() => {
+      if (document.activeElement === nameRef.current) return;
+      const ae = document.activeElement;
+      if (ae && ae !== document.body && nameRef.current?.form?.contains(ae)) return;
+      nameRef.current?.focus();
+    }, 40);
     const onKey = (e: KeyboardEvent) => {
       if (e.key === 'Escape') requestCloseModal();
     };
@@ -1009,21 +1003,7 @@ export function ProductsPage() {
           </button>
         </div>
       </div>
-
-      {sheetFilterCount > 0 && (
-        <div className="prod-filter-summary" aria-label="Filtros activos">
-          {filterSummary.map((c) => (
-            <span key={c.key} className="prod-chip is-active prod-chip-static">
-              {c.label}
-            </span>
-          ))}
-          <button type="button" className="btn ghost prod-filter-clear" onClick={clearFilters}>
-            Limpiar
-          </button>
-        </div>
-      )}
-
-      {!loading && !error && products.length > 0 && (
+{!loading && !error && products.length > 0 && (
         <p className="prod-status muted">
           {products.length} prenda{products.length === 1 ? '' : 's'}
           {noPhotoCount > 0 ? ` · ${noPhotoCount} sin foto` : ''}
@@ -1531,7 +1511,11 @@ export function ProductsPage() {
                   <button
                     type="button"
                     className="btn secondary"
-                    onClick={requestCloseModal}
+                    onClick={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      requestCloseModal();
+                    }}
                     disabled={saving || printBusy}
                   >
                     Cancelar

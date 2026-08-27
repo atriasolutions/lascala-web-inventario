@@ -125,14 +125,6 @@ export function ComprasListPage() {
     Boolean(filters.q.trim()) ||
     filters.status !== 'all';
 
-  const summaryChips = useMemo(() => {
-    const chips: { key: string; label: string }[] = [];
-    if (filters.dateFrom) chips.push({ key: 'from', label: `Desde ${formatDate(filters.dateFrom)}` });
-    if (filters.dateTo) chips.push({ key: 'to', label: `Hasta ${formatDate(filters.dateTo)}` });
-    if (filters.q.trim()) chips.push({ key: 'q', label: `Producto: ${filters.q.trim()}` });
-    if (filters.status !== 'all') chips.push({ key: 'st', label: statusLabel(filters.status) });
-    return chips;
-  }, [filters]);
 
   function openDrawer() {
     setDraftDateFrom(filters.dateFrom);
@@ -214,21 +206,7 @@ export function ComprasListPage() {
               Filtros
             </button>
           </div>
-
-          {hasExtraFilters && (
-            <div className="ing-filter-summary" aria-label="Filtros activos">
-              {summaryChips.map((c) => (
-                <span key={c.key} className="ing-chip is-active ing-chip-static">
-                  {c.label}
-                </span>
-              ))}
-              <button type="button" className="btn ghost" onClick={clearFilters}>
-                Limpiar
-              </button>
-            </div>
-          )}
-
-          {error && <p className="error">{error}</p>}
+{error && <p className="error">{error}</p>}
 
           <div className="ing-list-scroll" ref={scrollRef}>
             {loading && (

@@ -1967,6 +1967,43 @@ a.is-nav-offline,
   padding: 0;
 }
 
+/* Contenedor dedicado Fecha (Compras): contain + clip contra overflow WebKit */
+.field-date {
+  min-width: 0;
+  max-width: 100%;
+  width: 100%;
+  overflow: hidden;
+  contain: inline-size;
+}
+.field-date-control {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+  overflow: clip;
+  box-sizing: border-box;
+}
+.field-date-control input[type='date'],
+.field-date input[type='date'] {
+  width: 100% !important;
+  max-width: 100% !important;
+  min-width: 0 !important;
+  box-sizing: border-box !important;
+  display: block;
+}
+.field-date input[type='date']::-webkit-datetime-edit,
+.field-date input[type='date']::-webkit-datetime-edit-fields-wrapper,
+.field-date input[type='date']::-webkit-datetime-edit-text,
+.field-date input[type='date']::-webkit-datetime-edit-month-field,
+.field-date input[type='date']::-webkit-datetime-edit-day-field,
+.field-date input[type='date']::-webkit-datetime-edit-year-field,
+.field-date-control input[type='date']::-webkit-datetime-edit,
+.field-date-control input[type='date']::-webkit-datetime-edit-fields-wrapper {
+  min-width: 0 !important;
+  max-width: 100% !important;
+  padding: 0;
+}
+
 /* Combobox unificado: mismo look nativo en toda la app */
 .field select,
 .context-selects select,
@@ -2955,17 +2992,10 @@ a.is-nav-offline,
 body.modal-scroll-lock {
   overflow: hidden !important;
   overscroll-behavior: none;
-  touch-action: none;
 }
 body.modal-scroll-lock .main-content {
   overflow: hidden !important;
   overscroll-behavior: none;
-  touch-action: none;
-}
-/* El panel del modal sí recibe gestos de scroll */
-body.modal-scroll-lock .pos-modal,
-body.modal-scroll-lock .pos-modal * {
-  touch-action: auto;
 }
 /* X anclada al recuadro blanco, no al overlay */
 .pos-modal-panel,
@@ -2977,7 +3007,7 @@ body.modal-scroll-lock .pos-modal * {
   position: absolute;
   top: -12px;
   right: -12px;
-  z-index: 6;
+  z-index: 40;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -2993,6 +3023,9 @@ body.modal-scroll-lock .pos-modal * {
   color: var(--color-brand, #e6007e);
   box-shadow: 0 4px 16px rgba(20, 9, 16, 0.18);
   cursor: pointer;
+  pointer-events: auto;
+  -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
   transition: background 140ms ease, border-color 140ms ease, transform 140ms ease;
 }
 .modal-overlay-close:hover:not(:disabled) {
@@ -3010,12 +3043,13 @@ body.modal-scroll-lock .pos-modal * {
   .pos-modal.open {
     padding-top: max(0.35rem, env(safe-area-inset-top, 0px));
   }
-  /* X siempre dentro del card (no fuera de pantalla con teclado) */
+  /* X siempre dentro del card y por encima del panel (iOS hit-testing) */
   .pos-modal.open .modal-overlay-close {
     top: 8px;
     right: 8px;
+    z-index: 40;
+    pointer-events: auto;
   }
-
   /*
    * Patrones unificados mobile (iOS):
    * - Overlay fija a visualViewport (PosModal → --vv-*)
@@ -3044,6 +3078,7 @@ body.modal-scroll-lock .pos-modal * {
     display: flex;
     flex-direction: column;
     overflow: visible;
+    isolation: isolate;
   }
   .pos-modal.open .pos-modal-panel {
     width: 100%;
@@ -3074,6 +3109,17 @@ body.modal-scroll-lock .pos-modal * {
     margin: 0;
     padding: 0.15rem 2.75rem 0.45rem 0;
     background: #fff8fb;
+    /* X es hermana del panel (shell); head no debe comerse los taps */
+    pointer-events: none;
+  }
+  .pos-modal.open .pos-modal-head h3 {
+    pointer-events: auto;
+  }
+  .pos-modal.open .modal-overlay-close {
+    top: 8px;
+    right: 8px;
+    z-index: 40;
+    pointer-events: auto;
   }
   .pos-modal.open .ing-line-modal-note,
   .pos-modal.open .ing-nb-tabs {
@@ -3130,14 +3176,18 @@ body.modal-scroll-lock .pos-modal * {
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
   }
-  /* Acciones dentro del body scrolleable: sticky al fondo del panel */
-  .pos-modal.open .gasto-form-actions,
+  /* Acciones en footer del sheet: no sticky (footer hermano del body) */
   .pos-modal.open .merma-form-actions {
     position: sticky;
     bottom: 0;
     background: #fff8fb;
     border-top: 1px solid var(--color-line);
     margin-top: auto;
+  }
+  .pos-modal.open .gasto-form-actions {
+    position: relative;
+    bottom: auto;
+    margin-top: 0;
   }
 }
 /* Modal línea de compra: aire y overflow para que la X quede fuera del card */
@@ -3179,12 +3229,44 @@ body.modal-scroll-lock .pos-modal * {
   border-color: var(--color-brand);
   box-shadow: inset 0 0 0 2px rgba(230, 0, 126, 0.45);
 }
+
+/* Mobile (≤900px): mismo focus inset en TODA la app (pantallas base + modales).
+   El ring outward se recorta con overflow y “sangra” rosa en bordes. */
+@media (max-width: 900px) {
+  .field input:focus,
+  .field input:focus-visible,
+  .field select:focus,
+  .field select:focus-visible,
+  .field textarea:focus,
+  .field textarea:focus-visible,
+  .lookup-control input:focus,
+  .lookup-control input:focus-visible,
+  .context-selects select:focus,
+  .context-selects select:focus-visible,
+  .ing-new-meta input:focus,
+  .ing-new-meta input:focus-visible,
+  .ing-new-meta select:focus,
+  .ing-new-meta select:focus-visible,
+  .reports-filter-field input:focus,
+  .reports-filter-field input:focus-visible,
+  .gasto-period-field input:focus,
+  .gasto-period-field input:focus-visible {
+    outline: none;
+    border-color: var(--color-brand);
+    box-shadow: inset 0 0 0 2px rgba(230, 0, 126, 0.45);
+  }
+}
 .pos-modal-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 0.75rem;
   margin-bottom: 0.35rem;
+  position: relative; /* ancla la X inyectada en el head */
+}
+.pos-modal-head .modal-overlay-close {
+  top: -4px;
+  right: -4px;
 }
 .pos-modal-head h3 {
   margin: 0;
@@ -4579,6 +4661,7 @@ body.modal-scroll-lock .pos-modal * {
 .main:has(.ing-list) .ing-list-main > .inv-toolbar,
 .main:has(.ing-list) .ing-list-main > .inv-filters,
 .main:has(.ing-list) .ing-list-main > .inv-filter-summary,
+.main:has(.ing-list) .ing-list-main > .gasto-toolbar,
 .main:has(.ing-list) .ing-list-main > .sales-stats,
 .main:has(.ing-list) .ing-list-main > .merma-tabs,
 .main:has(.ing-list) .ing-list-main > .admin-lede,
@@ -5584,17 +5667,34 @@ a.ing-row:hover { border-color: #e3b7cf; }
     max-width: 100%;
   }
   .ing-new-meta .field,
-  .compras-form .ing-new-meta .field {
+  .compras-form .ing-new-meta .field,
+  .compras-form .field-date,
+  .compras-form .field-date-control {
     min-width: 0;
     max-width: 100%;
+    width: 100%;
     overflow: hidden;
   }
+  .ing-filters-sheet .field-date,
+  .ing-filters-sheet .field-date-control,
+  .ing-filters-sheet .field:has(> input[type='date']),
+  .gasto-filter-fields .field-date,
+  .gasto-filter-fields .field-date-control {
+    min-width: 0;
+    max-width: 100%;
+    width: 100%;
+    overflow: hidden;
+  }
+  .ing-filters-sheet input[type='date'],
+  .gasto-filter-fields input[type='date'],
   .compras-form .ing-new-meta input[type='date'],
-  .compras-form .field input[type='date'] {
+  .compras-form .field input[type='date'],
+  .compras-form .field-date input[type='date'],
+  .compras-form .field-date-control input[type='date'] {
     width: 100% !important;
     max-width: 100% !important;
     min-width: 0 !important;
-    box-sizing: border-box;
+    box-sizing: border-box !important;
   }
 }
 
@@ -10224,6 +10324,56 @@ button.inv-stat.is-active {
   min-width: 9.5rem;
 }
 
+.gasto-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 0.65rem;
+  flex-wrap: nowrap;
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.gasto-toolbar .inv-filters-btn {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 44px;
+}
+
+.gasto-toolbar .gasto-sort-select {
+  flex: 0 0 auto;
+}
+
+.gasto-filter-label {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  color: var(--color-muted);
+  margin-bottom: 0.4rem;
+}
+
+.gasto-period-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+
+.gasto-period-chips .ing-chip {
+  min-height: 40px;
+}
+
+.gasto-filters-sheet-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  flex-shrink: 0;
+}
+
+.gasto-filters-clear {
+  width: 100%;
+  min-height: 44px;
+}
+
 .gasto-sort-select select {
   min-height: 44px;
 }
@@ -10298,16 +10448,28 @@ button.inv-stat.is-active {
   max-height: min(92dvh, 740px);
   display: flex;
   flex-direction: column;
-  overflow: visible;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.gasto-form-layout {
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
 }
 
 .gasto-form-body {
-  padding: 0 1rem 1rem;
+  padding: 0 1rem 0.5rem;
   overflow: auto;
   -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
   display: flex;
   flex-direction: column;
   gap: 0.85rem;
+  flex: 1 1 auto;
+  min-height: 0;
 }
 
 .gasto-form-hint {
@@ -10328,11 +10490,14 @@ button.inv-stat.is-active {
   font-size: 16px; /* evita zoom iOS */
 }
 
+/* Footer fijo al fondo del panel (no sticky dentro del scroll) */
 .gasto-form-actions {
-  position: sticky;
-  bottom: 0;
-  padding-top: 0.35rem;
-  background: linear-gradient(to top, #fff 70%, transparent);
+  position: relative;
+  flex-shrink: 0;
+  margin: 0;
+  padding: 0.75rem 1rem calc(0.75rem + env(safe-area-inset-bottom, 0px));
+  background: #fff8fb;
+  border-top: 1px solid var(--color-line);
 }
 
 .gasto-form-actions .btn {
@@ -11775,20 +11940,31 @@ body.help-mode-touch::after {
     flex: none;
   }
 
-  /* Reportes: filtros compactos */
+  /* Reportes: filtros compactos — conservar padding para no cortar chips */
   .reports-page .admin-lede {
     font-size: 0.85rem;
     margin-bottom: 0.15rem;
   }
   .reports-filters {
-    gap: 0.35rem;
-    padding: 0.35rem 0 0.5rem;
+    gap: 0.45rem 0.5rem;
+    margin: 0 calc(var(--page-pad) * -1);
+    padding: 0.45rem var(--page-pad) 0.65rem;
+    overflow-x: visible;
   }
   .reports-filters-chips {
     flex-wrap: nowrap;
     overflow-x: auto;
     -webkit-overflow-scrolling: touch;
-    padding-bottom: 0.15rem;
+    overscroll-behavior-x: contain;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    padding-inline: 2px;
+    scroll-padding-inline: var(--page-pad);
+    padding-bottom: 0.2rem;
+    margin: 0;
+    /* Evita que el primer/último chip queden bajo el clip */
+    mask-image: none;
   }
   .reports-filters-chips .ing-chip {
     flex: 0 0 auto;
@@ -11796,9 +11972,19 @@ body.help-mode-touch::after {
     padding: 0.3rem 0.65rem;
     font-size: 0.82rem;
   }
-  .reports-filters-range {
+  .reports-filters-range,
+  .reports-filters-scope {
     margin: 0;
     font-size: 0.82rem;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+    overflow-wrap: anywhere;
+    word-break: break-word;
+  }
+
+  .reports-chart.chart-shell {
+    min-height: 240px;
   }
 
   /* Ayuda: botones visibles */

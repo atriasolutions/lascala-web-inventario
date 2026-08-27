@@ -11,15 +11,23 @@ type CloseHost = {
   children?: ReactNode;
 };
 
-/** X como hijo del card blanco (absolute -12px), no del overlay. */
+/**
+ * X como último hijo del host (shell/panel), sin recorrer ni clonar el <form>.
+ *
+ * Importante: un walk con cloneElement/Children.toArray sobre el formulario
+ * re-creaba el árbol en cada keystroke y en iOS el input de Precio venta
+ * perdía el foco (remount). Solo tocamos el wrapper externo.
+ */
 export function ModalOverlayClose({ onClose, disabled, children }: Props) {
   const closeBtn = (
     <button
       type="button"
       className="modal-overlay-close"
+      onPointerDown={(e) => e.stopPropagation()}
       onClick={(e) => {
+        e.preventDefault();
         e.stopPropagation();
-        onClose();
+        if (!disabled) onClose();
       }}
       disabled={disabled}
       aria-label="Cerrar"
@@ -31,8 +39,8 @@ export function ModalOverlayClose({ onClose, disabled, children }: Props) {
   if (!isValidElement(children)) {
     return (
       <>
-        {closeBtn}
         {children}
+        {closeBtn}
       </>
     );
   }
@@ -41,8 +49,8 @@ export function ModalOverlayClose({ onClose, disabled, children }: Props) {
   return cloneElement(host, {
     children: (
       <>
-        {closeBtn}
         {host.props.children}
+        {closeBtn}
       </>
     ),
   });
