@@ -8,6 +8,7 @@ const CATEGORY_ICON = {
   stock: IconAlertTriangle,
   rotacion: IconSwap,
   voucher: IconAlertTriangle,
+  operacion: IconSwap,
 };
 
 export function NotificationBell({ variant = 'desktop' }: { variant?: 'desktop' | 'mobile' }) {
@@ -61,7 +62,7 @@ export function NotificationBell({ variant = 'desktop' }: { variant?: 'desktop' 
       {!loading && !error && !items.length && (
         <div className="notif-empty" role="status">
           <strong>Sin alertas</strong>
-          <p className="muted">Cuando haya stock bajo o prendas sin movimiento, aparecen acá.</p>
+          <p className="muted">Stock bajo, operaciones de piso o prendas sin movimiento aparecen acá.</p>
         </div>
       )}
       <div className="notif-list">

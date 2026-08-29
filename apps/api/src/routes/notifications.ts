@@ -4,6 +4,7 @@ import { requireAuth } from '../middleware/auth.js';
 import {
   buildLiveAlerts,
   dismissNotification,
+  fetchStoredEventNotifications,
   findNotificationState,
   markAllNotificationsRead,
   markNotificationRead,
@@ -46,7 +47,14 @@ notificationsRouter.get(
       userId,
       live,
     });
-    const { items, unread_count } = mergeNotifications(branchId, live, states);
+    const orgWide = req.activeRole === 'owner';
+    const eventStates = await fetchStoredEventNotifications({
+      userId,
+      branchId,
+      organizationId,
+      orgWide,
+    });
+    const { items, unread_count } = mergeNotifications(branchId, live, states, eventStates);
     res.json({ items, unread_count });
   }),
 );
@@ -60,10 +68,12 @@ notificationsRouter.post(
 
     const live = await buildLiveAlerts(organizationId, branchId);
     await syncNotificationStates({ organizationId, branchId, userId, live });
+    const orgWide = req.activeRole === 'owner';
     const updated = await markAllNotificationsRead({
       userId,
       branchId,
-      alertKeys: live.map((a) => a.alertKey),
+      organizationId,
+      orgWide,
     });
     res.json({ ok: true, branch_id: branchId, updated });
   }),

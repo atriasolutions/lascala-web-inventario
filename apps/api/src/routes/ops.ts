@@ -12,6 +12,7 @@ import {
   mermaKindLabel,
   type MermaKind,
 } from '../services/voucherFulfill.js';
+import { notifyOrganizationOwnersOfOperation } from '../services/notifications.js';
 import {
   pickVoucherForSaleLookup,
   saleLookupClosedMessage,
@@ -189,8 +190,9 @@ opsRouter.post(
         cost_price: string;
         tracks_stock: boolean;
         name: string;
+        internal_code: string;
       }>(
-        `SELECT cost_price, COALESCE(tracks_stock, true) AS tracks_stock, name
+        `SELECT cost_price, COALESCE(tracks_stock, true) AS tracks_stock, name, internal_code
          FROM products WHERE id = $1 AND organization_id = $2`,
         [body.productId, req.user!.organizationId],
       );
@@ -247,6 +249,24 @@ opsRouter.post(
       }
 
       await client.query('COMMIT');
+
+      const branchRes = await query<{ name: string }>(
+        `SELECT name FROM branches WHERE id = $1`,
+        [req.activeBranchId],
+      );
+      void notifyOrganizationOwnersOfOperation({
+        organizationId: req.user!.organizationId,
+        branchId: req.activeBranchId!,
+        actorUserId: req.user!.id,
+        actorRole: req.activeRole!,
+        actorName: req.user!.fullName,
+        kind: 'merma',
+        entityId: merma.rows[0].id as string,
+        productName: prod.rows[0].name,
+        productCode: prod.rows[0].internal_code,
+        branchName: branchRes.rows[0]?.name ?? '',
+        quantity: body.quantity,
+      }).catch(() => {});
 
       const row = merma.rows[0] as Record<string, unknown>;
       if (!canSeeCost(req.activeRole)) {
@@ -619,6 +639,37 @@ opsRouter.post(
         todayCl,
       });
       await client.query('COMMIT');
+
+      const meta = await query<{
+        name: string;
+        internal_code: string;
+        voucher_number: string;
+        branch_name: string;
+      }>(
+        `SELECT p.name, p.internal_code, v.voucher_number, b.name AS branch_name
+         FROM change_vouchers v
+         JOIN products p ON p.id = v.product_id
+         JOIN branches b ON b.id = v.branch_id
+         WHERE v.id = $1`,
+        [id],
+      );
+      const info = meta.rows[0];
+      if (info && result.exchangeReturn?.id) {
+        void notifyOrganizationOwnersOfOperation({
+          organizationId: req.user!.organizationId,
+          branchId: req.activeBranchId!,
+          actorUserId: req.user!.id,
+          actorRole: req.activeRole!,
+          actorName: req.user!.fullName,
+          kind: result.outcome === 'exchange' ? 'voucher_cambio' : 'voucher_devolucion',
+          entityId: result.exchangeReturn.id as string,
+          productName: info.name,
+          productCode: info.internal_code,
+          branchName: info.branch_name,
+          voucherNumber: info.voucher_number,
+        }).catch(() => {});
+      }
+
       if (result.merma && !canSeeCost(req.activeRole)) {
         (result.merma as Record<string, unknown>).cost_impact = null;
       }

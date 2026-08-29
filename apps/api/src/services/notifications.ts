@@ -1,8 +1,201 @@
 import { query } from '../db/pool.js';
 import { getLowStockAlerts, getNoMovementAlerts } from './inventory.js';
 
-export type NotificationCategory = 'stock' | 'rotacion' | 'voucher';
+export type NotificationCategory = 'stock' | 'rotacion' | 'voucher' | 'operacion';
 export type NotificationSeverity = 'high' | 'medium';
+
+/** Operaciones de piso que avisan a administradores. */
+export type OperationNotificationKind = 'merma' | 'voucher_devolucion' | 'voucher_cambio';
+
+type OperationEventPayload = {
+  title: string;
+  detail: string;
+  href: string;
+  category: 'operacion';
+  severity: NotificationSeverity;
+};
+
+const OP_ALERT_PREFIX = 'op:';
+const MAX_EVENT_NOTIFICATIONS = 40;
+
+function parseOperationEventPayload(raw: string | null): OperationEventPayload | null {
+  if (!raw) return null;
+  try {
+    const data = JSON.parse(raw) as Partial<OperationEventPayload>;
+    if (!data.title || !data.detail || !data.href) return null;
+    return {
+      title: data.title,
+      detail: data.detail,
+      href: data.href,
+      category: 'operacion',
+      severity: data.severity === 'high' ? 'high' : 'medium',
+    };
+  } catch {
+    return null;
+  }
+}
+
+export function buildOperationNotificationContent(params: {
+  kind: OperationNotificationKind;
+  entityId: string;
+  productName: string;
+  productCode: string;
+  actorName: string;
+  branchName: string;
+  quantity?: number;
+  voucherNumber?: string | null;
+}): { alertKey: string; payload: OperationEventPayload } {
+  const product = `${params.productName} (${params.productCode})`;
+  const who = params.actorName.trim() || 'Usuaria';
+  const where = params.branchName.trim() || 'Sucursal';
+  const ticket = params.voucherNumber?.trim();
+
+  if (params.kind === 'merma') {
+    const qty = params.quantity ?? 1;
+    return {
+      alertKey: `${OP_ALERT_PREFIX}merma:${params.entityId}`,
+      payload: {
+        title: 'Merma en piso',
+        detail: `${who} · ${where} · ${product} · ${qty} ud.`,
+        href: '/mermas',
+        category: 'operacion',
+        severity: 'medium',
+      },
+    };
+  }
+
+  if (params.kind === 'voucher_devolucion') {
+    return {
+      alertKey: `${OP_ALERT_PREFIX}voucher-devolucion:${params.entityId}`,
+      payload: {
+        title: 'Devolución en piso',
+        detail: `${who} · ${where} · ${product}${ticket ? ` · ticket ${ticket}` : ''}`,
+        href: '/mermas',
+        category: 'operacion',
+        severity: 'medium',
+      },
+    };
+  }
+
+  return {
+    alertKey: `${OP_ALERT_PREFIX}voucher-cambio:${params.entityId}`,
+    payload: {
+      title: 'Cambio en piso',
+      detail: `${who} · ${where} · ${product}${ticket ? ` · ticket ${ticket}` : ''}`,
+      href: '/mermas',
+      category: 'operacion',
+      severity: 'medium',
+    },
+  };
+}
+
+/** Vendedora/encargada → notificar a cada owner activo de la org (no al actor owner). */
+export async function notifyOrganizationOwnersOfOperation(params: {
+  organizationId: string;
+  branchId: string;
+  actorUserId: string;
+  actorRole: string;
+  kind: OperationNotificationKind;
+  entityId: string;
+  productName: string;
+  productCode: string;
+  actorName: string;
+  branchName: string;
+  quantity?: number;
+  voucherNumber?: string | null;
+}): Promise<number> {
+  if (params.actorRole === 'owner') return 0;
+  if (params.actorRole !== 'seller' && params.actorRole !== 'branch_manager') return 0;
+
+  const owners = await query<{ id: string }>(
+    `SELECT DISTINCT u.id
+     FROM users u
+     JOIN user_branches ub ON ub.user_id = u.id
+     WHERE u.organization_id = $1
+       AND u.is_active = true
+       AND ub.role = 'owner'
+       AND u.id <> $2`,
+    [params.organizationId, params.actorUserId],
+  );
+  if (!owners.rows.length) return 0;
+
+  const { alertKey, payload } = buildOperationNotificationContent(params);
+  const fingerprint = JSON.stringify(payload);
+
+  for (const owner of owners.rows) {
+    await query(
+      `INSERT INTO notification_states (
+         organization_id, branch_id, user_id, alert_key, condition_fingerprint
+       ) VALUES ($1,$2,$3,$4,$5)
+       ON CONFLICT (user_id, branch_id, alert_key) DO UPDATE SET
+         condition_fingerprint = EXCLUDED.condition_fingerprint,
+         read_at = NULL,
+         dismissed_at = NULL,
+         updated_at = now()`,
+      [params.organizationId, params.branchId, owner.id, alertKey, fingerprint],
+    );
+  }
+
+  return owners.rows.length;
+}
+
+export async function fetchStoredEventNotifications(params: {
+  userId: string;
+  branchId: string;
+  organizationId?: string;
+  orgWide?: boolean;
+}): Promise<NotificationStateRow[]> {
+  if (params.orgWide && params.organizationId) {
+    const result = await query<NotificationStateRow>(
+      `SELECT *
+       FROM notification_states
+       WHERE user_id = $1
+         AND organization_id = $2
+         AND alert_key LIKE $3
+         AND dismissed_at IS NULL
+       ORDER BY created_at DESC
+       LIMIT $4`,
+      [params.userId, params.organizationId, `${OP_ALERT_PREFIX}%`, MAX_EVENT_NOTIFICATIONS],
+    );
+    return result.rows;
+  }
+
+  const result = await query<NotificationStateRow>(
+    `SELECT *
+     FROM notification_states
+     WHERE user_id = $1
+       AND branch_id = $2
+       AND alert_key LIKE $3
+       AND dismissed_at IS NULL
+     ORDER BY created_at DESC
+     LIMIT $4`,
+    [params.userId, params.branchId, `${OP_ALERT_PREFIX}%`, MAX_EVENT_NOTIFICATIONS],
+  );
+  return result.rows;
+}
+
+function eventRowsToItems(rows: NotificationStateRow[]): NotificationItem[] {
+  const items: NotificationItem[] = [];
+  for (const row of rows) {
+    const payload = parseOperationEventPayload(row.condition_fingerprint);
+    if (!payload) continue;
+    items.push({
+      id: row.id,
+      alert_key: row.alert_key,
+      branch_id: row.branch_id,
+      user_id: row.user_id,
+      category: payload.category,
+      severity: payload.severity,
+      title: payload.title,
+      detail: payload.detail,
+      href: payload.href,
+      read_at: row.read_at,
+      dismissed_at: null,
+      created_at: row.created_at,
+    });
+  }
+  return items;
+}
 
 export type LiveAlert = {
   alertKey: string;
@@ -151,6 +344,7 @@ export function mergeNotifications(
   branchId: string,
   live: LiveAlert[],
   states: NotificationStateRow[],
+  eventStates: NotificationStateRow[] = [],
 ): { items: NotificationItem[]; unread_count: number } {
   const byKey = new Map(states.map((s) => [s.alert_key, s]));
   const items: NotificationItem[] = [];
@@ -177,8 +371,13 @@ export function mergeNotifications(
     });
   }
 
-  const unread_count = items.filter((i) => !i.read_at).length;
-  return { items, unread_count };
+  const eventItems = eventRowsToItems(eventStates);
+  const merged = [...eventItems, ...items].sort(
+    (a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime(),
+  );
+
+  const unread_count = merged.filter((i) => !i.read_at).length;
+  return { items: merged, unread_count };
 }
 
 export async function findNotificationState(params: {
@@ -190,14 +389,20 @@ export async function findNotificationState(params: {
     /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
       params.idOrKey,
     );
+  if (isUuid) {
+    const result = await query<NotificationStateRow>(
+      `SELECT * FROM notification_states
+       WHERE user_id = $1 AND id = $2
+       LIMIT 1`,
+      [params.userId, params.idOrKey],
+    );
+    return result.rows[0] ?? null;
+  }
+
   const result = await query<NotificationStateRow>(
-    isUuid
-      ? `SELECT * FROM notification_states
-         WHERE user_id = $1 AND branch_id = $2 AND id = $3
-         LIMIT 1`
-      : `SELECT * FROM notification_states
-         WHERE user_id = $1 AND branch_id = $2 AND alert_key = $3
-         LIMIT 1`,
+    `SELECT * FROM notification_states
+     WHERE user_id = $1 AND branch_id = $2 AND alert_key = $3
+     LIMIT 1`,
     [params.userId, params.branchId, params.idOrKey],
   );
   return result.rows[0] ?? null;
@@ -217,17 +422,42 @@ export async function markNotificationRead(stateId: string) {
 export async function markAllNotificationsRead(params: {
   userId: string;
   branchId: string;
-  alertKeys: string[];
+  alertKeys?: string[];
+  organizationId?: string;
+  orgWide?: boolean;
 }) {
-  if (params.alertKeys.length === 0) return 0;
+  if (params.alertKeys?.length) {
+    const result = await query(
+      `UPDATE notification_states
+       SET read_at = COALESCE(read_at, now()), updated_at = now()
+       WHERE user_id = $1 AND branch_id = $2
+         AND alert_key = ANY($3::text[])
+         AND dismissed_at IS NULL
+         AND read_at IS NULL`,
+      [params.userId, params.branchId, params.alertKeys],
+    );
+    return result.rowCount ?? 0;
+  }
+
+  if (params.orgWide && params.organizationId) {
+    const result = await query(
+      `UPDATE notification_states
+       SET read_at = COALESCE(read_at, now()), updated_at = now()
+       WHERE user_id = $1 AND organization_id = $2
+         AND dismissed_at IS NULL
+         AND read_at IS NULL`,
+      [params.userId, params.organizationId],
+    );
+    return result.rowCount ?? 0;
+  }
+
   const result = await query(
     `UPDATE notification_states
      SET read_at = COALESCE(read_at, now()), updated_at = now()
      WHERE user_id = $1 AND branch_id = $2
-       AND alert_key = ANY($3::text[])
        AND dismissed_at IS NULL
        AND read_at IS NULL`,
-    [params.userId, params.branchId, params.alertKeys],
+    [params.userId, params.branchId],
   );
   return result.rowCount ?? 0;
 }

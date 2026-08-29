@@ -36,7 +36,7 @@ export type AlertItem = {
   /** Clave estable para persistencia (hoy = id; mañana = alert_key del API). */
   alertKey: string;
   severity: 'high' | 'medium';
-  category: 'stock' | 'rotacion' | 'voucher';
+  category: 'stock' | 'rotacion' | 'voucher' | 'operacion';
   title: string;
   detail: string;
   to: string;
@@ -95,7 +95,7 @@ function writeSet(key: string, set: Set<string>) {
 }
 
 function mapCategory(raw?: string): AlertItem['category'] {
-  if (raw === 'rotacion' || raw === 'voucher' || raw === 'stock') return raw;
+  if (raw === 'rotacion' || raw === 'voucher' || raw === 'stock' || raw === 'operacion') return raw;
   if (raw === 'low_stock' || raw === 'stock_low') return 'stock';
   if (raw === 'no_movement' || raw === 'rotation') return 'rotacion';
   return 'stock';
