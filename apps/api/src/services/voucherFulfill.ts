@@ -93,7 +93,7 @@ export function assertExchangeSameSalePrice(returnedSalePrice: number | string, 
   if (returned !== neu) {
     throw new HttpError(
       400,
-      `El cambio solo permite otra prenda al mismo precio de venta ($${returned.toLocaleString('es-CL')})`,
+      `El cambio exige la misma prenda al mismo precio de venta ($${returned.toLocaleString('es-CL')})`,
     );
   }
 }
@@ -304,9 +304,7 @@ export async function fulfillVoucherWithClient(
   }
 
   if (body.outcome === 'exchange' && body.newProductId) {
-    if (body.newProductId === voucher.product_id && body.destination === 'restock') {
-      throw new HttpError(400, 'Para un cambio, pistolea una prenda distinta de vitrina');
-    }
+    const sameProduct = body.newProductId === voucher.product_id;
     const neu = await client.query<{ id: string; tracks_stock: boolean; sale_price: string }>(
       `SELECT id, COALESCE(tracks_stock, true) AS tracks_stock, sale_price::text AS sale_price
        FROM products WHERE id = $1 AND organization_id = $2`,
@@ -322,7 +320,11 @@ export async function fulfillVoucherWithClient(
        WHERE product_id = $1 AND branch_id = $2 FOR UPDATE`,
       [body.newProductId, branchId],
     );
-    const neuStock = neuBal.rows[0]?.quantity ?? 0;
+    let neuStock = neuBal.rows[0]?.quantity ?? 0;
+    /** Misma referencia + vitrina: el reingreso (+qty) ocurre antes del egreso. */
+    if (sameProduct && body.destination === 'restock') {
+      neuStock += qty;
+    }
     if (neuStock < qty) {
       throw new HttpError(
         400,

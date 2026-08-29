@@ -6573,7 +6573,7 @@ a.ing-row:hover { border-color: #e3b7cf; }
   left: 50%;
   bottom: calc(var(--bottom-nav-h) + var(--bottom-nav-pad) + 4.5rem);
   transform: translateX(-50%);
-  z-index: 90;
+  z-index: 200;
   display: flex;
   flex-direction: column-reverse;
   align-items: center;

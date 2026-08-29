@@ -898,14 +898,11 @@ export function MermasPage() {
     setNewLooking(true);
     try {
       const product = await lookupProduct(code);
-      if (product.id === ticket.product.id && destination === 'restock') {
-        toast.error('Para un cambio, pistolea una prenda distinta de vitrina');
-        setNewProduct(null);
-        return;
-      }
       const expectedPrice = ticket.sale?.unit_price ?? ticket.product.sale_price;
       if (!sameSalePriceExact(expectedPrice, product.sale_price)) {
-        toast.error('Debe ser el mismo precio de venta (p. ej. otra talla)');
+        toast.error(
+          `El cambio exige el mismo precio de venta (${money(expectedPrice)}). Revisa la prenda escaneada.`,
+        );
         setNewProduct(null);
         return;
       }
@@ -954,7 +951,9 @@ export function MermasPage() {
         newProduct.sale_price,
       )
     ) {
-      toast.error('Debe ser el mismo precio de venta (p. ej. otra talla)');
+      toast.error(
+        `El cambio exige el mismo precio de venta (${money(ticket.sale?.unit_price ?? ticket.product.sale_price)}).`,
+      );
       return;
     }
     setConfirm({ kind: 'fulfill' });
@@ -2075,7 +2074,8 @@ export function MermasPage() {
                             {outcome === 'exchange' ? (
                               <>
                                 <p className="merma-exchange-hint">
-                                  Mismo precio de venta — ideal para cambio de talla.
+                                  Mismo precio de venta. Puedes escanear la misma referencia (cambio
+                                  1:1) u otra talla al mismo precio.
                                 </p>
                                 <form
                                   className="merma-scan-row"
@@ -2089,7 +2089,7 @@ export function MermasPage() {
                                     ref={newScanRef}
                                     value={newCode}
                                     onChange={(e) => setNewCode(e.target.value)}
-                                    placeholder="Pistolea otra prenda al mismo precio"
+                                    placeholder="Pistolea la prenda de reemplazo"
                                     autoComplete="off"
                                   />
                                   <button
