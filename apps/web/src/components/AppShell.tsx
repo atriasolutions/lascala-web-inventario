@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { NavLink, Outlet, useLocation } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useAuth } from '../lib/auth';
 import { useNetworkStatus } from '../lib/networkStatus';
 import { countPendingOfflineSales } from '../lib/posCatalogCache';
@@ -14,6 +14,7 @@ import { PushAlertsBanner } from './PushAlertsBanner';
 import { ShellTitleContext } from './shellTitle';
 import { WorkplaceSwitcher } from './WorkplaceSwitcher';
 import { canUseMobileApp, isAdminRole, roleLabel as formatRoleLabel } from '../lib/roles';
+import { installServiceWorkerNavigation } from '../lib/swNavigation';
 import { useMobileViewport } from '../hooks/useMobileViewport';
 import {
   IconAlertTriangle,
@@ -166,12 +167,15 @@ export function AppShell() {
   const [titleOverride, setTitleOverride] = useState<string | null>(null);
   const [openSections, setOpenSections] = useState<Record<string, boolean>>(readOpenSections);
   const location = useLocation();
+  const navigate = useNavigate();
   const isMobile = useMobileViewport();
   const activeBranch = branches.find((b) => b.id === branchId);
   const role = activeBranch?.role || '';
   const isOwner = isAdminRole(role);
   const mobileAllowed = canUseMobileApp(user, role);
   const roleLabel = role ? formatRoleLabel(role) : '';
+
+  useEffect(() => installServiceWorkerNavigation(navigate), [navigate]);
 
   const openLogout = useCallback(() => {
     setUserMenuOpen(false);

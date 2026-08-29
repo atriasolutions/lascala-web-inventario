@@ -36,6 +36,22 @@ function parseOperationEventPayload(raw: string | null): OperationEventPayload |
   }
 }
 
+function operationDeepLink(params: {
+  kind: OperationNotificationKind;
+  productCode: string;
+  voucherNumber?: string | null;
+}): string {
+  const code = encodeURIComponent(params.productCode.trim());
+  if (params.kind === 'merma') {
+    return `/mermas?tab=mermas&product=${code}`;
+  }
+  const ticket = params.voucherNumber?.trim();
+  if (ticket) {
+    return `/mermas?tab=vouchers&voucher=${encodeURIComponent(ticket)}&open=1`;
+  }
+  return '/mermas?tab=vouchers';
+}
+
 export function buildOperationNotificationContent(params: {
   kind: OperationNotificationKind;
   entityId: string;
@@ -58,7 +74,7 @@ export function buildOperationNotificationContent(params: {
       payload: {
         title: 'Merma de producto',
         detail: `${who} · ${where} · ${product} · ${qty} ud.`,
-        href: '/mermas',
+        href: operationDeepLink({ kind: 'merma', productCode: params.productCode }),
         category: 'operacion',
         severity: 'medium',
       },
@@ -71,7 +87,11 @@ export function buildOperationNotificationContent(params: {
       payload: {
         title: 'Devolución de producto',
         detail: `${who} · ${where} · ${product}${ticket ? ` · ticket ${ticket}` : ''}`,
-        href: '/mermas',
+        href: operationDeepLink({
+          kind: 'voucher_devolucion',
+          productCode: params.productCode,
+          voucherNumber: ticket,
+        }),
         category: 'operacion',
         severity: 'medium',
       },
@@ -83,7 +103,11 @@ export function buildOperationNotificationContent(params: {
     payload: {
       title: 'Cambio de producto',
       detail: `${who} · ${where} · ${product}${ticket ? ` · ticket ${ticket}` : ''}`,
-      href: '/mermas',
+      href: operationDeepLink({
+        kind: 'voucher_cambio',
+        productCode: params.productCode,
+        voucherNumber: ticket,
+      }),
       category: 'operacion',
       severity: 'medium',
     },

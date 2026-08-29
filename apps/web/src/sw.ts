@@ -69,16 +69,21 @@ self.addEventListener('push', (event) => {
 self.addEventListener('notificationclick', (event) => {
   event.notification.close();
   const target = event.notification.data?.url || '/';
-  const path = target.startsWith('http') ? target : new URL(target, self.location.origin).href;
+  const absolute = target.startsWith('http') ? target : new URL(target, self.location.origin).href;
+  const relative = target.startsWith('http')
+    ? `${new URL(target).pathname}${new URL(target).search}`
+    : target;
 
   event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((clientList) => {
+    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then(async (clientList) => {
       for (const client of clientList) {
         if (client.url.startsWith(self.location.origin) && 'focus' in client) {
-          return client.focus();
+          await client.focus();
+          client.postMessage({ type: 'lscala:navigate', url: relative });
+          return;
         }
       }
-      if (self.clients.openWindow) return self.clients.openWindow(path);
+      if (self.clients.openWindow) return self.clients.openWindow(absolute);
       return undefined;
     }),
   );

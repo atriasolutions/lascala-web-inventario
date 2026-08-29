@@ -7,7 +7,7 @@ import {
   useRef,
   useState,
 } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { BoutiqueLoader } from '../components/BoutiqueLoader';
 import { InfiniteListFooter } from '../components/InfiniteListFooter';
@@ -365,6 +365,8 @@ function daysLeftLabel(daysLeft: number | string | null, status: string) {
 
 export function MermasPage() {
   const { branches, branchId } = useAuth();
+  const [searchParams] = useSearchParams();
+  const handledDeepLink = useRef('');
   const activeBranch = branches.find((b) => b.id === branchId);
   const role = activeBranch?.role;
   const canSeeCost = role === 'owner' || role === 'branch_manager';
@@ -989,10 +991,10 @@ export function MermasPage() {
     }
   }
 
-  async function attendFromHistory(v: Voucher) {
+  async function openVoucherByNumber(voucherNumber: string) {
     setTab('vouchers');
     resetMermaWizard();
-    setTicketNumber(v.voucher_number);
+    setTicketNumber(voucherNumber);
     setGarmentCode('');
     setGarmentOk(false);
     setOutcome('');
@@ -1004,7 +1006,7 @@ export function MermasPage() {
     setTicketLooking(true);
     try {
       const data = await api<TicketLookupResponse>(
-        `/api/ops/vouchers/by-number/${encodeURIComponent(v.voucher_number)}`,
+        `/api/ops/vouchers/by-number/${encodeURIComponent(voucherNumber)}`,
       );
       if (!data.voucher) {
         toast.error('Ticket no encontrado');
@@ -1018,6 +1020,46 @@ export function MermasPage() {
       setTicketLooking(false);
     }
   }
+
+  async function attendFromHistory(v: Voucher) {
+    setVoucherFilters((prev) => ({
+      ...prev,
+      voucher: v.voucher_number,
+      status: 'all',
+    }));
+    await openVoucherByNumber(v.voucher_number);
+  }
+
+  useEffect(() => {
+    const sig = searchParams.toString();
+    if (!sig || handledDeepLink.current === sig) return;
+
+    const tabParam = searchParams.get('tab');
+    const voucherParam = searchParams.get('voucher')?.trim();
+    const openParam = searchParams.get('open');
+    const productParam = searchParams.get('product')?.trim();
+
+    if (tabParam === 'mermas' || tabParam === 'vouchers') {
+      setTab(tabParam);
+    }
+
+    if (productParam) {
+      setTab('mermas');
+      setMermaFilters((prev) => ({ ...prev, product: productParam }));
+    }
+
+    if (voucherParam) {
+      setTab('vouchers');
+      setVoucherFilters((prev) => ({ ...prev, voucher: voucherParam, status: 'all' }));
+      if (openParam === '1') {
+        handledDeepLink.current = sig;
+        void openVoucherByNumber(voucherParam);
+        return;
+      }
+    }
+
+    handledDeepLink.current = sig;
+  }, [searchParams]);
 
   async function doCancelVoucher() {
     if (!confirm || confirm.kind !== 'cancel') return;
@@ -1647,23 +1689,27 @@ export function MermasPage() {
             </div>
             <div className="ing-filters-sheet-body">
               <div className="ing-filter-fields">
-                <div className="field">
+                <div className="field field-date">
                   <label htmlFor="merma-f-from">Fecha desde</label>
-                  <input
-                    id="merma-f-from"
-                    type="date"
-                    value={draftDateFrom}
-                    onChange={(e) => setDraftDateFrom(e.target.value)}
-                  />
+                  <div className="field-date-control">
+                    <input
+                      id="merma-f-from"
+                      type="date"
+                      value={draftDateFrom}
+                      onChange={(e) => setDraftDateFrom(e.target.value)}
+                    />
+                  </div>
                 </div>
-                <div className="field">
+                <div className="field field-date">
                   <label htmlFor="merma-f-to">Fecha hasta</label>
-                  <input
-                    id="merma-f-to"
-                    type="date"
-                    value={draftDateTo}
-                    onChange={(e) => setDraftDateTo(e.target.value)}
-                  />
+                  <div className="field-date-control">
+                    <input
+                      id="merma-f-to"
+                      type="date"
+                      value={draftDateTo}
+                      onChange={(e) => setDraftDateTo(e.target.value)}
+                    />
+                  </div>
                 </div>
                 {tab === 'mermas' ? (
                   <>
