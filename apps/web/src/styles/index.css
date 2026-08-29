@@ -10277,6 +10277,24 @@ button.inv-stat.is-active {
   margin: 0;
 }
 
+.merma-fulfill-qty-field {
+  margin: 0.65rem 0 0.35rem;
+}
+.merma-fulfill-qty-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+.merma-fulfill-qty-row input {
+  width: 4.5rem;
+  min-height: 44px;
+}
+.merma-fulfill-qty-one {
+  margin: 0.15rem 0 0;
+  font-size: 0.88rem;
+}
+
 .merma-card-actions {
   display: flex;
   flex-direction: column;

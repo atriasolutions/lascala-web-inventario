@@ -120,10 +120,20 @@ export function voucherApiPayload(
     line_total: string | null;
     unit_price: string | null;
     line_qty: number | null;
+    units_used?: number | null;
   },
   today: string,
 ) {
   const expired = row.expires_at < today || row.status === 'expired';
+  const unitsTotal = Math.max(1, Number(row.line_qty) || 1);
+  const unitsUsed = Math.max(0, Number(row.units_used) || 0);
+  const unitsRemaining = Math.max(0, unitsTotal - unitsUsed);
+  const fulfillableStatus = isFulfillableVoucherStatus(row.status);
+  const canFulfill = fulfillableStatus && unitsRemaining > 0;
+  let blockedReason = voucherBlockedReason(row.status);
+  if (!blockedReason && fulfillableStatus && unitsRemaining <= 0) {
+    blockedReason = 'Este ticket ya fue usado por completo';
+  }
   return {
     id: row.id,
     voucher_number: row.voucher_number,
@@ -159,11 +169,14 @@ export function voucherApiPayload(
           quantity: row.line_qty,
         }
       : null,
+    unitsTotal,
+    unitsUsed,
+    unitsRemaining,
     warnPartyDress: isPartyDress({
       allows_exchange: row.allows_exchange,
       category_slug: row.category_slug,
     }),
-    canFulfill: isFulfillableVoucherStatus(row.status),
-    blockedReason: voucherBlockedReason(row.status),
+    canFulfill,
+    blockedReason,
   };
 }

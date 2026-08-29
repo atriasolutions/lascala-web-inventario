@@ -32,6 +32,8 @@ export const fulfillBodySchema = z
     outcome: z.enum(VOUCHER_OUTCOMES),
     destination: z.enum(VOUCHER_DESTINATIONS),
     newProductId: z.string().uuid().optional().nullable(),
+    /** Unidades a atender en este fulfill (default 1). */
+    quantity: z.number().int().positive().optional(),
     cashAmount: z.number().nonnegative().optional().nullable(),
     overrideExpired: z.boolean().optional().default(false),
     overrideNote: z.string().trim().max(500).optional().nullable(),
@@ -221,32 +223,54 @@ export async function fulfillVoucherWithClient(
   );
   if (!prod.rows[0]) throw new HttpError(400, 'Producto del ticket no encontrado');
 
-  let qty = 1;
+  let lineQty = 1;
   let lineTotal = 0;
-  /** Precio de venta de la prenda/línea que se devuelve (igualdad exacta en cambio). */
+  /** Precio de venta unitario de la prenda/línea que se devuelve. */
   let returnedSalePrice = Number(prod.rows[0].sale_price);
   if (voucher.sale_item_id) {
     const item = await client.query<{ quantity: number; line_total: string; unit_price: string }>(
       `SELECT quantity, line_total::text, unit_price::text FROM sale_items WHERE id = $1`,
       [voucher.sale_item_id],
     );
-    if (item.rows[0]?.quantity) qty = item.rows[0].quantity;
+    if (item.rows[0]?.quantity) lineQty = item.rows[0].quantity;
     lineTotal = Number(item.rows[0]?.line_total || 0);
     if (item.rows[0]?.unit_price != null) {
       returnedSalePrice = Number(item.rows[0].unit_price);
     }
   }
 
+  const usedRes = await client.query<{ used: string }>(
+    `SELECT COALESCE(SUM(quantity), 0)::text AS used
+     FROM exchange_returns WHERE voucher_id = $1`,
+    [voucher.id],
+  );
+  const unitsUsed = Number(usedRes.rows[0]?.used || 0);
+  const unitsRemaining = lineQty - unitsUsed;
+  if (unitsRemaining <= 0) {
+    throw new HttpError(400, 'Este ticket ya fue usado por completo');
+  }
+
+  const qty = body.quantity ?? 1;
+  if (qty < 1 || qty > unitsRemaining) {
+    throw new HttpError(
+      400,
+      unitsRemaining === 1
+        ? 'Este ticket solo tiene 1 unidad pendiente'
+        : `Indica entre 1 y ${unitsRemaining} unidades`,
+    );
+  }
+
+  const expectedCash = clpPesos(returnedSalePrice) * qty;
   let cashAmount: number | null = null;
   if (body.outcome === 'cash_refund') {
-    if (body.cashAmount == null && lineTotal <= 0) {
+    if (body.cashAmount == null && expectedCash <= 0 && lineTotal <= 0) {
       throw new HttpError(400, 'Indica el monto de la devolución en efectivo');
     }
-    cashAmount = body.cashAmount ?? lineTotal;
-    if (lineTotal > 0 && Math.abs(cashAmount - lineTotal) > 0.009) {
+    cashAmount = body.cashAmount ?? expectedCash;
+    if (expectedCash > 0 && Math.abs(cashAmount - expectedCash) > 0.009) {
       throw new HttpError(
         400,
-        `El monto debe coincidir con la línea de venta ($${Math.round(lineTotal)})`,
+        `El monto debe ser $${expectedCash.toLocaleString('es-CL')} (${qty} × $${clpPesos(returnedSalePrice).toLocaleString('es-CL')})`,
       );
     }
   }
@@ -261,6 +285,7 @@ export async function fulfillVoucherWithClient(
   const auditBits = [
     body.outcome === 'exchange' ? 'Cambio' : 'Devolución',
     `ticket ${voucher.voucher_number}`,
+    qty > 1 ? `${qty} ud.` : null,
     body.destination === 'restock'
       ? 'reingreso a vitrina'
       : body.destination === 'supplier'
@@ -350,14 +375,19 @@ export async function fulfillVoucherWithClient(
     ]);
   }
 
-  await client.query(`UPDATE change_vouchers SET status = 'used' WHERE id = $1`, [voucher.id]);
+  await client.query(
+    `UPDATE change_vouchers
+     SET status = CASE WHEN $2::int >= $3::int THEN 'used' ELSE status END
+     WHERE id = $1`,
+    [voucher.id, unitsUsed + qty, lineQty],
+  );
 
   const er = await client.query(
     `INSERT INTO exchange_returns (
        organization_id, branch_id, voucher_id, original_product_id, new_product_id,
        notes, created_by, outcome, destination, override_expired, override_note,
-       cash_amount, scanned_code
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13)
+       cash_amount, scanned_code, quantity
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
      RETURNING *`,
     [
       organizationId,
@@ -373,6 +403,7 @@ export async function fulfillVoucherWithClient(
       expired ? body.overrideNote!.trim() : null,
       cashAmount,
       body.scannedCode.trim(),
+      qty,
     ],
   );
 
@@ -389,10 +420,13 @@ export async function fulfillVoucherWithClient(
     const description = [
       'Devolución cliente',
       `ticket ${voucher.voucher_number}`,
+      qty > 1 ? `${qty} ud.` : null,
       productLabel,
       destLabel,
       `reembolso efectivo $${Math.round(cashAmount).toLocaleString('es-CL')}`,
-    ].join(' · ');
+    ]
+      .filter(Boolean)
+      .join(' · ');
 
     const exp = await client.query(
       `INSERT INTO expenses (
@@ -414,11 +448,13 @@ export async function fulfillVoucherWithClient(
 
   return {
     voucherId: voucher.id,
-    status: 'used' as const,
+    status: unitsUsed + qty >= lineQty ? ('used' as const) : (voucher.status as 'open' | 'expired'),
     expired,
     overrideExpired: Boolean(expired && body.overrideExpired),
     outcome: body.outcome,
     destination: body.destination,
+    quantity: qty,
+    unitsRemaining: Math.max(0, unitsRemaining - qty),
     cashAmount,
     merma,
     expense,

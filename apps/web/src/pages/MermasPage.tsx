@@ -81,6 +81,9 @@ type TicketDetail = {
     unit_price: string | null;
     quantity: number | null;
   } | null;
+  unitsTotal?: number;
+  unitsUsed?: number;
+  unitsRemaining?: number;
   warnPartyDress: boolean;
   canFulfill: boolean;
   blockedReason: string | null;
@@ -457,6 +460,7 @@ export function MermasPage() {
   const [garmentOk, setGarmentOk] = useState(false);
   const [outcome, setOutcome] = useState<VoucherOutcome | ''>('');
   const [destination, setDestination] = useState<VoucherDest | ''>('');
+  const [fulfillQty, setFulfillQty] = useState('1');
   const [newProduct, setNewProduct] = useState<LookupProduct | null>(null);
   const [newCode, setNewCode] = useState('');
   const [newLooking, setNewLooking] = useState(false);
@@ -680,6 +684,7 @@ export function MermasPage() {
     setGarmentOk(false);
     setOutcome('');
     setDestination('');
+    setFulfillQty('1');
     setNewProduct(null);
     setNewCode('');
     setOverrideNote('');
@@ -842,6 +847,7 @@ export function MermasPage() {
     setPendingSaleLookup(null);
     setTicket(data.voucher);
     setTicketNumber(data.voucher.voucher_number);
+    setFulfillQty('1');
     if (data.voucher.blockedReason) {
       toast.error(data.voucher.blockedReason);
       return 'blocked';
@@ -859,6 +865,7 @@ export function MermasPage() {
     setGarmentCode('');
     setOutcome('');
     setDestination('');
+    setFulfillQty('1');
     setNewProduct(null);
     setOverrideNote('');
     setPendingSaleLookup(null);
@@ -957,6 +964,16 @@ export function MermasPage() {
       toast.error('Pistolea la prenda del ticket');
       return;
     }
+    const remaining = ticket.unitsRemaining ?? ticket.sale?.quantity ?? 1;
+    const qtyN = Number(fulfillQty);
+    if (!Number.isInteger(qtyN) || qtyN < 1 || qtyN > remaining) {
+      toast.error(
+        remaining === 1
+          ? 'Este ticket tiene 1 unidad pendiente'
+          : `Indica entre 1 y ${remaining} unidades`,
+      );
+      return;
+    }
     if (!outcome) {
       toast.error('Elige cambio o devolución');
       return;
@@ -997,17 +1014,27 @@ export function MermasPage() {
           scannedCode: garmentCode,
           outcome,
           destination,
+          quantity: Number(fulfillQty) || 1,
           newProductId: outcome === 'exchange' ? newProduct?.id : null,
           cashAmount:
-            outcome === 'cash_refund' ? Number(ticket.sale?.line_total || 0) : null,
+            outcome === 'cash_refund'
+              ? Number(ticket.sale?.unit_price || ticket.product.sale_price || 0) *
+                (Number(fulfillQty) || 1)
+              : null,
           overrideExpired: ticket.expired,
           overrideNote: ticket.expired ? overrideNote.trim() : null,
         },
       });
+      const remainingAfter =
+        (ticket.unitsRemaining ?? ticket.sale?.quantity ?? 1) - (Number(fulfillQty) || 1);
       toast.success(
         outcome === 'exchange'
-          ? 'Cambio registrado'
-          : 'Devolución registrada · gasto de reembolso en Gastos',
+          ? remainingAfter > 0
+            ? `Cambio registrado · quedan ${remainingAfter} ud. en el ticket`
+            : 'Cambio registrado'
+          : remainingAfter > 0
+            ? `Devolución registrada · quedan ${remainingAfter} ud. · gasto en Gastos`
+            : 'Devolución registrada · gasto de reembolso en Gastos',
       );
       setConfirm(null);
       closeWizard();
@@ -1029,6 +1056,7 @@ export function MermasPage() {
     setGarmentOk(false);
     setOutcome('');
     setDestination('');
+    setFulfillQty('1');
     setNewProduct(null);
     setNewCode('');
     setOverrideNote('');
@@ -1043,6 +1071,7 @@ export function MermasPage() {
         return;
       }
       setTicket(data.voucher);
+      setFulfillQty('1');
       if (data.voucher.blockedReason) toast.error(data.voucher.blockedReason);
     } catch (err) {
       toast.error(userFacingError(err, 'Ticket no encontrado'));
@@ -1121,6 +1150,16 @@ export function MermasPage() {
   const mermaQtyN = Number(mermaQty);
   const mermaBlocked = !mermaProduct || mermaStock <= 0 || !Number.isInteger(mermaQtyN) || mermaQtyN < 1 || mermaQtyN > mermaStock;
 
+  const ticketUnitsRemaining = ticket
+    ? Math.max(1, ticket.unitsRemaining ?? ticket.sale?.quantity ?? 1)
+    : 1;
+  const fulfillQtyN = Number(fulfillQty);
+  const unitPriceForRefund = Number(ticket?.sale?.unit_price || ticket?.product.sale_price || 0);
+  const refundPreview =
+    outcome === 'cash_refund' && Number.isInteger(fulfillQtyN) && fulfillQtyN > 0
+      ? unitPriceForRefund * fulfillQtyN
+      : null;
+
   const confirmTitle =
     confirm?.kind === 'merma'
       ? 'Confirmar merma'
@@ -1136,7 +1175,9 @@ export function MermasPage() {
     confirm?.kind === 'merma' && mermaProduct
       ? `Se dará de baja ${mermaQty} ud. de «${mermaProduct.name}» (${MERMA_DESTINATIONS.find((d) => d.id === mermaKind)?.label}). Queda movimiento auditable.`
       : confirm?.kind === 'fulfill' && ticket
-        ? `Ticket ${ticket.voucher_number}: ${outcome === 'exchange' ? 'cambio' : 'devolución'}. Destino: ${VOUCHER_DESTINATIONS.find((d) => d.id === destination)?.label || ''}.`
+        ? `Ticket ${ticket.voucher_number}: ${outcome === 'exchange' ? 'cambio' : 'devolución'} de ${fulfillQtyN} ud.${
+            refundPreview != null ? ` · reembolso ${money(refundPreview)}` : ''
+          }. Destino: ${VOUCHER_DESTINATIONS.find((d) => d.id === destination)?.label || ''}.`
         : confirm?.kind === 'cancel'
           ? `Se anulará el ticket ${confirm.voucher.voucher_number}. No podrá usarse después.`
           : '';
@@ -2082,6 +2123,33 @@ export function MermasPage() {
                               .join(' · ')}
                             photoUrl={ticket.product.photo_url}
                           />
+                          <div className="field merma-fulfill-qty-field">
+                            <label htmlFor="fulfill-qty">
+                              Unidades a atender
+                              {ticketUnitsRemaining > 1
+                                ? ` (quedan ${ticketUnitsRemaining} de ${ticket.unitsTotal ?? ticketUnitsRemaining})`
+                                : ''}
+                            </label>
+                            {ticketUnitsRemaining > 1 ? (
+                              <div className="merma-fulfill-qty-row">
+                                <input
+                                  id="fulfill-qty"
+                                  type="number"
+                                  min={1}
+                                  max={ticketUnitsRemaining}
+                                  step={1}
+                                  value={fulfillQty}
+                                  onChange={(e) => setFulfillQty(e.target.value)}
+                                  inputMode="numeric"
+                                />
+                                <span className="muted">de {ticketUnitsRemaining} pendientes</span>
+                              </div>
+                            ) : (
+                              <p className="muted merma-fulfill-qty-one" id="fulfill-qty">
+                                1 unidad pendiente en este ticket
+                              </p>
+                            )}
+                          </div>
                           <div className="merma-wizard-actions-col">
                             <div
                               className="merma-choice merma-outcome"
@@ -2109,7 +2177,17 @@ export function MermasPage() {
                                 </button>
                               ))}
                             </div>
-                            {outcome === 'cash_refund' && ticket.sale?.line_total ? (
+                            {outcome === 'cash_refund' && refundPreview != null ? (
+                              <p className="muted merma-exchange-hint">
+                                Reembolso estimado: {money(refundPreview)}
+                                {fulfillQtyN > 1
+                                  ? ` (${fulfillQtyN} × ${money(unitPriceForRefund)})`
+                                  : ''}
+                              </p>
+                            ) : null}
+                            {outcome === 'cash_refund' &&
+                            refundPreview == null &&
+                            ticket.sale?.line_total ? (
                               <p className="muted merma-exchange-hint">
                                 Monto de la línea: {money(ticket.sale.line_total)}
                               </p>

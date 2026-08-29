@@ -443,7 +443,10 @@ opsRouter.get(
               c.slug AS category_slug,
               (SELECT url FROM product_photos ph WHERE ph.product_id = p.id ORDER BY sort_order LIMIT 1) AS photo_url,
               s.receipt_number, s.sold_at::text AS sold_at,
-              si.line_total::text AS line_total, si.unit_price::text AS unit_price, si.quantity AS line_qty
+              si.line_total::text AS line_total, si.unit_price::text AS unit_price, si.quantity AS line_qty,
+              COALESCE((
+                SELECT SUM(er.quantity)::int FROM exchange_returns er WHERE er.voucher_id = v.id
+              ), 0) AS units_used
        FROM change_vouchers v
        JOIN branches b ON b.id = v.branch_id
        JOIN products p ON p.id = v.product_id
@@ -479,6 +482,7 @@ opsRouter.get(
       line_total: string | null;
       unit_price: string | null;
       line_qty: number | null;
+      units_used: number;
     };
 
     async function loadByVoucherNumber() {
