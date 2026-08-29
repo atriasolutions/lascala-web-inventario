@@ -40,13 +40,14 @@ import { ChileMoneyInput } from '../components/ChileMoneyInput';
 import { AttachImageField } from '../components/AttachImageField';
 import { packComprobante, unpackComprobante } from '../lib/comprobanteEmbed';
 
-/** Categorías del diagnóstico ATR-DIAG-001 §8.6 */
+/** Categorías del diagnóstico ATR-DIAG-001 §8.6 (+ Devoluciones por reembolso de ticket). */
 const CATEGORIES = [
   'Remuneraciones',
   'Arriendo',
   'Viajes',
   'Alimentación',
   'Servicios básicos',
+  'Devoluciones',
   'Otros',
 ] as const;
 

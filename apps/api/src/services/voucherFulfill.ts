@@ -210,9 +210,12 @@ export async function fulfillVoucherWithClient(
     cost_price: string;
     sale_price: string;
     tracks_stock: boolean;
+    name: string;
+    internal_code: string;
   }>(
     `SELECT cost_price, sale_price::text AS sale_price,
-            COALESCE(tracks_stock, true) AS tracks_stock
+            COALESCE(tracks_stock, true) AS tracks_stock,
+            name, internal_code
      FROM products WHERE id = $1 AND organization_id = $2`,
     [voucher.product_id, organizationId],
   );
@@ -373,6 +376,42 @@ export async function fulfillVoucherWithClient(
     ],
   );
 
+  /** Devolución con reembolso → gasto de caja (vitrina o pérdida/proveedor). */
+  let expense: Record<string, unknown> | null = null;
+  if (body.outcome === 'cash_refund' && cashAmount != null && cashAmount > 0) {
+    const destLabel =
+      body.destination === 'restock'
+        ? 'reingresa a vitrina'
+        : body.destination === 'supplier'
+          ? 'A proveedor / no reingresa a stock'
+          : 'Pérdida / no reingresa a stock';
+    const productLabel = `${prod.rows[0].name} (${prod.rows[0].internal_code})`;
+    const description = [
+      'Devolución cliente',
+      `ticket ${voucher.voucher_number}`,
+      productLabel,
+      destLabel,
+      `reembolso efectivo $${Math.round(cashAmount).toLocaleString('es-CL')}`,
+    ].join(' · ');
+
+    const exp = await client.query(
+      `INSERT INTO expenses (
+         organization_id, branch_id, category, description, amount, incurred_on, created_by
+       ) VALUES ($1,$2,$3,$4,$5,$6::date,$7)
+       RETURNING *`,
+      [
+        organizationId,
+        branchId,
+        'Devoluciones',
+        description,
+        cashAmount,
+        todayCl,
+        userId,
+      ],
+    );
+    expense = exp.rows[0] as Record<string, unknown>;
+  }
+
   return {
     voucherId: voucher.id,
     status: 'used' as const,
@@ -382,6 +421,7 @@ export async function fulfillVoucherWithClient(
     destination: body.destination,
     cashAmount,
     merma,
+    expense,
     exchangeReturn: er.rows[0],
     stock: { originalAfter, newAfter },
   };

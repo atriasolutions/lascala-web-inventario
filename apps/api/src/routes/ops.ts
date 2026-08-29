@@ -381,11 +381,21 @@ opsRouter.get(
               s.id AS sale_id_resolved,
               u.full_name AS created_by_name,
               (v.expires_at - ${chileDateSql}) AS days_left,
-              (v.status = 'expired' OR (v.status = 'open' AND v.expires_at < ${chileDateSql})) AS expired
+              (v.status = 'expired' OR (v.status = 'open' AND v.expires_at < ${chileDateSql})) AS expired,
+              er.outcome AS fulfill_outcome,
+              er.destination AS fulfill_destination,
+              er.cash_amount AS fulfill_cash_amount
        FROM change_vouchers v
        JOIN products p ON p.id = v.product_id
        LEFT JOIN sales s ON s.id = v.sale_id
        LEFT JOIN users u ON u.id = v.created_by
+       LEFT JOIN LATERAL (
+         SELECT outcome, destination, cash_amount
+         FROM exchange_returns
+         WHERE voucher_id = v.id
+         ORDER BY created_at DESC
+         LIMIT 1
+       ) er ON true
        ${where}
        ORDER BY
          CASE v.status WHEN 'open' THEN 0 WHEN 'used' THEN 1 WHEN 'expired' THEN 2 ELSE 3 END,

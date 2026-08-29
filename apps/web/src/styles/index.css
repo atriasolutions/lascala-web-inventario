@@ -10260,6 +10260,23 @@ button.inv-stat.is-active {
   color: var(--color-ink, #111);
 }
 
+.merma-fulfill-summary {
+  margin: 0.25rem 0 0;
+  font-size: 0.82rem;
+  line-height: 1.35;
+}
+
+.merma-status-cell {
+  display: flex;
+  flex-direction: column;
+  gap: 0.2rem;
+  align-items: flex-start;
+}
+
+.merma-status-cell .merma-fulfill-summary {
+  margin: 0;
+}
+
 .merma-card-actions {
   display: flex;
   flex-direction: column;

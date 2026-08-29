@@ -129,6 +129,9 @@ type Voucher = {
   days_left: number | string | null;
   allows_exchange: boolean;
   allows_return: boolean;
+  fulfill_outcome?: 'exchange' | 'cash_refund' | string | null;
+  fulfill_destination?: 'restock' | 'discard' | 'supplier' | string | null;
+  fulfill_cash_amount?: string | number | null;
 };
 
 type MermaFilters = {
@@ -210,6 +213,30 @@ const VOUCHER_DESTINATIONS: { id: VoucherDest; label: string }[] = [
   { id: 'discard', label: 'Pérdida' },
   { id: 'supplier', label: 'A proveedor' },
 ];
+
+function voucherFulfillSummary(v: Voucher): string | null {
+  if (v.status !== 'used') return null;
+  const outcome =
+    v.fulfill_outcome === 'cash_refund'
+      ? 'Devolución'
+      : v.fulfill_outcome === 'exchange'
+        ? 'Cambio'
+        : null;
+  if (!outcome) return null;
+  const dest =
+    v.fulfill_destination === 'restock'
+      ? 'vitrina'
+      : v.fulfill_destination === 'supplier'
+        ? 'a proveedor'
+        : v.fulfill_destination === 'discard'
+          ? 'pérdida'
+          : null;
+  const cash =
+    v.fulfill_outcome === 'cash_refund' && v.fulfill_cash_amount != null
+      ? ` · reembolso ${money(v.fulfill_cash_amount)}`
+      : '';
+  return `${outcome}${dest ? ` · ${dest}` : ''}${cash}`;
+}
 
 const MERMA_SORT_OPTIONS: { key: MermaSortKey; label: string }[] = [
   { key: 'date', label: 'Fecha' },
@@ -977,7 +1004,11 @@ export function MermasPage() {
           overrideNote: ticket.expired ? overrideNote.trim() : null,
         },
       });
-      toast.success(outcome === 'exchange' ? 'Cambio registrado' : 'Devolución registrada');
+      toast.success(
+        outcome === 'exchange'
+          ? 'Cambio registrado'
+          : 'Devolución registrada · gasto de reembolso en Gastos',
+      );
       setConfirm(null);
       closeWizard();
       vouchersList.reload();
@@ -1482,6 +1513,7 @@ export function MermasPage() {
                 <div className="list-cards mobile-only merma-cards">
                   {sortedVouchers.map((v) => {
                     const left = daysLeftLabel(v.days_left, v.status);
+                    const fulfillSummary = voucherFulfillSummary(v);
                     return (
                       <article key={v.id} className="list-card merma-card">
                         <div className="merma-card-head">
@@ -1502,6 +1534,9 @@ export function MermasPage() {
                           <span>Vence {fmtDay(v.expires_at)}</span>
                           {left ? <span className="merma-days-left">{left}</span> : null}
                         </div>
+                        {fulfillSummary ? (
+                          <p className="merma-fulfill-summary muted">{fulfillSummary}</p>
+                        ) : null}
                         {v.status === 'open' || v.status === 'expired' ? (
                           <div className="merma-card-actions">
                             <button
@@ -1586,6 +1621,7 @@ export function MermasPage() {
                     <tbody>
                       {sortedVouchers.map((v) => {
                         const left = daysLeftLabel(v.days_left, v.status);
+                        const fulfillSummary = voucherFulfillSummary(v);
                         return (
                           <tr key={v.id}>
                             <td>
@@ -1613,9 +1649,16 @@ export function MermasPage() {
                               </div>
                             </td>
                             <td>
-                              <span className={voucherBadgeClass(v.status)}>
-                                {voucherStatusLabel(v.status)}
-                              </span>
+                              <div className="merma-status-cell">
+                                <span className={voucherBadgeClass(v.status)}>
+                                  {voucherStatusLabel(v.status)}
+                                </span>
+                                {fulfillSummary ? (
+                                  <span className="muted merma-fulfill-summary">
+                                    {fulfillSummary}
+                                  </span>
+                                ) : null}
+                              </div>
                             </td>
                             <td>
                               {v.status === 'open' || v.status === 'expired' ? (
