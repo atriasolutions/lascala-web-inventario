@@ -17,7 +17,7 @@ import { useShellTitle } from '../../components/shellTitle';
 import { ThermalBarcode } from '../../components/ThermalBarcode';
 import { api, mediaUrl, money } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
-import { canCreateProductInIngresosNoBarcode, canRegisterProductCode, CODE_REGISTER_FORBIDDEN } from '../../lib/roles';
+import { canCreateProductInIngresosNoBarcode, canRegisterProductCode } from '../../lib/roles';
 import { useToast } from '../../lib/toast';
 import { printLabelJob } from '../../services/printing';
 import {
@@ -463,9 +463,8 @@ export function IngresoDetailPage() {
           focusScan();
           return;
         }
-        if (!canRegisterCode) {
-          toast.error(CODE_REGISTER_FORBIDDEN);
-          setError(CODE_REGISTER_FORBIDDEN);
+        if (!canNoBarcodeCreate) {
+          setError('Código no registrado. Pide a administración dar de alta la prenda.');
           setLiveMsg('Código no registrado');
           setCode('');
           focusScan();
@@ -965,7 +964,7 @@ export function IngresoDetailPage() {
         categories={categories}
         suggestedBarcode={suggestedBarcode}
         presetBarcode={presetBarcode}
-        canCreateProduct={Boolean(presetBarcode ? canRegisterCode : canNoBarcodeCreate)}
+        canCreateProduct={canNoBarcodeCreate}
         hideSalePrice={!canRegisterCode}
         onClose={closeNoBarcode}
         onCreateAndReceive={createFromNoBarcode}
