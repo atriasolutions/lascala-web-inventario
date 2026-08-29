@@ -28,6 +28,9 @@ type MovementRow = {
   sale_voucher_count: number | null;
   stocktake_id: string | null;
   stocktake_label: string | null;
+  voucher_number: string | null;
+  voucher_sale_id: string | null;
+  voucher_sale_receipt: string | null;
 };
 
 function purchaseDocLabel(docType: string | null | undefined, invoice: string | null | undefined) {
@@ -82,9 +85,8 @@ function enrichMovement(row: MovementRow) {
       typeLabel = 'Venta';
       originKind = 'sale';
       referenceCode = row.sale_receipt || null;
-      const vouchers = Number(row.sale_voucher_count || 0);
       reasonLabel = row.sale_receipt
-        ? `Venta ${row.sale_receipt}${vouchers > 0 ? ` · ${vouchers} voucher${vouchers === 1 ? '' : 's'}` : ''}`
+        ? `Venta ${row.sale_receipt}`
         : row.notes?.trim() || 'Venta en caja';
       if (row.sale_id) {
         webPath = `/ventas?sale=${row.sale_id}`;
@@ -121,13 +123,28 @@ function enrichMovement(row: MovementRow) {
     case 'RETURN_IN': {
       typeLabel = 'Devolución';
       originKind = 'return';
-      reasonLabel = row.notes?.trim() || 'Devolución a stock';
-      if (row.sale_id) {
-        webPath = `/ventas?sale=${row.sale_id}`;
+      {
+        const ticket = row.voucher_number?.trim();
+        const saleRef = row.voucher_sale_receipt?.trim() || row.sale_receipt?.trim();
+        if (ticket || saleRef) {
+          reasonLabel = [
+            'Devolución',
+            ticket ? `ticket ${ticket}` : null,
+            saleRef ? `venta ${saleRef}` : null,
+          ]
+            .filter(Boolean)
+            .join(' · ');
+        } else {
+          reasonLabel = row.notes?.trim() || 'Devolución a stock';
+        }
+        referenceCode = ticket || saleRef || null;
+      }
+      if (row.voucher_sale_id || row.sale_id) {
+        webPath = `/ventas?sale=${row.voucher_sale_id || row.sale_id}`;
         linkLabel = 'Ver venta';
       } else {
         webPath = '/mermas';
-        linkLabel = 'Ver mermas';
+        linkLabel = 'Ver mermas y cambios';
       }
       break;
     }
@@ -135,9 +152,24 @@ function enrichMovement(row: MovementRow) {
     case 'EXCHANGE_IN': {
       typeLabel = type === 'EXCHANGE_OUT' ? 'Cambio (salida)' : 'Cambio (entrada)';
       originKind = 'exchange';
-      reasonLabel = row.notes?.trim() || 'Cambio / voucher';
+      {
+        const ticket = row.voucher_number?.trim();
+        const saleRef = row.voucher_sale_receipt?.trim();
+        if (ticket || saleRef) {
+          reasonLabel = [
+            type === 'EXCHANGE_OUT' ? 'Cambio · sale prenda nueva' : 'Cambio · entra prenda original',
+            ticket ? `ticket ${ticket}` : null,
+            saleRef ? `venta ${saleRef}` : null,
+          ]
+            .filter(Boolean)
+            .join(' · ');
+        } else {
+          reasonLabel = row.notes?.trim() || 'Cambio / voucher';
+        }
+        referenceCode = ticket || saleRef || null;
+      }
       webPath = '/mermas';
-      linkLabel = 'Ver cambios';
+      linkLabel = 'Ver mermas y cambios';
       break;
     }
     default: {
@@ -328,7 +360,10 @@ inventoryRouter.get(
                WHERE cv.sale_id = s.id
              ) AS sale_voucher_count,
              st.id AS stocktake_id,
-             st.take_label AS stocktake_label
+             st.take_label AS stocktake_label,
+             cv.voucher_number,
+             cv.sale_id AS voucher_sale_id,
+             vs.receipt_number AS voucher_sale_receipt
       FROM inventory_movements m
       JOIN products p ON p.id = m.product_id
       LEFT JOIN users u ON u.id = m.created_by
@@ -340,6 +375,10 @@ inventoryRouter.get(
         ON m.reference_type = 'merma' AND mer.id = m.reference_id
       LEFT JOIN stocktakes st
         ON m.reference_type = 'stocktake' AND st.id = m.reference_id
+      LEFT JOIN change_vouchers cv
+        ON m.reference_type = 'change_voucher' AND cv.id = m.reference_id
+      LEFT JOIN sales vs
+        ON vs.id = cv.sale_id
       WHERE m.branch_id = $1`;
 
     if (typeRaw && typeRaw !== 'all') {

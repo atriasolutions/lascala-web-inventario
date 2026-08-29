@@ -1,7 +1,11 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { HttpError } from '../utils/errors.ts';
-import { assertExchangeSameSalePrice, clpPesos } from './voucherFulfill.ts';
+import {
+  assertExchangeSameSalePrice,
+  clpPesos,
+  voucherStockInMovementType,
+} from './voucherFulfill.ts';
 
 describe('clpPesos', () => {
   it('redondea a pesos enteros', () => {
@@ -29,5 +33,15 @@ describe('assertExchangeSameSalePrice', () => {
         return true;
       },
     );
+  });
+});
+
+describe('voucherStockInMovementType', () => {
+  it('devolución reingresa como RETURN_IN', () => {
+    assert.equal(voucherStockInMovementType('cash_refund'), 'RETURN_IN');
+  });
+
+  it('cambio reingresa la original como EXCHANGE_IN', () => {
+    assert.equal(voucherStockInMovementType('exchange'), 'EXCHANGE_IN');
   });
 });

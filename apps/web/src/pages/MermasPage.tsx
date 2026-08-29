@@ -2011,6 +2011,10 @@ export function MermasPage() {
                                       setNewProduct(null);
                                       setNewCode('');
                                     }
+                                    // Devolución: por defecto reingresa a vitrina (+stock).
+                                    if (o.id === 'cash_refund' && !destination) {
+                                      setDestination('restock');
+                                    }
                                   }}
                                 >
                                   <strong>{o.label}</strong>
@@ -2082,6 +2086,18 @@ export function MermasPage() {
                                   </option>
                                 ))}
                               </select>
+                              {destination === 'restock' ? (
+                                <span className="ing-hint">
+                                  Suma +1 al stock de esta sucursal (aparece como Devolución o
+                                  Cambio entrada en Movimientos).
+                                </span>
+                              ) : null}
+                              {destination === 'discard' || destination === 'supplier' ? (
+                                <span className="ing-hint">
+                                  No vuelve a vitrina: el stock de la venta original sigue
+                                  rebajado.
+                                </span>
+                              ) : null}
                             </div>
                             <div className="merma-wizard-actions">
                               <button type="button" className="btn ghost" onClick={resetTicketWizard}>

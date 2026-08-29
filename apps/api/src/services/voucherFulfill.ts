@@ -10,6 +10,12 @@ export type MermaKind = (typeof MERMA_KINDS)[number];
 export const VOUCHER_OUTCOMES = ['exchange', 'cash_refund'] as const;
 export const VOUCHER_DESTINATIONS = ['restock', 'discard', 'supplier'] as const;
 
+export function voucherStockInMovementType(
+  outcome: (typeof VOUCHER_OUTCOMES)[number],
+): 'RETURN_IN' | 'EXCHANGE_IN' {
+  return outcome === 'exchange' ? 'EXCHANGE_IN' : 'RETURN_IN';
+}
+
 export function mermaKindLabel(kind: MermaKind): string {
   return kind === 'supplier' ? 'Devolución a proveedor' : 'Baja de vitrina';
 }
@@ -250,25 +256,27 @@ export async function fulfillVoucherWithClient(
   let merma: Record<string, unknown> | null = null;
 
   const auditBits = [
+    body.outcome === 'exchange' ? 'Cambio' : 'Devolución',
     `ticket ${voucher.voucher_number}`,
-    body.outcome === 'exchange' ? 'cambio' : 'devolución en efectivo',
     body.destination === 'restock'
       ? 'reingreso a vitrina'
       : body.destination === 'supplier'
         ? 'a proveedor'
-        : 'baja',
+        : 'baja / pérdida',
     expired ? `vencido: ${body.overrideNote!.trim()}` : null,
     body.notes?.trim() || null,
   ].filter(Boolean);
   const movementNotes = auditBits.join(' · ');
 
   if (body.destination === 'restock') {
+    /** Cambio: entrada de la prenda original. Devolución: RETURN_IN. */
+    const inType = voucherStockInMovementType(body.outcome);
     originalAfter = await applyStockDeltaWithClient(client, {
       organizationId,
       branchId,
       productId: voucher.product_id,
       delta: qty,
-      movementType: 'RETURN_IN',
+      movementType: inType,
       referenceType: 'change_voucher',
       referenceId: voucher.id,
       userId,

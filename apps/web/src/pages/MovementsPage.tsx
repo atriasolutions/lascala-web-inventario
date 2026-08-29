@@ -72,6 +72,9 @@ const TYPE_CHIPS: { id: TypeFilter; label: string }[] = [
   { id: 'all', label: 'Todos' },
   { id: 'PURCHASE_IN', label: 'Recepción' },
   { id: 'SALE_OUT', label: 'Venta' },
+  { id: 'RETURN_IN', label: 'Devolución' },
+  { id: 'EXCHANGE_IN', label: 'Cambio (entra)' },
+  { id: 'EXCHANGE_OUT', label: 'Cambio (sale)' },
   { id: 'ADJUSTMENT', label: 'Ajuste' },
   { id: 'MERMA_OUT', label: 'Merma' },
 ];
@@ -80,7 +83,7 @@ const SORT_OPTIONS: { key: MovementSortKey; label: string }[] = [
   { key: 'date', label: 'Fecha' },
   { key: 'type', label: 'Tipo' },
   { key: 'product', label: 'Producto' },
-  { key: 'delta', label: 'Cambio' },
+  { key: 'delta', label: 'Δ stock' },
   { key: 'after', label: 'Stock' },
   { key: 'user', label: 'Usuario' },
 ];
@@ -619,7 +622,7 @@ export function MovementsPage() {
             {!loading && !movements.length && (
               <div className="sales-empty">
                 <h3>Sin movimientos</h3>
-                <p className="muted">Ventas, ingresos y ajustes dejan la trazabilidad acá.</p>
+                <p className="muted">Ventas, devoluciones, cambios e ingresos dejan la trazabilidad acá.</p>
                 <Link to="/inventario" className="btn secondary" style={{ marginTop: '0.75rem' }}>
                   Ir a Stock
                 </Link>
@@ -703,7 +706,7 @@ export function MovementsPage() {
                         />
                         <th className="mov-col-reason">Motivo</th>
                         <SortableTh
-                          label="Cambio"
+                          label="Δ stock"
                           column="delta"
                           sortKey={sortKey}
                           sortDir={sortDir}
