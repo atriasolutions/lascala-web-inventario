@@ -26,6 +26,7 @@ import {
   IconHome,
   IconLogout,
   IconMore,
+  IconPeso,
   IconPos,
   IconReceipt,
   IconShirt,
@@ -111,7 +112,7 @@ const settingsNavItem: NavItem = {
 const primaryMobile: NavItem[] = [
   { to: '/', label: 'Inicio', icon: IconHome, helpKey: 'nav.dashboard', end: true, roles: adminOnly },
   { to: '/compras', label: 'Compras', icon: IconReceipt, helpKey: 'nav.compras', roles: adminOnly },
-  { to: '/ventas', label: 'Historial', icon: IconReceipt, helpKey: 'nav.ventas', roles: adminOnly },
+  { to: '/ventas', label: 'Historial', icon: IconPeso, helpKey: 'nav.ventas', roles: adminOnly },
   { to: '/gastos', label: 'Gastos', icon: IconWallet, helpKey: 'nav.gastos', roles: adminOnly },
 ];
 

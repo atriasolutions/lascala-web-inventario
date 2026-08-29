@@ -56,6 +56,16 @@ export function IconReceipt({ size = 20 }: IconProps) {
   );
 }
 
+/** Signo peso ($) — bottom nav Historial / ventas. */
+export function IconPeso({ size = 20 }: IconProps) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" {...base} aria-hidden="true">
+      <path d="M12 3v18" />
+      <path d="M16.5 7.5c0-1.8-1.8-3-4.5-3s-4.5 1.2-4.5 3c0 1.9 1.6 2.7 4.5 3.3 2.9.6 4.5 1.4 4.5 3.3 0 1.8-1.8 3-4.5 3s-4.5-1.2-4.5-3" />
+    </svg>
+  );
+}
+
 export function IconTruck({ size = 20 }: IconProps) {
   return (
     <svg width={size} height={size} viewBox="0 0 24 24" {...base} aria-hidden="true">
