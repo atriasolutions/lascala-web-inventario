@@ -67,8 +67,10 @@ type Props = {
     labelCopies: number;
   }) => Promise<void>;
   onPrintLabel: (name: string, code: string, copies: number) => void | Promise<void>;
-  /** false = Vendedor/a: solo buscar/vincular existente e imprimir etiqueta. */
+  /** false = solo buscar/vincular existente e imprimir etiqueta. */
   canCreateProduct?: boolean;
+  /** Oculta precio de venta en ficha (vendedora en Sin código de barras). */
+  hideSalePrice?: boolean;
 };
 
 function linePending(line: NoBarcodeLine) {
@@ -87,6 +89,7 @@ export function NoBarcodeModal({
   onLinkExisting,
   onPrintLabel,
   canCreateProduct = true,
+  hideSalePrice = false,
 }: Props) {
   const panelRef = useRef<HTMLDivElement>(null);
   const blobRef = useRef<string | null>(null);
@@ -524,10 +527,16 @@ export function NoBarcodeModal({
           </button>
         </div>
         ) : null}
-        {!canCreateProduct ? (
-          <p className="ing-hint" style={{ padding: '0 1.25rem' }}>
+        {!canCreateProduct && !scannedCreate ? (
+          <p className="ing-hint ing-nb-restricted">
             Solo la administración puede dar de alta el código en el sistema. Puedes buscar una
             prenda ya registrada e imprimir la etiqueta.
+          </p>
+        ) : null}
+        {canCreateProduct && hideSalePrice && mode === 'new' ? (
+          <p className="ing-hint ing-nb-restricted">
+            Completa la ficha mínima de la prenda. El precio de venta lo define la administración
+            en Compras al vincular la línea.
           </p>
         ) : null}
 
@@ -559,8 +568,8 @@ export function NoBarcodeModal({
                         >
                           <strong>{l.description}</strong>
                           <span>
-                            {l.draftReceived}/{l.quantity_ordered} · quedan {linePending(l)}
-                            {lineFloorSalePrice(l) > 0
+                            {l.draftReceived}/{l.quantity_ordered} · quedan                             {linePending(l)}
+                            {!hideSalePrice && lineFloorSalePrice(l) > 0
                               ? ` · P. venta ${money(lineFloorSalePrice(l))}`
                               : ''}
                           </span>
@@ -658,6 +667,7 @@ export function NoBarcodeModal({
                         costPrice={
                           selectedLine ? parseChileMoney(selectedLine.unit_cost) : null
                         }
+                        hideSalePrice={hideSalePrice}
                       />
                       <div className="ing-nb-grid">
                         <div className="field">

@@ -10,7 +10,10 @@ import {
   getSettingNumber,
   nextInternalCodeWithClient,
 } from '../services/inventory.js';
-import { assertCanRegisterProductCode } from '../auth/roles.js';
+import {
+  assertCanCreateProductInIngresosNoBarcode,
+  assertCanRegisterProductCode,
+} from '../auth/roles.js';
 import { asyncHandler, HttpError } from '../utils/errors.js';
 import { fetchLimit, parsePagination, slicePage } from '../utils/pagination.js';
 
@@ -33,6 +36,8 @@ const createProductSchema = z.object({
   salePrice: z.number().nonnegative().optional(),
   notes: z.string().optional().nullable(),
   photoUrl: z.string().min(1).optional().nullable(),
+  /** Alta desde Ingresos → «Sin código de barras» (permite vendedora). */
+  viaNoBarcode: z.literal(true).optional(),
 });
 
 const documentTypeSchema = z.enum(['factura', 'boleta', 'guia', 'otro']);
@@ -77,13 +82,16 @@ async function createProductFromPurchaseItem(
     priceMultiplier: number;
     linePhotoUrl?: string | null;
     create: z.infer<typeof createProductSchema>;
+    viaNoBarcode?: boolean;
   },
 ) {
   const costPrice = params.create.costPrice ?? params.unitCost;
   const salePrice =
     params.create.salePrice ??
     params.suggestedSalePrice ??
-    Number((costPrice * params.priceMultiplier).toFixed(2));
+    (params.viaNoBarcode
+      ? 0
+      : Number((costPrice * params.priceMultiplier).toFixed(2)));
   const requestedCode = canonicalizeStoredProductCode(params.create.barcode);
   if (params.create.barcode?.trim() && !requestedCode) {
     throw new HttpError(400, 'Ingresa un código válido o deja vacío para autogenerar');
@@ -542,10 +550,19 @@ purchasesRouter.post(
         let productId: string | null = item.productId || pi.product_id || null;
 
         if (item.createProduct) {
-          assertCanRegisterProductCode(req.activeRole);
+          const viaNoBarcode = item.createProduct.viaNoBarcode === true;
+          if (viaNoBarcode) {
+            assertCanCreateProductInIngresosNoBarcode(req.activeRole);
+            if (req.activeRole === 'seller' && item.createProduct.salePrice != null) {
+              throw new HttpError(403, 'No puedes definir el precio de venta al crear la prenda');
+            }
+          } else {
+            assertCanRegisterProductCode(req.activeRole);
+          }
           if (pi.product_id) {
             throw new HttpError(400, 'La línea ya tiene producto vinculado');
           }
+          const { viaNoBarcode: _via, ...createPayload } = item.createProduct;
           const created = await createProductFromPurchaseItem(client, {
             organizationId: req.user!.organizationId,
             userId: req.user!.id,
@@ -554,7 +571,8 @@ purchasesRouter.post(
             suggestedSalePrice: pi.suggested_sale_price != null ? Number(pi.suggested_sale_price) : null,
             priceMultiplier: multiplier,
             linePhotoUrl: pi.photo_url ?? null,
-            create: item.createProduct,
+            create: createPayload,
+            viaNoBarcode,
           });
           productId = created.id;
           createdProducts.push({ purchaseItemId: pi.id, productId: created.id });

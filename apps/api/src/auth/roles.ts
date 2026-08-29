@@ -33,6 +33,13 @@ export function assertCanRegisterProductCode(role: string | undefined) {
   }
 }
 
+/** Ingresos → flujo «Sin código de barras»: vendedora puede alta mínima vinculada a la línea. */
+export function assertCanCreateProductInIngresosNoBarcode(role: string | undefined) {
+  if (role !== 'owner' && role !== 'branch_manager' && role !== 'seller') {
+    throw new HttpError(403, CODE_REGISTER_FORBIDDEN);
+  }
+}
+
 export type PasswordResetActor = {
   id: string;
   isSuperadmin: boolean;

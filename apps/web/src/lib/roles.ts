@@ -40,6 +40,11 @@ export function canRegisterProductCode(role: string) {
   return isLeadRole(role);
 }
 
+/** Ingresos → «Sin código de barras»: vendedora puede alta mínima (sin p. venta en ficha). */
+export function canCreateProductInIngresosNoBarcode(role: string) {
+  return role === 'owner' || role === 'branch_manager' || role === 'seller';
+}
+
 export const CODE_REGISTER_FORBIDDEN =
   'Solo la administración puede dar de alta el código en el sistema.';
 

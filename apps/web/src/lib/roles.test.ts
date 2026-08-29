@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { isAdminRole, isLeadRole, canRegisterProductCode, roleLabel } from './roles.ts';
+import { isAdminRole, isLeadRole, canRegisterProductCode, canCreateProductInIngresosNoBarcode, roleLabel } from './roles.ts';
 
 describe('roles UI', () => {
   it('mapea labels Administrador/a Encargado/a Vendedor/a', () => {
@@ -21,5 +21,7 @@ describe('roles UI', () => {
     assert.equal(canRegisterProductCode('owner'), true);
     assert.equal(canRegisterProductCode('branch_manager'), true);
     assert.equal(canRegisterProductCode('seller'), false);
+    assert.equal(canCreateProductInIngresosNoBarcode('seller'), true);
+    assert.equal(canCreateProductInIngresosNoBarcode('branch_manager'), true);
   });
 });

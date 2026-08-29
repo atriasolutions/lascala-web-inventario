@@ -17,7 +17,7 @@ import { useShellTitle } from '../../components/shellTitle';
 import { ThermalBarcode } from '../../components/ThermalBarcode';
 import { api, mediaUrl, money } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
-import { canRegisterProductCode, CODE_REGISTER_FORBIDDEN } from '../../lib/roles';
+import { canCreateProductInIngresosNoBarcode, canRegisterProductCode, CODE_REGISTER_FORBIDDEN } from '../../lib/roles';
 import { useToast } from '../../lib/toast';
 import { printLabelJob } from '../../services/printing';
 import {
@@ -112,7 +112,8 @@ export function IngresoDetailPage() {
   const setShellTitle = useShellTitle();
   const { branches, branchId } = useAuth();
   const role = branches.find((b) => b.id === branchId)?.role || '';
-  const canCreateProduct = canRegisterProductCode(role);
+  const canRegisterCode = canRegisterProductCode(role);
+  const canNoBarcodeCreate = canCreateProductInIngresosNoBarcode(role);
   const scanRef = useRef<HTMLInputElement>(null);
   const modalRef = useRef<HTMLDivElement>(null);
   const createTitleId = useId();
@@ -462,7 +463,7 @@ export function IngresoDetailPage() {
           focusScan();
           return;
         }
-        if (!canCreateProduct) {
+        if (!canRegisterCode) {
           toast.error(CODE_REGISTER_FORBIDDEN);
           setError(CODE_REGISTER_FORBIDDEN);
           setLiveMsg('Código no registrado');
@@ -490,7 +491,7 @@ export function IngresoDetailPage() {
     setNoBarcodeBusy(true);
     try {
       setPresetBarcode(null);
-      if (canCreateProduct) {
+      if (canNoBarcodeCreate) {
         const data = await api<{ nextBarcode: string }>('/api/products/next-barcode');
         setSuggestedBarcode(data.nextBarcode);
       }
@@ -536,6 +537,7 @@ export function IngresoDetailPage() {
             purchaseItemId: line.id,
             quantityReceived: nextQty,
             createProduct: {
+              viaNoBarcode: true as const,
               barcode: payload.barcode,
               name: payload.name,
               categoryId: payload.categoryId,
@@ -963,7 +965,8 @@ export function IngresoDetailPage() {
         categories={categories}
         suggestedBarcode={suggestedBarcode}
         presetBarcode={presetBarcode}
-        canCreateProduct={canCreateProduct}
+        canCreateProduct={Boolean(presetBarcode ? canRegisterCode : canNoBarcodeCreate)}
+        hideSalePrice={!canRegisterCode}
         onClose={closeNoBarcode}
         onCreateAndReceive={createFromNoBarcode}
         onLinkExisting={linkExistingFromNoBarcode}

@@ -777,31 +777,33 @@ export function PosPage() {
                     {short ? (
                       <span className="badge stock-short">Unidades insuficientes</span>
                     ) : null}
+                  </div>
+                  <div className="pos-cart-footer">
                     <div className="pos-cart-line-meta">
                       <span className="muted">{money(c.product.sale_price)} c/u</span>
                       <strong>{money(Number(c.product.sale_price) * c.quantity)}</strong>
                     </div>
-                  </div>
-                  <div className="pos-qty" role="group" aria-label={`Cantidad ${c.product.name}`}>
-                    <button
-                      className="btn secondary"
-                      type="button"
-                      onClick={() => bumpQty(c.product.id, -1)}
-                      aria-label="Menos"
-                    >
-                      −
-                    </button>
-                    <span className="pos-qty-n" aria-live="polite">
-                      {c.quantity}
-                    </span>
-                    <button
-                      className="btn secondary"
-                      type="button"
-                      onClick={() => bumpQty(c.product.id, 1)}
-                      aria-label="Más"
-                    >
-                      +
-                    </button>
+                    <div className="pos-qty" role="group" aria-label={`Cantidad ${c.product.name}`}>
+                      <button
+                        className="btn secondary"
+                        type="button"
+                        onClick={() => bumpQty(c.product.id, -1)}
+                        aria-label="Menos"
+                      >
+                        −
+                      </button>
+                      <span className="pos-qty-n" aria-live="polite">
+                        {c.quantity}
+                      </span>
+                      <button
+                        className="btn secondary"
+                        type="button"
+                        onClick={() => bumpQty(c.product.id, 1)}
+                        aria-label="Más"
+                      >
+                        +
+                      </button>
+                    </div>
                   </div>
                 </li>
               );

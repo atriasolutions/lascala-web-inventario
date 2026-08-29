@@ -74,6 +74,8 @@ type Props = {
   onEnterEdit?: () => void;
   /** Si false, no se muestra lápiz (p. ej. precio para vendedora). */
   canEditField?: (key: ProductFichaFieldKey) => boolean;
+  /** Oculta fila de precio de venta (alta vendedora en Ingresos). */
+  hideSalePrice?: boolean;
 };
 
 function displayOrDash(v: string | null | undefined) {
@@ -125,6 +127,7 @@ export function ProductFichaFields({
   mode = 'edit',
   onEnterEdit,
   canEditField,
+  hideSalePrice = false,
 }: Props) {
   const isView = mode === 'view';
   const saleNum =
@@ -231,48 +234,50 @@ export function ProductFichaFields({
               ))}
             </select>,
           )}
-          {field(
-            'salePrice',
-            'Precio venta',
-            `${idPrefix}-sale`,
-            <>
-              <span>{saleDisplay}</span>
-              {salePrice.mode === 'locked' ? (
-                <p className="ing-hint">{salePrice.hint}</p>
-              ) : costNum != null && saleNum != null ? (
-                <MarginHint cost={costNum} sale={saleNum} />
-              ) : null}
-            </>,
-            salePrice.mode === 'edit' ? (
-              <>
-                <ChileMoneyInput
-                  id={`${idPrefix}-sale`}
-                  required
-                  value={salePrice.value}
-                  onChange={salePrice.onChange}
-                  placeholder="0"
-                  disabled={disabled}
-                />
-                <div className="prod-ficha-sale-hint">
-                  <MarginHint cost={costNum} sale={saleNum} />
-                </div>
-              </>
-            ) : (
-              <>
-                <input
-                  id={`${idPrefix}-sale`}
-                  value={salePrice.display}
-                  disabled
-                  readOnly
-                  aria-readonly="true"
-                />
-                <p className="ing-hint">{salePrice.hint}</p>
-                {costNum != null && saleNum != null ? (
-                  <MarginHint cost={costNum} sale={saleNum} />
-                ) : null}
-              </>
-            ),
-          )}
+          {!hideSalePrice
+            ? field(
+                'salePrice',
+                'Precio venta',
+                `${idPrefix}-sale`,
+                <>
+                  <span>{saleDisplay}</span>
+                  {salePrice.mode === 'locked' ? (
+                    <p className="ing-hint">{salePrice.hint}</p>
+                  ) : costNum != null && saleNum != null ? (
+                    <MarginHint cost={costNum} sale={saleNum} />
+                  ) : null}
+                </>,
+                salePrice.mode === 'edit' ? (
+                  <>
+                    <ChileMoneyInput
+                      id={`${idPrefix}-sale`}
+                      required
+                      value={salePrice.value}
+                      onChange={salePrice.onChange}
+                      placeholder="0"
+                      disabled={disabled}
+                    />
+                    <div className="prod-ficha-sale-hint">
+                      <MarginHint cost={costNum} sale={saleNum} />
+                    </div>
+                  </>
+                ) : (
+                  <>
+                    <input
+                      id={`${idPrefix}-sale`}
+                      value={salePrice.display}
+                      disabled
+                      readOnly
+                      aria-readonly="true"
+                    />
+                    <p className="ing-hint">{salePrice.hint}</p>
+                    {costNum != null && saleNum != null ? (
+                      <MarginHint cost={costNum} sale={saleNum} />
+                    ) : null}
+                  </>
+                ),
+              )
+            : null}
         </div>
         {extraAfterIdentity}
       </section>
