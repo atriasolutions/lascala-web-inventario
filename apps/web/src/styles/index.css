@@ -12177,21 +12177,6 @@ body.help-mode-touch .main-content {
 }
 
 @media (max-width: 900px) {
-  /* Gastos: scroll de toda la vista (no solo la lista) */
-  .main:has(.gasto-list) {
-    height: auto;
-    max-height: none;
-    overflow: visible;
-  }
-  .main:has(.gasto-list) .main-content {
-    overflow: visible;
-    flex: none;
-  }
-  .main:has(.gasto-list) .ing-list-scroll {
-    overflow: visible;
-    flex: none;
-  }
-
   /* Reportes: filtros compactos — conservar padding para no cortar chips */
   .reports-page .admin-lede {
     font-size: 0.85rem;
