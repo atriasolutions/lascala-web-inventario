@@ -7,7 +7,19 @@ export default defineConfig({
   plugins: [
     react(),
     VitePWA({
+      strategies: 'injectManifest',
+      srcDir: 'src',
+      filename: 'sw.ts',
       registerType: 'autoUpdate',
+      injectManifest: {
+        globPatterns: [
+          '**/*.{js,css,html,ico,svg,woff,woff2,webmanifest}',
+          'brand/pwa-*.png',
+          'brand/lscala-logo*.png',
+          'brand/apple-touch-icon.png',
+        ],
+        globIgnores: ['**/qz-signing/**'],
+      },
       includeAssets: [
         'brand/lscala-logo.png',
         'brand/lscala-logo-mark.png',
@@ -48,26 +60,6 @@ export default defineConfig({
             sizes: '512x512',
             type: 'image/png',
             purpose: 'maskable',
-          },
-        ],
-      },
-      workbox: {
-        importScripts: ['push-sw.js'],
-        // Fase A: shell + assets críticos. Fotos lookbook pesadas quedan en red.
-        globPatterns: [
-          '**/*.{js,css,html,ico,svg,woff,woff2,webmanifest}',
-          'brand/pwa-*.png',
-          'brand/lscala-logo*.png',
-          'brand/apple-touch-icon.png',
-        ],
-        globIgnores: ['**/qz-signing/**'],
-        navigateFallback: '/index.html',
-        navigateFallbackDenylist: [/^\/api/, /^\/uploads/],
-        runtimeCaching: [
-          {
-            urlPattern: ({ url }: { url: URL }) =>
-              url.pathname.startsWith('/api') || url.pathname.startsWith('/uploads'),
-            handler: 'NetworkOnly',
           },
         ],
       },

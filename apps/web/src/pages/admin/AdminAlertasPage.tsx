@@ -3,6 +3,8 @@ import { useAuth } from '../../lib/auth';
 import {
   fetchPushServerStatus,
   getPushSupportState,
+  hasBrowserPushSubscription,
+  prefetchVapidPublicKey,
   subscribeToPushAlerts,
   syncExistingPushSubscription,
   unsubscribeFromPushAlerts,
@@ -15,6 +17,7 @@ export function AdminAlertasPage() {
   const [support, setSupport] = useState(getPushSupportState());
   const [serverEnabled, setServerEnabled] = useState<boolean | null>(null);
   const [subscriptions, setSubscriptions] = useState(0);
+  const [browserSubscribed, setBrowserSubscribed] = useState(false);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState('');
   const [error, setError] = useState('');
@@ -22,9 +25,13 @@ export function AdminAlertasPage() {
   const refreshStatus = useCallback(async () => {
     if (!isOwner) return;
     try {
-      const status = await fetchPushServerStatus();
+      const [status, hasBrowser] = await Promise.all([
+        fetchPushServerStatus(),
+        hasBrowserPushSubscription(),
+      ]);
       setServerEnabled(status.enabled);
       setSubscriptions(status.subscriptions);
+      setBrowserSubscribed(hasBrowser);
       setError('');
     } catch (e) {
       setError(e instanceof Error ? e.message : 'No pudimos cargar el estado');
@@ -33,6 +40,7 @@ export function AdminAlertasPage() {
 
   useEffect(() => {
     setSupport(getPushSupportState());
+    void prefetchVapidPublicKey().catch(() => {});
     void refreshStatus();
     void syncExistingPushSubscription()
       .then(() => refreshStatus())
@@ -102,33 +110,34 @@ export function AdminAlertasPage() {
   }
 
   const permissionGranted = support.permission === 'granted';
+  const needsActivation = !browserSubscribed || subscriptions === 0;
 
   return (
     <div className="admin-panel admin-alertas" role="tabpanel">
       <section className="admin-card">
         <h2 className="admin-card-title">Alertas en el celular</h2>
         <p className="admin-card-lede">
-          Avisos de mermas, cambios y devoluciones registrados por el equipo en piso. Funcionan con
-          la app instalada (PWA) en Android e iPhone 16.4+.
+          Avisos de mermas, cambios y devoluciones registrados por el equipo. Funcionan con la app
+          instalada (PWA) en Android e iPhone 16.4+.
         </p>
 
         <ul className="admin-alertas-status muted">
-          <li>
-            Navegador:{' '}
-            {support.supported ? 'compatible' : 'no compatible'}
-          </li>
-          <li>
-            App instalada: {support.standalone ? 'sí' : 'no (recomendado en móvil)'}
-          </li>
-          <li>
-            Permiso: {support.permission === 'unsupported' ? '—' : support.permission}
-          </li>
+          <li>Navegador: {support.supported ? 'compatible' : 'no compatible'}</li>
+          <li>App instalada: {support.standalone ? 'sí' : 'no (recomendado en móvil)'}</li>
+          <li>Permiso: {support.permission === 'unsupported' ? '—' : support.permission}</li>
           <li>
             Servidor:{' '}
             {serverEnabled === null ? '…' : serverEnabled ? 'configurado' : 'sin claves VAPID'}
           </li>
-          <li>Dispositivos registrados: {subscriptions}</li>
+          <li>Dispositivos registrados en servidor: {subscriptions}</li>
         </ul>
+
+        {permissionGranted && needsActivation ? (
+          <p className="admin-alertas-ios-hint">
+            Tienes permiso de notificaciones, pero este dispositivo aún no está suscrito. Toca{' '}
+            <strong>Activar alertas</strong> para recibir avisos con el celular bloqueado.
+          </p>
+        ) : null}
 
         {support.iosNeedInstall ? (
           <p className="admin-alertas-ios-hint">
@@ -138,8 +147,13 @@ export function AdminAlertasPage() {
         ) : null}
 
         <div className="admin-alertas-actions">
-          {!permissionGranted ? (
-            <button type="button" className="btn" disabled={busy || !support.supported} onClick={() => void activate()}>
+          {needsActivation ? (
+            <button
+              type="button"
+              className="btn"
+              disabled={busy || !support.supported}
+              onClick={() => void activate()}
+            >
               {busy ? 'Activando…' : 'Activar alertas en este dispositivo'}
             </button>
           ) : (

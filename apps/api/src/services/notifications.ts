@@ -56,7 +56,7 @@ export function buildOperationNotificationContent(params: {
     return {
       alertKey: `${OP_ALERT_PREFIX}merma:${params.entityId}`,
       payload: {
-        title: 'Merma en piso',
+        title: 'Merma de producto',
         detail: `${who} · ${where} · ${product} · ${qty} ud.`,
         href: '/mermas',
         category: 'operacion',
@@ -69,7 +69,7 @@ export function buildOperationNotificationContent(params: {
     return {
       alertKey: `${OP_ALERT_PREFIX}voucher-devolucion:${params.entityId}`,
       payload: {
-        title: 'Devolución en piso',
+        title: 'Devolución de producto',
         detail: `${who} · ${where} · ${product}${ticket ? ` · ticket ${ticket}` : ''}`,
         href: '/mermas',
         category: 'operacion',
@@ -81,7 +81,7 @@ export function buildOperationNotificationContent(params: {
   return {
     alertKey: `${OP_ALERT_PREFIX}voucher-cambio:${params.entityId}`,
     payload: {
-      title: 'Cambio en piso',
+      title: 'Cambio de producto',
       detail: `${who} · ${where} · ${product}${ticket ? ` · ticket ${ticket}` : ''}`,
       href: '/mermas',
       category: 'operacion',

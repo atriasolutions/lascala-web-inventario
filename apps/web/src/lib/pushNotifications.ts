@@ -17,6 +17,13 @@ export type PushSupportState = {
   iosNeedInstall: boolean;
 };
 
+type VapidCache = {
+  publicKey: string | null;
+  enabled: boolean;
+};
+
+let vapidCache: VapidCache | null = null;
+
 function urlBase64ToUint8Array(base64String: string) {
   const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
@@ -78,20 +85,33 @@ export function dismissPushBanner() {
   }
 }
 
+/** Precargar clave VAPID al abrir Ajustes (iOS exige gesto limpio al suscribir). */
+export async function prefetchVapidPublicKey(): Promise<VapidCache> {
+  if (vapidCache) return vapidCache;
+  const keyRes = await api<{ publicKey: string | null; enabled: boolean }>(
+    '/api/push/vapid-public-key',
+  );
+  vapidCache = { publicKey: keyRes.publicKey, enabled: keyRes.enabled };
+  return vapidCache;
+}
+
 export async function fetchPushServerStatus() {
   return api<{ enabled: boolean; subscriptions: number }>('/api/push/status');
 }
 
+/**
+ * Suscribe push en este dispositivo.
+ * Llamar desde un click/tap. Prefiere prefetchVapidPublicKey() antes (p. ej. al montar la página).
+ */
 export async function subscribeToPushAlerts(): Promise<PushSubscribeResult> {
   const support = getPushSupportState();
   if (!support.supported) return 'unsupported';
   if (support.iosNeedInstall) return 'ios-need-install';
 
-  const keyRes = await api<{ publicKey: string | null; enabled: boolean }>(
-    '/api/push/vapid-public-key',
-  );
-  if (!keyRes.enabled || !keyRes.publicKey) return 'server-disabled';
+  const vapid = vapidCache ?? (await prefetchVapidPublicKey());
+  if (!vapid.enabled || !vapid.publicKey) return 'server-disabled';
 
+  // iOS: el primer await debe ser requestPermission (sin fetch previo en el gesto).
   const permission = await Notification.requestPermission();
   if (permission !== 'granted') return 'denied';
 
@@ -100,7 +120,7 @@ export async function subscribeToPushAlerts(): Promise<PushSubscribeResult> {
   if (!subscription) {
     subscription = await registration.pushManager.subscribe({
       userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(keyRes.publicKey),
+      applicationServerKey: urlBase64ToUint8Array(vapid.publicKey),
     });
   }
 
@@ -133,15 +153,14 @@ export async function unsubscribeFromPushAlerts(): Promise<boolean> {
   return true;
 }
 
+/** Re-registra suscripción existente en servidor (p. ej. tras login). No crea suscripción nueva. */
 export async function syncExistingPushSubscription(): Promise<void> {
   const support = getPushSupportState();
   if (!support.supported || support.iosNeedInstall) return;
   if (Notification.permission !== 'granted') return;
 
-  const keyRes = await api<{ publicKey: string | null; enabled: boolean }>(
-    '/api/push/vapid-public-key',
-  );
-  if (!keyRes.enabled || !keyRes.publicKey) return;
+  const vapid = vapidCache ?? (await prefetchVapidPublicKey());
+  if (!vapid.enabled || !vapid.publicKey) return;
 
   const registration = await navigator.serviceWorker.ready;
   const subscription = await registration.pushManager.getSubscription();
@@ -157,4 +176,11 @@ export async function syncExistingPushSubscription(): Promise<void> {
       keys: { p256dh: json.keys.p256dh, auth: json.keys.auth },
     },
   });
+}
+
+export async function hasBrowserPushSubscription(): Promise<boolean> {
+  if (!('serviceWorker' in navigator)) return false;
+  const registration = await navigator.serviceWorker.ready;
+  const subscription = await registration.pushManager.getSubscription();
+  return Boolean(subscription);
 }

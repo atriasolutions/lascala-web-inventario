@@ -4,6 +4,7 @@ import {
   dismissPushBanner,
   getPushSupportState,
   isPushBannerDismissed,
+  prefetchVapidPublicKey,
   subscribeToPushAlerts,
 } from '../lib/pushNotifications';
 
@@ -25,6 +26,7 @@ export function PushAlertsBanner() {
     if (!support.supported) return;
     if (support.permission === 'granted') return;
 
+    void prefetchVapidPublicKey().catch(() => {});
     setIosHint(support.iosNeedInstall);
     setVisible(true);
   }, []);

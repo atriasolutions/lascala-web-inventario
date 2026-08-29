@@ -37,8 +37,34 @@ function isGoneSubscriptionError(err: unknown): boolean {
   return statusCode === 410 || statusCode === 404;
 }
 
+function endpointHost(endpoint: string): string {
+  try {
+    return new URL(endpoint).host;
+  } catch {
+    return endpoint.slice(0, 48);
+  }
+}
+
+function logPushFailure(userId: string, endpoint: string, err: unknown) {
+  const statusCode =
+    err && typeof err === 'object' && 'statusCode' in err
+      ? (err as { statusCode?: number }).statusCode
+      : undefined;
+  const body =
+    err && typeof err === 'object' && 'body' in err ? String((err as { body?: string }).body || '') : '';
+  console.error('[web-push] send failed', {
+    userId,
+    host: endpointHost(endpoint),
+    statusCode,
+    body: body.slice(0, 200),
+  });
+}
+
 export async function sendWebPushToUser(userId: string, payload: WebPushPayload): Promise<void> {
-  if (!ensureVapidConfigured()) return;
+  if (!ensureVapidConfigured()) {
+    console.warn('[web-push] skipped: VAPID not configured');
+    return;
+  }
 
   const subs = await query<PushSubscriptionRow>(
     `SELECT id, endpoint, p256dh, auth
@@ -46,13 +72,20 @@ export async function sendWebPushToUser(userId: string, payload: WebPushPayload)
      WHERE user_id = $1`,
     [userId],
   );
-  if (!subs.rows.length) return;
+  if (!subs.rows.length) {
+    console.warn('[web-push] skipped: no subscriptions', { userId });
+    return;
+  }
 
   const body = JSON.stringify({
     title: payload.title,
     body: payload.body,
     url: payload.url,
     tag: payload.tag,
+    notification: {
+      title: payload.title,
+      body: payload.body,
+    },
   });
 
   await Promise.all(
@@ -64,8 +97,13 @@ export async function sendWebPushToUser(userId: string, payload: WebPushPayload)
             keys: { p256dh: sub.p256dh, auth: sub.auth },
           },
           body,
+          {
+            TTL: 60 * 60 * 24,
+            urgency: 'high',
+          },
         );
       } catch (err) {
+        logPushFailure(userId, sub.endpoint, err);
         if (isGoneSubscriptionError(err)) {
           await query(`DELETE FROM push_subscriptions WHERE endpoint = $1`, [sub.endpoint]);
         }
