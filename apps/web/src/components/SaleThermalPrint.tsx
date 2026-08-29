@@ -15,6 +15,7 @@ import {
   ticketModeLabel,
   type SalePrintJob,
 } from '../lib/salePrint';
+import { paymentMethodLabel } from '../lib/paymentMethod';
 import { ThermalBarcode } from './ThermalBarcode';
 
 type Props = {
@@ -96,6 +97,9 @@ export function SaleThermalPrint({ job }: Props) {
         ) : null}
         <p className="sale-print-total-line sale-print-total-strong mono">
           {thermalPadLine('TOTAL', money(sale.total))}
+        </p>
+        <p className="sale-print-total-line mono">
+          {thermalPadLine('Pago', paymentMethodLabel(sale.payment_method))}
         </p>
 
         {sale.notes?.trim() ? (

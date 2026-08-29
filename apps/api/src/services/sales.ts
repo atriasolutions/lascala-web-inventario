@@ -1,4 +1,5 @@
 import type { PoolClient } from 'pg';
+import type { SalePaymentMethod } from '../domain/paymentMethod.js';
 import {
   applyStockDeltaWithClient,
   getSettingNumber,
@@ -23,6 +24,7 @@ export type CreateSaleParams = {
   notes?: string | null;
   discount?: number;
   items: CreateSaleItemInput[];
+  paymentMethod?: SalePaymentMethod;
   /** Solo POST /api/sales/offline-sync */
   allowNegative?: boolean;
   clientSaleId?: string | null;
@@ -103,12 +105,14 @@ export async function createSaleWithClient(
   const saleRes = await client.query(
     `INSERT INTO sales
       (organization_id, branch_id, pos_id, seller_user_id, receipt_number,
-       subtotal, discount, total, notes, sold_at, client_sale_id, offline_synced_at)
+       subtotal, discount, total, notes, sold_at, client_sale_id, offline_synced_at,
+       payment_method)
      VALUES (
        $1,$2,$3,$4,$5,$6,$7,$8,$9,
        COALESCE($10::timestamptz, now()),
        $11,
-       $12::timestamptz
+       $12::timestamptz,
+       $13::sale_payment_method
      )
      RETURNING *`,
     [
@@ -126,6 +130,7 @@ export async function createSaleWithClient(
       params.offlineSyncedAt
         ? new Date(params.offlineSyncedAt).toISOString()
         : null,
+      params.paymentMethod ?? 'cash',
     ],
   );
   const sale = saleRes.rows[0];

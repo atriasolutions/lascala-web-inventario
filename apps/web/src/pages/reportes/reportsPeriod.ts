@@ -14,6 +14,8 @@ export type ReportsPeriodState = {
   year: string;
   from: string;
   to: string;
+  /** Filtro ventas: '' = todos */
+  paymentMethod: '' | 'cash' | 'card';
 };
 
 const TZ = 'America/Santiago';
@@ -52,6 +54,7 @@ export function defaultPeriodState(): ReportsPeriodState {
     year,
     from: `${month}-01`,
     to: lastDayOfMonth(y, m),
+    paymentMethod: '',
   };
 }
 
@@ -100,6 +103,12 @@ export const PERIOD_CHIPS: { id: PeriodPreset; label: string }[] = [
   { id: 'month', label: 'Mes' },
   { id: 'year', label: 'Año' },
   { id: 'range', label: 'Rango' },
+];
+
+export const PAYMENT_METHOD_CHIPS: { id: '' | 'cash' | 'card'; label: string }[] = [
+  { id: '', label: 'Todos' },
+  { id: 'cash', label: 'Efectivo' },
+  { id: 'card', label: 'Tarjeta' },
 ];
 
 export const REPORTS_TABS: { to: ReportsVista; label: string }[] = [

@@ -596,7 +596,7 @@ export function ProductsPage() {
         Boolean(form.categoryId) ||
         Boolean(form.salePrice.trim()) ||
         Boolean(form.photoUrl || photoPreview) ||
-        Boolean(form.barcode.trim())
+        Boolean(form.barcode.trim() && codeMode === 'scan')
       );
     }
     if (modalMode === 'edit' && formSnapshot) {

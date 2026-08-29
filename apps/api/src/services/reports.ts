@@ -1,4 +1,5 @@
 import { query } from '../db/pool.js';
+import { parseSalePaymentMethodFilter, type SalePaymentMethod } from '../domain/paymentMethod.js';
 import { HttpError } from '../utils/errors.js';
 import { CHILE_TZ, buildChartBuckets } from '../utils/chileDate.js';
 import { parsePagination } from '../utils/pagination.js';
@@ -87,13 +88,32 @@ export async function getVentasReport(
   branchId: string,
   from: string,
   to: string,
-  pagination: { limit?: unknown; offset?: unknown },
+  pagination: { limit?: unknown; offset?: unknown; paymentMethod?: unknown },
 ) {
   const { limit, offset } = parsePagination(pagination);
+  const paymentMethod = parseSalePaymentMethodFilter(pagination.paymentMethod);
+  const paySql = paymentMethod ? ` AND s.payment_method = $PAY::sale_payment_method` : '';
   const { grain, buckets } = buildChartBuckets(from, to);
   const periods = buckets.map((b) => b.period);
   const starts = buckets.map((b) => b.start);
   const ends = buckets.map((b) => b.end);
+
+  const aggPayIdx = 5;
+  const aggSql = paySql.replace('$PAY', String(aggPayIdx));
+  const aggParams = paymentMethod
+    ? [branchId, periods, starts, ends, paymentMethod]
+    : [branchId, periods, starts, ends];
+
+  const rangePayIdx = 4;
+  const rangeSql = paySql.replace('$PAY', String(rangePayIdx));
+  const rangeParams = paymentMethod ? [branchId, from, to, paymentMethod] : [branchId, from, to];
+
+  const ticketLimitIdx = paymentMethod ? 6 : 4;
+  const ticketOffsetIdx = paymentMethod ? 7 : 5;
+  const ticketSql = paySql.replace('$PAY', '4');
+  const ticketParams = paymentMethod
+    ? [branchId, from, to, paymentMethod, limit, offset]
+    : [branchId, from, to, limit, offset];
 
   const [agg, ticketsCount, tickets, ranking, bySeller, byPos] = await Promise.all([
     query<{ period: string; total: string; count: string; units: string }>(
@@ -109,26 +129,27 @@ export async function getVentasReport(
        LEFT JOIN sales s
          ON s.branch_id = $1
         AND (timezone('${CHILE_TZ}', s.sold_at))::date >= b.start_d
-        AND (timezone('${CHILE_TZ}', s.sold_at))::date <= b.end_d
+        AND (timezone('${CHILE_TZ}', s.sold_at))::date <= b.end_d${aggSql}
        LEFT JOIN LATERAL (
          SELECT SUM(si.quantity)::numeric AS units
          FROM sale_items si WHERE si.sale_id = s.id
        ) u ON true
        GROUP BY b.period
        ORDER BY b.period`,
-      [branchId, periods, starts, ends],
+      aggParams,
     ),
     query<{ count: string; total: string }>(
       `SELECT COUNT(*)::text AS count, COALESCE(SUM(s.total), 0)::text AS total
        FROM sales s
        WHERE s.branch_id = $1
          AND (timezone('${CHILE_TZ}', s.sold_at))::date >= $2::date
-         AND (timezone('${CHILE_TZ}', s.sold_at))::date <= $3::date`,
-      [branchId, from, to],
+         AND (timezone('${CHILE_TZ}', s.sold_at))::date <= $3::date${rangeSql}`,
+      rangeParams,
     ),
     query(
       `SELECT s.id, s.receipt_number, s.sold_at, s.total::text AS total,
               s.subtotal::text AS subtotal, s.discount::text AS discount,
+              s.payment_method::text AS payment_method,
               s.client_sale_id, s.offline_synced_at,
               u.full_name AS seller_name, u.id AS seller_id,
               p.name AS pos_name, p.id AS pos_id
@@ -137,10 +158,10 @@ export async function getVentasReport(
        JOIN pos_terminals p ON p.id = s.pos_id
        WHERE s.branch_id = $1
          AND (timezone('${CHILE_TZ}', s.sold_at))::date >= $2::date
-         AND (timezone('${CHILE_TZ}', s.sold_at))::date <= $3::date
+         AND (timezone('${CHILE_TZ}', s.sold_at))::date <= $3::date${ticketSql}
        ORDER BY s.sold_at DESC
-       LIMIT $4 OFFSET $5`,
-      [branchId, from, to, limit, offset],
+       LIMIT $${ticketLimitIdx} OFFSET $${ticketOffsetIdx}`,
+      ticketParams,
     ),
     query<{
       id: string;
@@ -161,11 +182,11 @@ export async function getVentasReport(
        JOIN products p ON p.id = si.product_id
        WHERE s.branch_id = $1
          AND (timezone('${CHILE_TZ}', s.sold_at))::date >= $2::date
-         AND (timezone('${CHILE_TZ}', s.sold_at))::date <= $3::date
+         AND (timezone('${CHILE_TZ}', s.sold_at))::date <= $3::date${rangeSql}
        GROUP BY p.id, p.name, p.internal_code
        ORDER BY SUM(si.quantity) DESC, SUM(si.line_total) DESC
        LIMIT 50`,
-      [branchId, from, to],
+      rangeParams,
     ),
     query<{ seller_id: string; seller_name: string; total: string; count: string }>(
       `SELECT u.id AS seller_id, u.full_name AS seller_name,
@@ -174,10 +195,10 @@ export async function getVentasReport(
        JOIN users u ON u.id = s.seller_user_id
        WHERE s.branch_id = $1
          AND (timezone('${CHILE_TZ}', s.sold_at))::date >= $2::date
-         AND (timezone('${CHILE_TZ}', s.sold_at))::date <= $3::date
+         AND (timezone('${CHILE_TZ}', s.sold_at))::date <= $3::date${rangeSql}
        GROUP BY u.id, u.full_name
        ORDER BY SUM(s.total) DESC`,
-      [branchId, from, to],
+      rangeParams,
     ),
     query<{ pos_id: string; pos_name: string; total: string; count: string }>(
       `SELECT p.id AS pos_id, p.name AS pos_name,
@@ -186,10 +207,10 @@ export async function getVentasReport(
        JOIN pos_terminals p ON p.id = s.pos_id
        WHERE s.branch_id = $1
          AND (timezone('${CHILE_TZ}', s.sold_at))::date >= $2::date
-         AND (timezone('${CHILE_TZ}', s.sold_at))::date <= $3::date
+         AND (timezone('${CHILE_TZ}', s.sold_at))::date <= $3::date${rangeSql}
        GROUP BY p.id, p.name
        ORDER BY SUM(s.total) DESC`,
-      [branchId, from, to],
+      rangeParams,
     ),
   ]);
 
@@ -235,11 +256,23 @@ export async function getVentasReport(
   };
 }
 
-export async function exportVentasTickets(branchId: string, from: string, to: string) {
+export async function exportVentasTickets(
+  branchId: string,
+  from: string,
+  to: string,
+  paymentMethod?: unknown,
+) {
+  const pay = parseSalePaymentMethodFilter(paymentMethod);
+  const paySql = pay ? ` AND s.payment_method = $4::sale_payment_method` : '';
+  const params: unknown[] = pay
+    ? [branchId, from, to, pay, EXPORT_ROW_CAP]
+    : [branchId, from, to, EXPORT_ROW_CAP];
+  const limitIdx = pay ? 5 : 4;
   return query(
     `SELECT s.receipt_number,
             timezone('${CHILE_TZ}', s.sold_at)::text AS sold_at_cl,
             s.total::float8 AS total,
+            s.payment_method::text AS payment_method,
             u.full_name AS seller_name,
             p.name AS pos_name,
             CASE WHEN s.client_sale_id IS NOT NULL THEN 'offline' ELSE 'online' END AS origen
@@ -248,10 +281,10 @@ export async function exportVentasTickets(branchId: string, from: string, to: st
      JOIN pos_terminals p ON p.id = s.pos_id
      WHERE s.branch_id = $1
        AND (timezone('${CHILE_TZ}', s.sold_at))::date >= $2::date
-       AND (timezone('${CHILE_TZ}', s.sold_at))::date <= $3::date
+       AND (timezone('${CHILE_TZ}', s.sold_at))::date <= $3::date${paySql}
      ORDER BY s.sold_at DESC
-     LIMIT $4`,
-    [branchId, from, to, EXPORT_ROW_CAP],
+     LIMIT $${limitIdx}`,
+    params,
   );
 }
 

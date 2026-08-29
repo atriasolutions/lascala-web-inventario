@@ -4,6 +4,7 @@
  */
 
 import { expandProductCodeVariants } from './scanCode';
+import type { PaymentMethod } from './paymentMethod';
 
 const DB_NAME = 'lscala-pos-v3';
 const DB_VERSION = 1;
@@ -67,6 +68,7 @@ export type OfflineSaleDraft = {
   soldAt: string;
   items: OfflineSaleItem[];
   notes?: string;
+  paymentMethod?: PaymentMethod;
 };
 
 export type OfflineSaleRecord = OfflineSaleDraft & {

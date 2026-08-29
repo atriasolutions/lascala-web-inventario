@@ -14,6 +14,7 @@ import { ModalOverlayClose } from '../components/ModalOverlayClose';
 import { PosModal } from '../components/PosModal';
 import { SaleThermalPrint } from '../components/SaleThermalPrint';
 import { ColorSwatch } from '../components/ColorSwatch';
+import { PaymentMethodSwitch } from '../components/PaymentMethodSwitch';
 import { ProductPhotoPlaceholder } from '../components/ProductPhotoPlaceholder';
 import { api, mediaUrl, money } from '../lib/api';
 import { useAuth } from '../lib/auth';
@@ -28,6 +29,7 @@ import {
 } from '../lib/salePrint';
 import { toast } from '../lib/toast';
 import { useSalePrint } from '../lib/useSalePrint';
+import type { PaymentMethod } from '../lib/paymentMethod';
 import type { PosCatalogProduct } from '../lib/posCatalogCache';
 
 type Product = {
@@ -176,6 +178,7 @@ export function PosPage() {
 
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [includeChangeTickets, setIncludeChangeTickets] = useState(true);
+  const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
 
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQ, setSearchQ] = useState('');
@@ -338,6 +341,7 @@ export function PosPage() {
       return;
     }
     setIncludeChangeTickets(eligibleVoucherUnits > 0);
+    setPaymentMethod('cash');
     setConfirmOpen(true);
   }
 
@@ -371,6 +375,7 @@ export function PosPage() {
           soldAt: new Date().toISOString(),
           items,
           notes: 'Venta offline',
+          paymentMethod,
         });
         await applyLocalSale(items);
         toast.success(
@@ -392,6 +397,7 @@ export function PosPage() {
           method: 'POST',
           body: {
             posId,
+            paymentMethod,
             items: cart.map((c) => ({ productId: c.product.id, quantity: c.quantity })),
           },
         },
@@ -937,6 +943,12 @@ export function PosPage() {
               <p className="pos-finalize-total">
                 Total <strong>{money(total)}</strong>
               </p>
+              <PaymentMethodSwitch
+                value={paymentMethod}
+                onChange={setPaymentMethod}
+                disabled={busy}
+                className="pos-finalize-payment"
+              />
               <ul className="pos-finalize-list">
                 {online ? (
                   <>

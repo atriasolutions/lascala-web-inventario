@@ -16,6 +16,7 @@ import {
 import { useMobileViewport } from '../../hooks/useMobileViewport';
 import { api, money, userFacingError } from '../../lib/api';
 import { chartColor } from '../../lib/chartColors';
+import { paymentMethodLabel } from '../../lib/paymentMethod';
 import { statusLabel } from '../../lib/purchasesStatus';
 import { useReportsFilters } from './reportsContext';
 import type { ReportsVista } from './reportsPeriod';
@@ -535,6 +536,7 @@ function VentasPanel({ data }: { data: VentasReport }) {
                     <th>Fecha</th>
                     <th>Vendedora</th>
                     <th>Caja</th>
+                    <th>Pago</th>
                     <th>Monto</th>
                   </tr>
                 </thead>
@@ -548,6 +550,7 @@ function VentasPanel({ data }: { data: VentasReport }) {
                       <td>{formatSoldAt(t.sold_at)}</td>
                       <td>{t.seller_name}</td>
                       <td>{t.pos_name}</td>
+                      <td>{paymentMethodLabel(t.payment_method)}</td>
                       <td>{money(t.total)}</td>
                     </tr>
                   ))}
@@ -1100,12 +1103,20 @@ function InventariosPanel({ data }: { data: InventariosReport }) {
 }
 
 export function ReportsViewPage({ vista }: { vista: ReportsVista }) {
-  const { branchName, from, to, branchId } = useReportsFilters();
+  const { branchName, from, to, branchId, period } = useReportsFilters();
   const [searchParams] = useSearchParams();
   const stocktakeId = vista === 'inventarios' ? searchParams.get('take') || undefined : undefined;
+  const reportExtra = useMemo(() => {
+    const extra: Record<string, string | undefined> = {};
+    if (stocktakeId) extra.stocktakeId = stocktakeId;
+    if (vista === 'ventas' && period.paymentMethod) {
+      extra.paymentMethod = period.paymentMethod;
+    }
+    return Object.keys(extra).length ? extra : undefined;
+  }, [stocktakeId, vista, period.paymentMethod]);
   const { data, loading, error } = useReport<
     VentasReport | StockReport | IngresosReport | GastosReport | MermasReport | InventariosReport
-  >(vista, from, to, branchId, stocktakeId ? { stocktakeId } : undefined);
+  >(vista, from, to, branchId, reportExtra);
 
   if (loading) return <ReportsPanelSkeleton />;
   if (error) {

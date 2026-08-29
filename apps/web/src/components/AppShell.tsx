@@ -57,7 +57,7 @@ const pinnedNav: NavItem = {
 
 /**
  * Sidebar desktop — grupos colapsables.
- * Tienda / Administración / Control logístico; Ayuda suelta (sin acordeón).
+ * Tienda / Administración / Control logístico; pie: Ayuda → Ajustes.
  */
 const navSections: { id: string; label: string; items: NavItem[] }[] = [
   {
@@ -77,7 +77,6 @@ const navSections: { id: string; label: string; items: NavItem[] }[] = [
       { to: '/ventas', label: 'Historial de ventas', icon: IconReceipt, helpKey: 'nav.ventas' },
       { to: '/gastos', label: 'Gastos', icon: IconWallet, helpKey: 'nav.gastos', roles: adminOnly },
       { to: '/reportes', label: 'Reportes', icon: IconChart, helpKey: 'nav.reportes', roles: adminOnly },
-      { to: '/admin', label: 'Ajustes', icon: IconUsers, helpKey: 'nav.ajustes' },
     ],
   },
   {
@@ -99,22 +98,25 @@ const helpNavItem: NavItem = {
   helpKey: 'nav.ayuda',
 };
 
-/** Bottom nav móvil (administradora): Inicio, Compras, Gastos, Ventas + Más. */
+const settingsNavItem: NavItem = {
+  to: '/admin',
+  label: 'Ajustes',
+  icon: IconUsers,
+  helpKey: 'nav.ajustes',
+};
+
+/** Bottom nav móvil (administradora): Inicio, Compras, Gastos + Más. */
 const primaryMobile: NavItem[] = [
   { to: '/', label: 'Inicio', icon: IconHome, helpKey: 'nav.dashboard', end: true, roles: adminOnly },
   { to: '/compras', label: 'Compras', icon: IconReceipt, helpKey: 'nav.compras', roles: adminOnly },
   { to: '/gastos', label: 'Gastos', icon: IconWallet, helpKey: 'nav.gastos', roles: adminOnly },
-  { to: '/ventas', label: 'Ventas', icon: IconReceipt, helpKey: 'nav.ventas' },
 ];
 
+/** Sheet «Más» — operación de piso (POS, ingresos, mermas) solo en desktop. */
 const moreLinks: NavItem[] = [
-  { to: '/vender', label: 'Ventas', icon: IconPos, helpKey: 'nav.caja' },
-  { to: '/ingresos', label: 'Ingresos', icon: IconTruck, helpKey: 'nav.ingresos' },
   { to: '/productos', label: 'Productos', icon: IconShirt, helpKey: 'nav.productos' },
   { to: '/inventario', label: 'Stock', icon: IconBox, helpKey: 'nav.stock', end: true },
-  { to: '/inventarios', label: 'Inventarios', icon: IconClipboardList, helpKey: 'nav.inventarios' },
   { to: '/movimientos', label: 'Movimientos', icon: IconSwap, helpKey: 'nav.movimientos' },
-  { to: '/mermas', label: 'Mermas y cambios', icon: IconAlertTriangle, helpKey: 'nav.mermas' },
   { to: '/reportes', label: 'Reportes', icon: IconChart, helpKey: 'nav.reportes', roles: adminOnly },
   { to: '/ayuda', label: 'Ayuda', icon: IconHelp, helpKey: 'nav.ayuda' },
   { to: '/admin', label: 'Ajustes', icon: IconUsers, helpKey: 'nav.ajustes' },
@@ -276,6 +278,7 @@ export function AppShell() {
   const visibleMoreLinks = moreLinks.filter((l) => canSeeNav(l, role));
   const visibleMobile = primaryMobile.filter((l) => canSeeNav(l, role));
   const showPinned = canSeeNav(pinnedNav, role);
+  const showSettingsNav = canSeeNav(settingsNavItem, role);
   const moreActive = visibleMoreLinks.some((l) => location.pathname.startsWith(l.to));
 
   /** Abre la sección que contiene la ruta activa (sin pisar el resto del acordeón). */
@@ -402,11 +405,13 @@ export function AppShell() {
                 </div>
               );
             })}
+          </nav>
+          <div className="nav-sidebar-footer">
             <NavLink
               to={helpNavItem.to}
               data-help={helpNavItem.helpKey}
               className={({ isActive }) =>
-                `nav-help-link${isActive ? ' active' : ''}${offlineNavClass(helpNavItem.to)}`
+                `nav-footer-link nav-help-link${isActive ? ' active' : ''}${offlineNavClass(helpNavItem.to)}`
               }
               title={!online ? 'Se necesita conexión' : undefined}
             >
@@ -415,7 +420,22 @@ export function AppShell() {
               </span>
               {helpNavItem.label}
             </NavLink>
-          </nav>
+            {showSettingsNav ? (
+              <NavLink
+                to={settingsNavItem.to}
+                data-help={settingsNavItem.helpKey}
+                className={({ isActive }) =>
+                  `nav-footer-link${isActive ? ' active' : ''}${offlineNavClass(settingsNavItem.to)}`
+                }
+                title={!online ? 'Se necesita conexión' : undefined}
+              >
+                <span className="nav-ico">
+                  <settingsNavItem.icon size={18} />
+                </span>
+                {settingsNavItem.label}
+              </NavLink>
+            ) : null}
+          </div>
         </aside>
 
         <div className="main">

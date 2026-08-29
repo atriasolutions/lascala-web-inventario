@@ -60,6 +60,7 @@ export type SalePrintSale = {
   pos_name: string;
   branch_name?: string;
   notes: string | null;
+  payment_method?: string;
 };
 
 export type SalePrintItem = {

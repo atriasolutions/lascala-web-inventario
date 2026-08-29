@@ -38,7 +38,8 @@ reportsRouter.get(
     const branch = await loadBranch(branchId);
     const meta = reportMeta(vista, branch, from, to);
     const stocktakeId = parseStocktakeIdQuery(req.query.stocktakeId);
-    const wb = await buildReportWorkbook(vista, branchId, meta, { stocktakeId });
+    const paymentMethod = req.query.paymentMethod;
+    const wb = await buildReportWorkbook(vista, branchId, meta, { stocktakeId, paymentMethod });
     const filename = reportExcelFilename(meta);
     res.setHeader(
       'Content-Type',

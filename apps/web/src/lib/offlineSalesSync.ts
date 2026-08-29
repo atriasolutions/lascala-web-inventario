@@ -86,6 +86,7 @@ export async function syncOfflineSalesQueue(branchId: string): Promise<SyncRespo
               posId: s.posId,
               soldAt: s.soldAt,
               notes: s.notes || 'Venta offline',
+              paymentMethod: s.paymentMethod || 'cash',
               items: s.items.map((it) => ({
                 productId: it.productId,
                 quantity: it.quantity,

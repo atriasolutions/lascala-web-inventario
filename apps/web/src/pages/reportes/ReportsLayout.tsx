@@ -7,6 +7,7 @@ import { toast } from '../../lib/toast';
 import { ReportsFiltersProvider } from './reportsContext';
 import {
   PERIOD_CHIPS,
+  PAYMENT_METHOD_CHIPS,
   REPORTS_TABS,
   defaultPeriodState,
   resolvePeriod,
@@ -90,6 +91,9 @@ export function ReportsLayout() {
       const qs = new URLSearchParams({ from, to });
       const take = new URLSearchParams(search).get('take');
       if (take) qs.set('stocktakeId', take);
+      if (vista === 'ventas' && period.paymentMethod) {
+        qs.set('paymentMethod', period.paymentMethod);
+      }
       const res = await fetch(`${apiUrl}/api/reports/${vista}/export?${qs}`, { headers });
       if (!res.ok) {
         const body = (await res.json().catch(() => ({}))) as { error?: string };
@@ -146,6 +150,20 @@ export function ReportsLayout() {
             </button>
           ))}
         </div>
+        {vista === 'ventas' ? (
+          <div className="reports-filters-chips" role="group" aria-label="Medio de pago">
+            {PAYMENT_METHOD_CHIPS.map((chip) => (
+              <button
+                key={chip.id || 'all'}
+                type="button"
+                className={`ing-chip${period.paymentMethod === chip.id ? ' is-active' : ''}`}
+                onClick={() => patchPeriod({ paymentMethod: chip.id })}
+              >
+                {chip.label}
+              </button>
+            ))}
+          </div>
+        ) : null}
         <p className="muted reports-filters-range" aria-live="polite">
           {from === to
             ? formatPeriodDay(from)

@@ -1,6 +1,7 @@
 import { Router } from 'express';
 import { z } from 'zod';
 import { pool, query } from '../db/pool.js';
+import { parseSalePaymentMethod, parseSalePaymentMethodFilter } from '../domain/paymentMethod.js';
 import { assertUserCanUsePos, requireAuth, requireBranch, requireRoles } from '../middleware/auth.js';
 import { createSaleWithClient, findSaleByClientSaleId } from '../services/sales.js';
 import { asyncHandler, HttpError, formatDbErrorMessage, isUniqueViolation } from '../utils/errors.js';
@@ -15,6 +16,8 @@ const saleItemSchema = z.object({
   unitPrice: z.number().nonnegative().optional(),
 });
 
+const paymentMethodSchema = z.enum(['cash', 'card']).optional().default('cash');
+
 salesRouter.get(
   '/',
   asyncHandler(async (req, res) => {
@@ -26,8 +29,13 @@ salesRouter.get(
     const notes = String(req.query.notes || '').trim();
     /** Legacy omnibox: OR entre campos. Preferir params separados (AND). */
     const q = String(req.query.q || '').trim();
+    const paymentMethod = parseSalePaymentMethodFilter(req.query.paymentMethod);
     const params: unknown[] = [req.activeBranchId];
     let where = `WHERE s.branch_id = $1`;
+    if (paymentMethod) {
+      params.push(paymentMethod);
+      where += ` AND s.payment_method = $${params.length}::sale_payment_method`;
+    }
     if (dateFrom) {
       params.push(dateFrom);
       // Fecha civil Chile (alineado con dashboard salesDay), no ::date de sesión UTC
@@ -204,6 +212,7 @@ salesRouter.post(
               soldAt: z.string().min(1).optional(),
               notes: z.string().optional().nullable(),
               discount: z.number().nonnegative().optional(),
+              paymentMethod: paymentMethodSchema,
               items: z.array(saleItemSchema).min(1),
             }),
           )
@@ -262,6 +271,7 @@ salesRouter.post(
           sellerUserId,
           notes: noteParts.join(' '),
           discount: entry.discount,
+          paymentMethod: parseSalePaymentMethod(entry.paymentMethod),
           items: entry.items,
           allowNegative: true,
           clientSaleId: entry.clientSaleId,
@@ -380,6 +390,7 @@ salesRouter.post(
         posId: z.string().uuid(),
         notes: z.string().optional().nullable(),
         discount: z.number().nonnegative().optional(),
+        paymentMethod: paymentMethodSchema,
         items: z.array(saleItemSchema).min(1),
       })
       .parse(req.body);
@@ -397,6 +408,7 @@ salesRouter.post(
         sellerUserId: req.user!.id,
         notes: body.notes ?? null,
         discount: body.discount,
+        paymentMethod: parseSalePaymentMethod(body.paymentMethod),
         items: body.items,
         allowNegative: false,
       });

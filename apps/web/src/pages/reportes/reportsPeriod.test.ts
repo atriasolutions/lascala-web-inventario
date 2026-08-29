@@ -10,6 +10,7 @@ function base(partial: Partial<ReportsPeriodState>): ReportsPeriodState {
     year: '2026',
     from: '2026-08-01',
     to: '2026-08-31',
+    paymentMethod: '',
     ...partial,
   };
 }

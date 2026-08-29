@@ -33,6 +33,7 @@ export type VentasTicket = {
   seller_id: string;
   pos_name: string;
   pos_id: string;
+  payment_method?: string;
 };
 
 export type VentasRanking = {

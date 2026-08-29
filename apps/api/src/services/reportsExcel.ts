@@ -64,24 +64,45 @@ export async function buildReportWorkbook(
   vista: ReportVista,
   branchId: string,
   meta: ReportMeta,
-  opts: { stocktakeId?: string | null } = {},
+  opts: { stocktakeId?: string | null; paymentMethod?: unknown } = {},
 ) {
   const wb = new ExcelJS.Workbook();
   wb.creator = "Atria Solutions SpA · L'Scala";
   wb.created = new Date();
 
   if (vista === 'ventas') {
-    const data = await getVentasReport(branchId, meta.from, meta.to, { limit: 1, offset: 0 });
-    const tickets = await exportVentasTickets(branchId, meta.from, meta.to);
+    const data = await getVentasReport(branchId, meta.from, meta.to, {
+      limit: 1,
+      offset: 0,
+      paymentMethod: opts.paymentMethod,
+    });
+    const tickets = await exportVentasTickets(branchId, meta.from, meta.to, opts.paymentMethod);
 
     const s1 = wb.addWorksheet('Tickets', { views: [{ state: 'frozen', ySplit: 6 }] });
     titleBlock(s1, "Ventas · Boutique L'Scala", meta);
-    headerRow(s1, ['Fecha (Chile)', 'N°', 'Caja', 'Vendedora', 'Total', 'Origen']);
+    headerRow(s1, ['Fecha (Chile)', 'N°', 'Caja', 'Vendedora', 'Total', 'Pago', 'Origen']);
     for (const r of tickets.rows) {
-      s1.addRow([r.sold_at_cl, r.receipt_number, r.pos_name, r.seller_name, Number(r.total), r.origen]);
+      const pago = r.payment_method === 'card' ? 'Tarjeta' : 'Efectivo';
+      s1.addRow([
+        r.sold_at_cl,
+        r.receipt_number,
+        r.pos_name,
+        r.seller_name,
+        Number(r.total),
+        pago,
+        r.origen,
+      ]);
     }
     moneyCol(s1, 5);
-    s1.columns = [{ width: 24 }, { width: 14 }, { width: 16 }, { width: 24 }, { width: 14 }, { width: 12 }];
+    s1.columns = [
+      { width: 24 },
+      { width: 14 },
+      { width: 16 },
+      { width: 24 },
+      { width: 14 },
+      { width: 12 },
+      { width: 12 },
+    ];
 
     const s2 = wb.addWorksheet('Ranking');
     titleBlock(s2, 'Ranking (máx. 50) · margen = venta − último Precio costo', meta);

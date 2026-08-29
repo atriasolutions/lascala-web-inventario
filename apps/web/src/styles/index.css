@@ -4046,6 +4046,39 @@ body.modal-scroll-lock .main-content {
     padding-right: 0.2rem;
     margin-right: -0.2rem;
   }
+  .nav-sidebar-footer {
+    flex-shrink: 0;
+    margin-top: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.08rem;
+    padding-top: 0.45rem;
+    border-top: 1px solid rgba(42, 26, 34, 0.08);
+  }
+  .nav-footer-link {
+    display: flex;
+    align-items: center;
+    gap: 0.65rem;
+    padding: 0.42rem 0.75rem;
+    border-radius: 999px;
+    color: var(--color-muted);
+    font-weight: 600;
+    font-size: 0.9rem;
+    transition: background 160ms ease, color 160ms ease, transform 160ms ease;
+  }
+  .nav-footer-link .nav-ico {
+    width: 20px;
+    height: 20px;
+    display: grid;
+    place-items: center;
+    flex-shrink: 0;
+  }
+  .nav-footer-link:hover,
+  .nav-footer-link.active {
+    background: rgba(230, 0, 126, 0.1);
+    color: var(--color-brand);
+    transform: translateX(2px);
+  }
   .nav-section + .nav-section { margin-top: 0.35rem; }
   .nav-section-toggle {
     appearance: none;
@@ -4731,6 +4764,22 @@ body.modal-scroll-lock .main-content {
     display: block;
     margin: 0 auto;
     background: transparent;
+  }
+}
+
+/* Compras / Ingresos: laptops ~14" — figura lateral comprime la tabla */
+@media (min-width: 1100px) and (max-width: 1400px) {
+  .compras-list .ing-list-figure,
+  .ingresos-list .ing-list-figure,
+  .main:has(.compras-list) .ing-list-figure,
+  .main:has(.ingresos-list) .ing-list-figure {
+    display: none;
+  }
+  .compras-list .ing-list-workspace,
+  .ingresos-list .ing-list-workspace,
+  .main:has(.compras-list) .ing-list-workspace,
+  .main:has(.ingresos-list) .ing-list-workspace {
+    grid-template-columns: minmax(0, 1fr);
   }
 }
 
@@ -6476,7 +6525,7 @@ a.ing-row:hover { border-color: #e3b7cf; }
 }
 
 .confirm-dialog {
-  z-index: 100;
+  z-index: 130;
 }
 .confirm-dialog-panel {
   width: min(420px, calc(100vw - 2rem));
@@ -6528,6 +6577,57 @@ a.ing-row:hover { border-color: #e3b7cf; }
   margin: 0;
   font-size: 0.82rem;
   line-height: 1.35;
+}
+.pos-finalize-payment {
+  margin-bottom: 0.85rem;
+}
+.payment-method-switch {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+}
+.payment-method-switch-label {
+  font-size: 0.82rem;
+  font-weight: 600;
+  color: var(--color-ink-muted, #666);
+  letter-spacing: 0.02em;
+}
+.payment-method-segmented {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.35rem;
+  padding: 0.25rem;
+  border-radius: 999px;
+  background: #f8f0f4;
+  border: 1px solid #ecd4e3;
+}
+.payment-method-segment {
+  min-height: 44px;
+  padding: 0.55rem 0.75rem;
+  border: none;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--color-ink);
+  font-size: 0.95rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.15s ease, color 0.15s ease, box-shadow 0.15s ease;
+}
+.payment-method-segment:hover:not(:disabled):not(.is-active) {
+  background: rgba(230, 0, 126, 0.08);
+}
+.payment-method-segment.is-active {
+  background: #fff;
+  color: var(--color-brand, #E6007E);
+  box-shadow: 0 1px 4px rgba(230, 0, 126, 0.18);
+}
+.payment-method-segment:focus-visible {
+  outline: 2px solid var(--color-brand, #E6007E);
+  outline-offset: 2px;
+}
+.payment-method-segment:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
 }
 .btn.confirm-danger {
   background: #E6007E;
@@ -11463,14 +11563,10 @@ body.help-mode-touch::after {
   background: rgba(230, 0, 126, 0.08);
 }
 .nav-list a[href="/ayuda"] .nav-ico,
+.nav-footer-link.nav-help-link .nav-ico,
 .nav-primary a[href="/ayuda"] .nav-ico,
 .more-grid a[href="/ayuda"] .nav-ico {
   color: #e6007e;
-}
-.nav-help-link {
-  margin-top: 0.45rem;
-  border-top: 1px solid rgba(42, 26, 34, 0.08);
-  padding-top: 0.45rem !important;
 }
 .help-mode-banner {
   flex-shrink: 0;

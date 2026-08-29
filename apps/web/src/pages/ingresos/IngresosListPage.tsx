@@ -187,7 +187,7 @@ export function IngresosListPage() {
   }, [drawerOpen]);
 
   return (
-    <div className="ing-list">
+    <div className="ing-list ingresos-list">
       <div className="ing-list-workspace">
         <div className="ing-list-main">
       <div className="section-title">

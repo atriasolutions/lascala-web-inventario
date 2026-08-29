@@ -25,6 +25,7 @@ import {
 } from '../lib/salesListSort';
 import { useSalePrint } from '../lib/useSalePrint';
 import { toast } from '../lib/toast';
+import { paymentMethodLabel } from '../lib/paymentMethod';
 
 type Sale = {
   id: string;
@@ -37,6 +38,7 @@ type Sale = {
   pos_name: string;
   branch_name?: string;
   notes: string | null;
+  payment_method?: string;
 };
 
 type SaleItem = {
@@ -639,6 +641,8 @@ export function SalesHistoryPage() {
                       </div>
                       <div className="meta">
                         {fmtDate(s.sold_at)} · {s.seller_name} · {s.pos_name}
+                        {' · '}
+                        {paymentMethodLabel(s.payment_method)}
                       </div>
                       <div className="sales-card-foot">
                         <span className="sales-row-action">Ver</span>
@@ -679,6 +683,7 @@ export function SalesHistoryPage() {
                           sortDir={sortDir}
                           onSort={toggleSort}
                         />
+                        <th>Pago</th>
                         <SortableTh
                           label="Total"
                           column="total"
@@ -700,6 +705,7 @@ export function SalesHistoryPage() {
                           <td>{fmtDate(s.sold_at)}</td>
                           <td>{s.seller_name}</td>
                           <td>{s.pos_name}</td>
+                          <td className="muted">{paymentMethodLabel(s.payment_method)}</td>
                           <td className="sales-num">{money(s.total)}</td>
                           <td className="sales-th-action">
                             <button
@@ -851,6 +857,9 @@ export function SalesHistoryPage() {
                 {fmtDate(selected.sold_at)}
                 {selected.branch_name ? ` · ${selected.branch_name}` : ''}
                 {` · ${selected.seller_name} · ${selected.pos_name}`}
+              </p>
+              <p className="sales-detail-meta muted">
+                Medio de pago: <strong>{paymentMethodLabel(selected.payment_method)}</strong>
               </p>
 
               {Number(selected.discount) > 0 && (
