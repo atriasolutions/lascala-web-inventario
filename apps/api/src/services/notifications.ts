@@ -1,5 +1,6 @@
 import { query } from '../db/pool.js';
 import { getLowStockAlerts, getNoMovementAlerts } from './inventory.js';
+import { sendWebPushToUser } from './webPush.js';
 
 export type NotificationCategory = 'stock' | 'rotacion' | 'voucher' | 'operacion';
 export type NotificationSeverity = 'high' | 'medium';
@@ -134,6 +135,13 @@ export async function notifyOrganizationOwnersOfOperation(params: {
          updated_at = now()`,
       [params.organizationId, params.branchId, owner.id, alertKey, fingerprint],
     );
+
+    void sendWebPushToUser(owner.id, {
+      title: payload.title,
+      body: payload.detail,
+      url: payload.href,
+      tag: alertKey,
+    }).catch(() => {});
   }
 
   return owners.rows.length;

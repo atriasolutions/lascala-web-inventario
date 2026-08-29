@@ -10,6 +10,7 @@ import { HelpModeToggle } from './help/HelpModeToggle';
 import { NotificationBell } from './NotificationBell';
 import { OfflineBanner } from './OfflineBanner';
 import { PwaInstallHint } from './PwaInstallHint';
+import { PushAlertsBanner } from './PushAlertsBanner';
 import { ShellTitleContext } from './shellTitle';
 import { WorkplaceSwitcher } from './WorkplaceSwitcher';
 import { canUseMobileApp, isAdminRole, roleLabel as formatRoleLabel } from '../lib/roles';
@@ -459,6 +460,7 @@ export function AppShell() {
 
           <OfflineBanner />
           <PwaInstallHint />
+          {isOwner ? <PushAlertsBanner /> : null}
 
           <header className="topbar-desktop">
             <div className="topbar-title">

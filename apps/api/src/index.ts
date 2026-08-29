@@ -13,6 +13,7 @@ import { opsRouter } from './routes/ops.js';
 import { dashboardRouter } from './routes/dashboard.js';
 import { usersRouter } from './routes/users.js';
 import { notificationsRouter } from './routes/notifications.js';
+import { pushRouter } from './routes/push.js';
 import { reportsRouter } from './routes/reports.js';
 import { uploadsDir, uploadsRouter } from './routes/uploads.js';
 
@@ -36,6 +37,7 @@ app.use('/api/ops', opsRouter);
 app.use('/api/dashboard', dashboardRouter);
 app.use('/api/users', usersRouter);
 app.use('/api/notifications', notificationsRouter);
+app.use('/api/push', pushRouter);
 app.use('/api/reports', reportsRouter);
 app.use('/api/uploads', uploadsRouter);
 

@@ -14,7 +14,9 @@ export function AdminLayout() {
       ? "Tiendas de L'Scala. La sucursal activa se cambia arriba."
       : pathname.includes('/cajas')
         ? 'Cada caja pertenece a una sucursal. Asigna cuáles puede usar cada usuario.'
-        : 'Impresoras USB de este computador. El Agent se instala aquí (DMG), no en la nube.';
+        : pathname.includes('/alertas')
+          ? 'Alertas push en el celular cuando el equipo registra mermas o cambios en piso.'
+          : 'Impresoras USB de este computador. El Agent se instala aquí (DMG), no en la nube.';
 
   return (
     <div className="admin-page">
@@ -42,6 +44,12 @@ export function AdminLayout() {
           </NavLink>
           <NavLink to="/admin/equipo" className={({ isActive }) => (isActive ? 'is-active' : undefined)}>
             Impresoras
+          </NavLink>
+          <NavLink
+            to="/admin/alertas"
+            className={({ isActive }) => (isActive ? 'is-active' : undefined)}
+          >
+            Alertas
           </NavLink>
         </nav>
       ) : null}

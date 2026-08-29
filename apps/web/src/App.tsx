@@ -21,6 +21,7 @@ import { HelpPage } from './pages/HelpPage';
 import { ExpensesPage } from './pages/ExpensesPage';
 import { AdminLayout, AdminHomeRedirect, RequireOwner } from './pages/admin/AdminLayout';
 import { AdminEquipoPage } from './pages/admin/AdminEquipoPage';
+import { AdminAlertasPage } from './pages/admin/AdminAlertasPage';
 import { AdminSucursalesPage } from './pages/admin/AdminSucursalesPage';
 import { AdminCajasPage } from './pages/admin/AdminCajasPage';
 import { AdminUsuariasPage } from './pages/admin/AdminUsuariasPage';
@@ -348,6 +349,14 @@ export const router = createBrowserRouter([
             element: (
               <RequireOwner>
                 <AdminUsuariasPage />
+              </RequireOwner>
+            ),
+          },
+          {
+            path: 'alertas',
+            element: (
+              <RequireOwner>
+                <AdminAlertasPage />
               </RequireOwner>
             ),
           },

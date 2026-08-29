@@ -346,6 +346,74 @@ a:focus:not(:focus-visible) {
   min-height: 44px;
 }
 
+.push-alerts-banner {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  gap: 0.65rem 1rem;
+  margin: 0 0 0.85rem;
+  padding: 0.75rem 0.9rem;
+  border: 1px solid rgba(17, 24, 39, 0.12);
+  border-radius: var(--radius-sm, 12px);
+  background: var(--color-surface-elevated);
+}
+.push-alerts-banner-copy {
+  flex: 1 1 14rem;
+  min-width: 0;
+}
+.push-alerts-banner-copy strong {
+  display: block;
+  font-size: 0.9rem;
+  font-weight: 700;
+  color: var(--color-ink);
+  margin-bottom: 0.2rem;
+}
+.push-alerts-banner-copy p {
+  margin: 0;
+  font-size: 0.82rem;
+  line-height: 1.45;
+  color: var(--color-muted);
+}
+.push-alerts-banner-msg {
+  margin-top: 0.35rem !important;
+}
+.push-alerts-banner-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  align-items: center;
+}
+.push-alerts-banner-btn {
+  min-height: 44px;
+  flex-shrink: 0;
+}
+
+.admin-alertas-status {
+  margin: 0.75rem 0 1rem;
+  padding-left: 1.1rem;
+  font-size: 0.85rem;
+}
+.admin-alertas-status li {
+  margin: 0.2rem 0;
+}
+.admin-alertas-ios-hint {
+  margin: 0 0 1rem;
+  padding: 0.65rem 0.75rem;
+  border-radius: var(--radius-sm, 12px);
+  background: rgba(230, 0, 126, 0.06);
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+.admin-alertas-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+}
+.admin-alertas-msg {
+  margin: 0.75rem 0 0;
+  font-size: 0.85rem;
+}
+
 .net-blocked {
   max-width: 26rem;
   margin: 1.5rem auto;

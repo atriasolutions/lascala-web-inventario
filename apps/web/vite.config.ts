@@ -52,6 +52,7 @@ export default defineConfig({
         ],
       },
       workbox: {
+        importScripts: ['push-sw.js'],
         // Fase A: shell + assets críticos. Fotos lookbook pesadas quedan en red.
         globPatterns: [
           '**/*.{js,css,html,ico,svg,woff,woff2,webmanifest}',
