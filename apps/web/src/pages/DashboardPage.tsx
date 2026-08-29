@@ -22,6 +22,7 @@ import {
   IconWallet,
 } from '../components/icons';
 import { api, money } from '../lib/api';
+import { unpackComprobante } from '../lib/comprobanteEmbed';
 import { useAuth } from '../lib/auth';
 import { chartColor } from '../lib/chartColors';
 import { personalDayGreeting } from '../lib/dayGreeting';
@@ -332,18 +333,21 @@ export function DashboardPage() {
               <p className="dash-empty-line">Aún no hay gastos registrados este mes.</p>
             ) : (
               <ul className="dash-expense-list">
-                {data.expensesRecent.map((e) => (
+                {data.expensesRecent.map((e) => {
+                  const desc = unpackComprobante(e.description).text.trim();
+                  return (
                   <li key={e.id}>
                     <div>
                       <strong>{e.category}</strong>
                       <span>
                         {formatShortDate(e.incurred_on)}
-                        {e.description ? ` · ${e.description}` : ''}
+                        {desc ? ` · ${desc}` : ''}
                       </span>
                     </div>
                     <em>{money(e.amount)}</em>
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             )}
           </article>

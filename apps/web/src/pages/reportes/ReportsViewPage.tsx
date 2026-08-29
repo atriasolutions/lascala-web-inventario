@@ -15,6 +15,7 @@ import {
 } from 'recharts';
 import { useMobileViewport } from '../../hooks/useMobileViewport';
 import { api, money, userFacingError } from '../../lib/api';
+import { unpackComprobante } from '../../lib/comprobanteEmbed';
 import { chartColor } from '../../lib/chartColors';
 import { paymentMethodLabel } from '../../lib/paymentMethod';
 import { statusLabel } from '../../lib/purchasesStatus';
@@ -880,7 +881,7 @@ function GastosPanel({ data }: { data: GastosReport }) {
                   <tr key={e.id}>
                     <td>{formatCivilDate(e.incurred_on)}</td>
                     <td>{e.category}</td>
-                    <td>{e.description || '—'}</td>
+                    <td>{unpackComprobante(e.description).text.trim() || '—'}</td>
                     <td>{money(e.amount)}</td>
                   </tr>
                 ))}
