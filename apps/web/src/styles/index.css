@@ -3230,6 +3230,12 @@ body.modal-scroll-lock .main-content {
     -webkit-overflow-scrolling: touch;
     overscroll-behavior: contain;
   }
+  /* Sin código de barras: prod-modal-body anidado — scroll solo en ing-nb-body */
+  .pos-modal.open .ing-nb-body .prod-modal-body {
+    flex: none;
+    overflow: visible;
+    overflow-y: visible;
+  }
   .pos-modal.open .ing-line-modal-actions,
   .pos-modal.open .prod-modal-actions,
   .pos-modal.open .gasto-form-actions,
@@ -6283,6 +6289,21 @@ a.ing-row:hover { border-color: #e3b7cf; }
   -webkit-overflow-scrolling: touch;
   overscroll-behavior: contain;
   padding-bottom: 0.85rem;
+}
+
+/* Un solo scroller: ing-nb-body (no prod-modal-body anidado) */
+.ing-nb-body .prod-modal-body {
+  flex: none;
+  overflow: visible;
+  min-height: 0;
+  margin-top: 0;
+  padding-bottom: 0.35rem;
+}
+
+.ing-nb-panel > .pos-modal-head,
+.ing-nb-panel > .ing-nb-tabs,
+.ing-nb-panel > .ing-hint {
+  flex-shrink: 0;
 }
 
 .ing-nb-panel .ing-nb-actions.prod-modal-actions {
