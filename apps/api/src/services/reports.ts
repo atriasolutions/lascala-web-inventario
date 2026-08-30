@@ -92,25 +92,25 @@ export async function getVentasReport(
 ) {
   const { limit, offset } = parsePagination(pagination);
   const paymentMethod = parseSalePaymentMethodFilter(pagination.paymentMethod);
-  const paySql = paymentMethod ? ` AND s.payment_method = $PAY::sale_payment_method` : '';
+  /** Placeholder `$n` — no usar replace('$PAY', n): eso deja el literal `n::enum` y Postgres falla (42846). */
+  const payFilter = (paramIdx: number) =>
+    paymentMethod ? ` AND s.payment_method = $${paramIdx}::sale_payment_method` : '';
   const { grain, buckets } = buildChartBuckets(from, to);
   const periods = buckets.map((b) => b.period);
   const starts = buckets.map((b) => b.start);
   const ends = buckets.map((b) => b.end);
 
-  const aggPayIdx = 5;
-  const aggSql = paySql.replace('$PAY', String(aggPayIdx));
+  const aggSql = payFilter(5);
   const aggParams = paymentMethod
     ? [branchId, periods, starts, ends, paymentMethod]
     : [branchId, periods, starts, ends];
 
-  const rangePayIdx = 4;
-  const rangeSql = paySql.replace('$PAY', String(rangePayIdx));
+  const rangeSql = payFilter(4);
   const rangeParams = paymentMethod ? [branchId, from, to, paymentMethod] : [branchId, from, to];
 
-  const ticketLimitIdx = paymentMethod ? 6 : 4;
-  const ticketOffsetIdx = paymentMethod ? 7 : 5;
-  const ticketSql = paySql.replace('$PAY', '4');
+  const ticketLimitIdx = paymentMethod ? 5 : 4;
+  const ticketOffsetIdx = paymentMethod ? 6 : 5;
+  const ticketSql = payFilter(4);
   const ticketParams = paymentMethod
     ? [branchId, from, to, paymentMethod, limit, offset]
     : [branchId, from, to, limit, offset];
