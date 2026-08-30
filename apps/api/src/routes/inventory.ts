@@ -5,6 +5,7 @@ import { requireAuth, requireBranch, requireRoles } from '../middleware/auth.js'
 import { applyStockDelta, getLowStockAlerts, getNoMovementAlerts } from '../services/inventory.js';
 import { asyncHandler, HttpError } from '../utils/errors.js';
 import { fetchLimit, parsePagination, slicePage } from '../utils/pagination.js';
+import { orderByClause, parseSortBy, parseSortDir } from '../utils/listSort.js';
 
 type MovementRow = {
   id: string;
@@ -202,6 +203,22 @@ inventoryRouter.get(
     const tracksStock = String(req.query.tracksStock || '').trim();
     const stockPresence = String(req.query.stockPresence || '').trim(); // 'in' | 'zero' | ''
     const { limit, offset } = parsePagination(req.query);
+    const sortBy = parseSortBy(
+      req.query.sortBy,
+      ['name', 'code', 'stock', 'sale', 'value'] as const,
+      'name',
+    );
+    const sortDir = parseSortDir(req.query.sortDir, sortBy === 'name' || sortBy === 'code' ? 'asc' : 'desc');
+    const balOrder =
+      sortBy === 'code'
+        ? orderByClause('p.internal_code', sortDir, 'p.name ASC')
+        : sortBy === 'stock'
+          ? orderByClause('ib.quantity', sortDir, 'p.name ASC')
+          : sortBy === 'sale'
+            ? orderByClause('COALESCE(p.sale_price, 0)', sortDir, 'p.name ASC')
+            : sortBy === 'value'
+              ? orderByClause('ib.quantity * COALESCE(p.sale_price, 0)', sortDir, 'p.name ASC')
+              : orderByClause('p.name', sortDir);
 
     const params: unknown[] = [req.activeBranchId];
     let where =
@@ -269,7 +286,7 @@ inventoryRouter.get(
               (SELECT url FROM product_photos ph WHERE ph.product_id = p.id ORDER BY sort_order LIMIT 1) AS photo_url,
               EXISTS(SELECT 1 FROM product_photos ph2 WHERE ph2.product_id = p.id) AS has_photo
        ${fromJoin}
-       ORDER BY p.name
+       ORDER BY ${balOrder}
        LIMIT $${listParams.length - 1} OFFSET $${listParams.length}`,
       listParams,
     );
@@ -423,8 +440,39 @@ inventoryRouter.get(
     }
 
     const { limit, offset } = parsePagination(req.query);
+    const sortBy = parseSortBy(
+      req.query.sortBy,
+      ['date', 'type', 'product', 'delta', 'after', 'user'] as const,
+      'date',
+    );
+    const sortDir = parseSortDir(
+      req.query.sortDir,
+      sortBy === 'date' || sortBy === 'delta' || sortBy === 'after' ? 'desc' : 'asc',
+    );
+    const movTypeLabelExpr = `CASE m.movement_type
+         WHEN 'PURCHASE_IN' THEN 'Recepción'
+         WHEN 'SALE_OUT' THEN 'Venta'
+         WHEN 'MERMA_OUT' THEN 'Merma'
+         WHEN 'ADJUSTMENT' THEN 'Ajuste'
+         WHEN 'RETURN_IN' THEN 'Devolución'
+         WHEN 'EXCHANGE_OUT' THEN 'Cambio (salida)'
+         WHEN 'EXCHANGE_IN' THEN 'Cambio (entrada)'
+         ELSE m.movement_type::text
+       END`;
+    const movOrder =
+      sortBy === 'type'
+        ? orderByClause(movTypeLabelExpr, sortDir, 'p.name ASC')
+        : sortBy === 'product'
+          ? orderByClause('p.name', sortDir, 'm.created_at DESC')
+          : sortBy === 'delta'
+            ? orderByClause('m.quantity_delta', sortDir, 'p.name ASC')
+            : sortBy === 'after'
+              ? orderByClause('m.quantity_after', sortDir, 'p.name ASC')
+              : sortBy === 'user'
+                ? orderByClause('COALESCE(u.full_name, \'\')', sortDir, 'm.created_at DESC')
+                : orderByClause('m.created_at', sortDir, 'p.name ASC');
     params.push(fetchLimit(limit), offset);
-    sql += ` ORDER BY m.created_at DESC LIMIT $${params.length - 1} OFFSET $${params.length}`;
+    sql += ` ORDER BY ${movOrder} LIMIT $${params.length - 1} OFFSET $${params.length}`;
     const result = await query(sql, params);
     const page = slicePage(result.rows, limit, offset);
     const movements = page.items.map((row) => enrichMovement(row as MovementRow));

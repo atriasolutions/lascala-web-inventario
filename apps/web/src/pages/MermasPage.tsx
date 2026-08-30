@@ -22,14 +22,12 @@ import { loadListFilters, saveListFilters } from '../lib/listFiltersPersist';
 import {
   nextMermaSort,
   nextVoucherSort,
-  sortMermas,
-  sortVouchers,
   type MermaSortKey,
   type SortDir,
   type VoucherSortKey,
 } from '../lib/mermasListSort';
 import { codesMatch, normalizeScanCode } from '../lib/scanCode';
-import { withPagination } from '../lib/pagination';
+import { withListSort, withPagination } from '../lib/pagination';
 import { toast } from '../lib/toast';
 
 type Tab = 'mermas' | 'vouchers';
@@ -266,18 +264,27 @@ const VOUCHER_STATUS_CHIPS: { id: VoucherFilters['status']; label: string }[] = 
   { id: 'all', label: 'Todos' },
 ];
 
-function buildMermasQuery(f: MermaFilters, offset: number, limit: number) {
+function buildMermasQuery(
+  f: MermaFilters & { sortBy: MermaSortKey; sortDir: SortDir },
+  offset: number,
+  limit: number,
+) {
   const params = new URLSearchParams();
   if (f.dateFrom) params.set('dateFrom', f.dateFrom);
   if (f.dateTo) params.set('dateTo', f.dateTo);
   if (f.product.trim()) params.set('product', f.product.trim());
   if (f.reason.trim()) params.set('reason', f.reason.trim());
   if (f.user.trim()) params.set('user', f.user.trim());
+  withListSort(params, f.sortBy, f.sortDir);
   withPagination(params, offset, limit);
   return `/api/ops/mermas?${params.toString()}`;
 }
 
-function buildVouchersQuery(f: VoucherFilters, offset: number, limit: number) {
+function buildVouchersQuery(
+  f: VoucherFilters & { sortBy: VoucherSortKey; sortDir: SortDir },
+  offset: number,
+  limit: number,
+) {
   const params = new URLSearchParams();
   if (f.status !== 'all') params.set('status', f.status);
   if (f.dateFrom) params.set('dateFrom', f.dateFrom);
@@ -285,6 +292,7 @@ function buildVouchersQuery(f: VoucherFilters, offset: number, limit: number) {
   if (f.voucher.trim()) params.set('voucher', f.voucher.trim());
   if (f.product.trim()) params.set('product', f.product.trim());
   if (f.sale.trim()) params.set('sale', f.sale.trim());
+  withListSort(params, f.sortBy, f.sortDir);
   withPagination(params, offset, limit);
   return `/api/ops/vouchers?${params.toString()}`;
 }
@@ -472,12 +480,22 @@ export function MermasPage() {
   const [actionBusy, setActionBusy] = useState(false);
 
   const mermasListFilters = useMemo(
-    () => ({ ...mermaFilters, branchId: branchId || '' }),
-    [mermaFilters, branchId],
+    () => ({
+      ...mermaFilters,
+      branchId: branchId || '',
+      sortBy: mermaSortKey,
+      sortDir: mermaSortDir,
+    }),
+    [mermaFilters, branchId, mermaSortKey, mermaSortDir],
   );
   const vouchersListFilters = useMemo(
-    () => ({ ...voucherFilters, branchId: branchId || '' }),
-    [voucherFilters, branchId],
+    () => ({
+      ...voucherFilters,
+      branchId: branchId || '',
+      sortBy: voucherSortKey,
+      sortDir: voucherSortDir,
+    }),
+    [voucherFilters, branchId, voucherSortKey, voucherSortDir],
   );
 
   useEffect(() => {
@@ -495,7 +513,7 @@ export function MermasPage() {
     saveListFilters('vouchers', branchId, voucherFilters);
   }, [branchId, voucherFilters]);
 
-  const fetchMermas = useCallback(async (f: MermaFilters & { branchId?: string }, offset: number, limit: number) => {
+  const fetchMermas = useCallback(async (f: MermaFilters & { branchId?: string; sortBy: MermaSortKey; sortDir: SortDir }, offset: number, limit: number) => {
     const data = await api<{
       mermas: Merma[];
       hasMore: boolean;
@@ -510,7 +528,7 @@ export function MermasPage() {
     };
   }, []);
 
-  const fetchVouchers = useCallback(async (f: VoucherFilters & { branchId?: string }, offset: number, limit: number) => {
+  const fetchVouchers = useCallback(async (f: VoucherFilters & { branchId?: string; sortBy: VoucherSortKey; sortDir: SortDir }, offset: number, limit: number) => {
     const data = await api<{
       vouchers: Voucher[];
       hasMore: boolean;
@@ -545,15 +563,9 @@ export function MermasPage() {
     if (vouchersList.error) toast.error(vouchersList.error);
   }, [vouchersList.error]);
 
-  const sortedMermas = useMemo(
-    () => sortMermas(mermasList.items, mermaSortKey, mermaSortDir),
-    [mermasList.items, mermaSortKey, mermaSortDir],
-  );
+  const sortedMermas = mermasList.items;
 
-  const sortedVouchers = useMemo(
-    () => sortVouchers(vouchersList.items, voucherSortKey, voucherSortDir),
-    [vouchersList.items, voucherSortKey, voucherSortDir],
-  );
+  const sortedVouchers = vouchersList.items;
 
   const hasExtraMermaFilters = Boolean(
     mermaFilters.dateFrom ||

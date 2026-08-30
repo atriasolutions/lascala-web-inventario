@@ -7,10 +7,9 @@ import { SortableTh } from '../../components/SortableTh';
 import { useInfiniteList } from '../../hooks/useInfiniteList';
 import { api } from '../../lib/api';
 import { useAuth } from '../../lib/auth';
-import { withPagination } from '../../lib/pagination';
+import { withListSort, withPagination } from '../../lib/pagination';
 import {
   nextSort,
-  sortPurchases,
   type PurchaseSortKey,
   type SortDir,
 } from '../../lib/purchaseListSort';
@@ -41,12 +40,17 @@ const DEFAULT_FILTERS: AppliedFilters = {
   q: '',
 };
 
-function buildQuery(f: AppliedFilters, offset: number, limit: number) {
+function buildQuery(
+  f: AppliedFilters & { sortBy: PurchaseSortKey; sortDir: SortDir },
+  offset: number,
+  limit: number,
+) {
   const params = new URLSearchParams();
   if (f.status !== 'all') params.set('status', f.status);
   if (f.dateFrom) params.set('dateFrom', f.dateFrom);
   if (f.dateTo) params.set('dateTo', f.dateTo);
   if (f.q.trim()) params.set('q', f.q.trim());
+  withListSort(params, f.sortBy, f.sortDir);
   withPagination(params, offset, limit);
   return `/api/purchases?${params.toString()}`;
 }
@@ -78,11 +82,11 @@ export function ComprasListPage() {
   const filtersTitleId = useId();
 
   const listFilters = useMemo(
-    () => ({ ...filters, branchId: branchId || '' }),
-    [filters, branchId],
+    () => ({ ...filters, branchId: branchId || '', sortBy: sortKey, sortDir }),
+    [filters, branchId, sortKey, sortDir],
   );
 
-  const fetchPage = useCallback(async (f: AppliedFilters & { branchId: string }, offset: number, limit: number) => {
+  const fetchPage = useCallback(async (f: AppliedFilters & { branchId: string; sortBy: PurchaseSortKey; sortDir: SortDir }, offset: number, limit: number) => {
     const data = await api<{
       purchases: Purchase[];
       hasMore: boolean;
@@ -105,10 +109,7 @@ export function ComprasListPage() {
     sentinelRef,
   } = useInfiniteList({ filters: listFilters, fetchPage });
 
-  const sortedPurchases = useMemo(
-    () => sortPurchases(purchases, sortKey, sortDir),
-    [purchases, sortKey, sortDir],
-  );
+  const sortedPurchases = purchases;
 
   function toggleSort(column: PurchaseSortKey) {
     const next = nextSort(sortKey, sortDir, column);

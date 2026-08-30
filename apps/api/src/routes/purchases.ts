@@ -16,6 +16,7 @@ import {
 } from '../auth/roles.js';
 import { asyncHandler, HttpError } from '../utils/errors.js';
 import { fetchLimit, parsePagination, slicePage } from '../utils/pagination.js';
+import { orderByClause, parseSortBy, parseSortDir } from '../utils/listSort.js';
 
 export const purchasesRouter = Router();
 purchasesRouter.use(requireAuth, requireBranch);
@@ -207,8 +208,46 @@ purchasesRouter.get(
     }
 
     const { limit, offset } = parsePagination(req.query);
+    const sortBy = parseSortBy(
+      req.query.sortBy,
+      ['ref', 'supplier', 'progress', 'date', 'status'] as const,
+      'date',
+    );
+    const sortDir = parseSortDir(
+      req.query.sortDir,
+      sortBy === 'date' || sortBy === 'progress' ? 'desc' : 'asc',
+    );
+    const purchaseRefExpr = `CASE
+         WHEN NULLIF(TRIM(p.invoice_number), '') IS NULL THEN 'Sin documento'
+         WHEN LOWER(COALESCE(p.document_type, '')) = 'factura' THEN 'Factura ' || TRIM(p.invoice_number)
+         WHEN LOWER(COALESCE(p.document_type, '')) = 'boleta' THEN 'Boleta ' || TRIM(p.invoice_number)
+         WHEN LOWER(COALESCE(p.document_type, '')) = 'guia' THEN 'Guía ' || TRIM(p.invoice_number)
+         WHEN LOWER(COALESCE(p.document_type, '')) = 'otro' THEN 'Doc. ' || TRIM(p.invoice_number)
+         ELSE TRIM(p.invoice_number)
+       END`;
+    const purchaseProgressExpr = `CASE
+         WHEN COALESCE(agg.qty_ordered, 0) <= 0 THEN -1::float8
+         ELSE COALESCE(agg.qty_received, 0)::float8 / agg.qty_ordered::float8
+       END`;
+    const purchaseStatusExpr = `CASE p.status
+         WHEN 'pending_reception' THEN 0
+         WHEN 'partially_received' THEN 1
+         WHEN 'received' THEN 2
+         WHEN 'cancelled' THEN 3
+         ELSE 99
+       END`;
+    const purchasesOrder =
+      sortBy === 'ref'
+        ? orderByClause(purchaseRefExpr, sortDir, 'p.created_at DESC')
+        : sortBy === 'supplier'
+          ? orderByClause('COALESCE(s.name, \'\')', sortDir, 'p.created_at DESC')
+          : sortBy === 'progress'
+            ? orderByClause(purchaseProgressExpr, sortDir, 'p.created_at DESC')
+            : sortBy === 'status'
+              ? orderByClause(purchaseStatusExpr, sortDir, 'p.created_at DESC')
+              : orderByClause('COALESCE(p.purchased_at, p.created_at::date)', sortDir, 'p.created_at DESC');
     params.push(fetchLimit(limit), offset);
-    sql += ` ORDER BY p.created_at DESC LIMIT $${params.length - 1} OFFSET $${params.length}`;
+    sql += ` ORDER BY ${purchasesOrder} LIMIT $${params.length - 1} OFFSET $${params.length}`;
     const result = await query(sql, params);
     const page = slicePage(result.rows, limit, offset);
     res.json({

@@ -22,6 +22,7 @@ import {
 import { asyncHandler, HttpError } from '../utils/errors.js';
 import { CHILE_TZ, chileToday } from '../utils/chileDate.js';
 import { fetchLimit, parsePagination, slicePage } from '../utils/pagination.js';
+import { orderByClause, parseSortBy, parseSortDir } from '../utils/listSort.js';
 
 export const opsRouter = Router();
 opsRouter.use(requireAuth, requireBranch);
@@ -128,6 +129,24 @@ opsRouter.get(
     );
 
     params.push(fetchLimit(limit), offset);
+    const sortBy = parseSortBy(
+      req.query.sortBy,
+      ['date', 'product', 'qty', 'reason', 'user', 'cost'] as const,
+      'date',
+    );
+    const sortDir = parseSortDir(req.query.sortDir, sortBy === 'date' || sortBy === 'qty' || sortBy === 'cost' ? 'desc' : 'asc');
+    const mermaOrder =
+      sortBy === 'product'
+        ? orderByClause('p.name', sortDir, 'm.created_at DESC')
+        : sortBy === 'qty'
+          ? orderByClause('m.quantity', sortDir, 'p.name ASC')
+          : sortBy === 'reason'
+            ? orderByClause('m.reason', sortDir, 'm.created_at DESC')
+            : sortBy === 'user'
+              ? orderByClause('COALESCE(u.full_name, \'\')', sortDir, 'm.created_at DESC')
+              : sortBy === 'cost'
+                ? orderByClause('COALESCE(m.cost_impact, 0)', sortDir, 'm.created_at DESC')
+                : orderByClause('m.created_at', sortDir, 'p.name ASC');
     const result = await query(
       `SELECT m.id, m.organization_id, m.branch_id, m.product_id, m.quantity, m.reason,
               m.kind, m.notes, m.voucher_id, m.skip_stock,
@@ -139,7 +158,7 @@ opsRouter.get(
        JOIN products p ON p.id = m.product_id
        LEFT JOIN users u ON u.id = m.created_by
        ${where}
-       ORDER BY m.created_at DESC
+       ORDER BY ${mermaOrder}
        LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params,
     );
@@ -373,6 +392,24 @@ opsRouter.get(
     );
 
     params.push(fetchLimit(limit), offset);
+    const voucherSortBy = parseSortBy(
+      req.query.sortBy,
+      ['expires', 'issued', 'number', 'product', 'status'] as const,
+      'expires',
+    );
+    const voucherSortDir = parseSortDir(req.query.sortDir, 'asc');
+    const voucherStatusExpr = `CASE v.status WHEN 'open' THEN 0 WHEN 'used' THEN 1 WHEN 'expired' THEN 2 ELSE 3 END`;
+    const vouchersOrder =
+      voucherSortBy === 'issued'
+        ? orderByClause('v.issued_at', voucherSortDir, 'v.created_at DESC')
+        : voucherSortBy === 'number'
+          ? orderByClause('v.voucher_number', voucherSortDir, 'v.created_at DESC')
+          : voucherSortBy === 'product'
+            ? orderByClause('p.name', voucherSortDir, 'v.expires_at ASC')
+            : voucherSortBy === 'status'
+              ? orderByClause(voucherStatusExpr, voucherSortDir, 'v.expires_at ASC')
+              : // expires (default): abiertos primero, luego fecha de vencimiento
+                `${voucherStatusExpr}, ${orderByClause('v.expires_at', voucherSortDir, 'v.created_at DESC')}`;
     const result = await query(
       `SELECT v.*,
               p.name AS product_name, p.internal_code, p.barcode,
@@ -397,10 +434,7 @@ opsRouter.get(
          LIMIT 1
        ) er ON true
        ${where}
-       ORDER BY
-         CASE v.status WHEN 'open' THEN 0 WHEN 'used' THEN 1 WHEN 'expired' THEN 2 ELSE 3 END,
-         v.expires_at ASC,
-         v.created_at DESC
+       ORDER BY ${vouchersOrder}
        LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params,
     );
@@ -907,12 +941,31 @@ opsRouter.get(
     );
 
     params.push(fetchLimit(limit), offset);
+    const expenseSortBy = parseSortBy(
+      req.query.sortBy,
+      ['date', 'category', 'description', 'amount', 'user'] as const,
+      'date',
+    );
+    const expenseSortDir = parseSortDir(
+      req.query.sortDir,
+      expenseSortBy === 'date' || expenseSortBy === 'amount' ? 'desc' : 'asc',
+    );
+    const expensesOrder =
+      expenseSortBy === 'category'
+        ? orderByClause('e.category', expenseSortDir, 'e.incurred_on DESC')
+        : expenseSortBy === 'description'
+          ? orderByClause('e.description', expenseSortDir, 'e.incurred_on DESC')
+          : expenseSortBy === 'amount'
+            ? orderByClause('e.amount', expenseSortDir, 'e.incurred_on DESC')
+            : expenseSortBy === 'user'
+              ? orderByClause('COALESCE(u.full_name, \'\')', expenseSortDir, 'e.incurred_on DESC')
+              : orderByClause('e.incurred_on', expenseSortDir, 'e.created_at DESC');
     const result = await query(
       `SELECT e.*, u.full_name AS created_by_name
        FROM expenses e
        LEFT JOIN users u ON u.id = e.created_by
        ${where}
-       ORDER BY e.incurred_on DESC, e.created_at DESC
+       ORDER BY ${expensesOrder}
        LIMIT $${params.length - 1} OFFSET $${params.length}`,
       params,
     );

@@ -21,11 +21,10 @@ import { isLeadRole } from '../lib/roles';
 import { loadListFilters, saveListFilters } from '../lib/listFiltersPersist';
 import {
   nextInventorySort,
-  sortBalances,
   type InventorySortKey,
   type SortDir,
 } from '../lib/inventoryListSort';
-import { withPagination } from '../lib/pagination';
+import { withListSort, withPagination } from '../lib/pagination';
 import { toast } from '../lib/toast';
 
 /** Thumb con fallback a placeholder si la URL 404 / falla. */
@@ -98,7 +97,7 @@ type Filters = {
   stockPresence: StockPresence;
 };
 
-type ListFilters = Filters & { q: string };
+type ListFilters = Filters & { q: string; sortBy: InventorySortKey; sortDir: SortDir };
 
 type InvSummary = {
   count: number;
@@ -144,6 +143,7 @@ function buildBalancesQuery(f: ListFilters, offset: number, limit: number) {
   if (f.photo) params.set('photo', f.photo);
   if (f.tracksStock) params.set('tracksStock', f.tracksStock);
   if (f.stockPresence) params.set('stockPresence', f.stockPresence);
+  withListSort(params, f.sortBy, f.sortDir);
   withPagination(params, offset, limit);
   return `/api/inventory/balances?${params.toString()}`;
 }
@@ -211,8 +211,14 @@ export function InventoryPage() {
   }, [searchParams]);
 
   const listFilters = useMemo(
-    () => ({ ...filters, q: qDebounced, branchId: branchId || '' }),
-    [filters, qDebounced, branchId],
+    () => ({
+      ...filters,
+      q: qDebounced,
+      branchId: branchId || '',
+      sortBy: sortKey,
+      sortDir,
+    }),
+    [filters, qDebounced, branchId, sortKey, sortDir],
   );
 
   const fetchPage = useCallback(async (f: ListFilters & { branchId: string }, offset: number, limit: number) => {
@@ -266,10 +272,7 @@ export function InventoryPage() {
     return () => document.removeEventListener('keydown', onKey);
   }, [filtersOpen]);
 
-  const sorted = useMemo(
-    () => sortBalances(balances, sortKey, sortDir),
-    [balances, sortKey, sortDir],
-  );
+  const sorted = balances;
 
   const totalUnits = summary.totalUnits;
   const totalValue = summary.totalValue;

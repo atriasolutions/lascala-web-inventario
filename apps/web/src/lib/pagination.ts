@@ -16,3 +16,14 @@ export function withPagination(
   params.set('offset', String(offset));
   return params;
 }
+
+/** Sort server-side: al cambiar, incluir en filters de useInfiniteList para resetear página. */
+export function withListSort(
+  params: URLSearchParams,
+  sortBy: string,
+  sortDir: 'asc' | 'desc',
+) {
+  if (sortBy) params.set('sortBy', sortBy);
+  if (sortDir) params.set('sortDir', sortDir);
+  return params;
+}

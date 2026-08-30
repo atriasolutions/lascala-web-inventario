@@ -18,12 +18,11 @@ import { api, mediaUrl, money } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import {
   nextExpenseSort,
-  sortExpenses,
   type ExpenseSortKey,
   type SortDir,
 } from '../lib/expensesListSort';
 import { loadListFilters, saveListFilters } from '../lib/listFiltersPersist';
-import { withPagination } from '../lib/pagination';
+import { withListSort, withPagination } from '../lib/pagination';
 import { toast } from '../lib/toast';
 import {
   PERIOD_CHIPS,
@@ -76,7 +75,11 @@ type Filters = {
   periodYear: string;
 };
 
-type ListFilters = Filters & { branchId: string };
+type ListFilters = Filters & {
+  branchId: string;
+  sortBy: ExpenseSortKey;
+  sortDir: SortDir;
+};
 
 const DEFAULT_FILTERS: Filters = {
   category: 'all',
@@ -165,13 +168,14 @@ function todayISO() {
   return `${y}-${m}-${day}`;
 }
 
-function buildQuery(f: Filters, offset: number, limit: number) {
+function buildQuery(f: Filters & { sortBy: ExpenseSortKey; sortDir: SortDir }, offset: number, limit: number) {
   const params = new URLSearchParams();
   if (f.category !== 'all') params.set('category', f.category);
   if (f.dateFrom) params.set('dateFrom', f.dateFrom);
   if (f.dateTo) params.set('dateTo', f.dateTo);
   if (f.description.trim()) params.set('description', f.description.trim());
   if (f.user.trim()) params.set('user', f.user.trim());
+  withListSort(params, f.sortBy, f.sortDir);
   withPagination(params, offset, limit);
   return `/api/ops/expenses?${params.toString()}`;
 }
@@ -229,8 +233,8 @@ export function ExpensesPage() {
   const formRef = useRef<HTMLDivElement>(null);
 
   const listFilters: ListFilters = useMemo(
-    () => ({ ...filters, branchId: branchId || '' }),
-    [filters, branchId],
+    () => ({ ...filters, branchId: branchId || '', sortBy: sortKey, sortDir }),
+    [filters, branchId, sortKey, sortDir],
   );
 
   useEffect(() => {
@@ -276,10 +280,7 @@ export function ExpensesPage() {
     if (error) toast.error(error);
   }, [error]);
 
-  const sorted = useMemo(
-    () => sortExpenses(expenses, sortKey, sortDir),
-    [expenses, sortKey, sortDir],
-  );
+  const sorted = expenses;
 
   const years = useMemo(() => yearOptions(), []);
 

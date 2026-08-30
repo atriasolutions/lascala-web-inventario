@@ -6,6 +6,7 @@ import { assertUserCanUsePos, requireAuth, requireBranch, requireRoles } from '.
 import { createSaleWithClient, findSaleByClientSaleId } from '../services/sales.js';
 import { asyncHandler, HttpError, formatDbErrorMessage, isUniqueViolation } from '../utils/errors.js';
 import { fetchLimit, parsePagination, slicePage } from '../utils/pagination.js';
+import { orderByClause, parseSortBy, parseSortDir } from '../utils/listSort.js';
 
 export const salesRouter = Router();
 salesRouter.use(requireAuth, requireBranch);
@@ -85,11 +86,30 @@ salesRouter.get(
     );
 
     const { limit, offset } = parsePagination(req.query);
+    const sortBy = parseSortBy(
+      req.query.sortBy,
+      ['receipt', 'date', 'seller', 'pos', 'total'] as const,
+      'date',
+    );
+    const sortDir = parseSortDir(
+      req.query.sortDir,
+      sortBy === 'date' || sortBy === 'total' ? 'desc' : 'asc',
+    );
+    const salesOrder =
+      sortBy === 'receipt'
+        ? orderByClause('s.receipt_number', sortDir, 's.sold_at DESC')
+        : sortBy === 'seller'
+          ? orderByClause('u.full_name', sortDir, 's.sold_at DESC')
+          : sortBy === 'pos'
+            ? orderByClause('p.name', sortDir, 's.sold_at DESC')
+            : sortBy === 'total'
+              ? orderByClause('s.total', sortDir, 's.receipt_number ASC')
+              : orderByClause('s.sold_at', sortDir, 's.receipt_number ASC');
     const listParams = [...params, fetchLimit(limit), offset];
     const result = await query(
       `SELECT s.*, u.full_name AS seller_name, p.name AS pos_name
        ${fromJoin}
-       ORDER BY s.sold_at DESC
+       ORDER BY ${salesOrder}
        LIMIT $${listParams.length - 1} OFFSET $${listParams.length}`,
       listParams,
     );

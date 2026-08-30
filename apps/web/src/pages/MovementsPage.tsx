@@ -12,11 +12,10 @@ import { useAuth } from '../lib/auth';
 import { loadListFilters, saveListFilters } from '../lib/listFiltersPersist';
 import {
   nextMovementSort,
-  sortMovements,
   type MovementSortKey,
   type SortDir,
 } from '../lib/movementsListSort';
-import { withPagination } from '../lib/pagination';
+import { withListSort, withPagination } from '../lib/pagination';
 import { toast } from '../lib/toast';
 
 type Movement = {
@@ -54,7 +53,11 @@ type AppliedFilters = {
   q: string;
 };
 
-type ListFilters = AppliedFilters & { branchId: string };
+type ListFilters = AppliedFilters & {
+  branchId: string;
+  sortBy: MovementSortKey;
+  sortDir: SortDir;
+};
 
 const DEFAULT_FILTERS: AppliedFilters = {
   type: 'all',
@@ -88,7 +91,7 @@ const SORT_OPTIONS: { key: MovementSortKey; label: string }[] = [
   { key: 'user', label: 'Usuario' },
 ];
 
-function buildQuery(f: AppliedFilters, offset: number, limit: number) {
+function buildQuery(f: AppliedFilters & { sortBy: MovementSortKey; sortDir: SortDir }, offset: number, limit: number) {
   const params = new URLSearchParams();
   if (f.type !== 'all') params.set('type', f.type);
   if (f.dateFrom) params.set('dateFrom', f.dateFrom);
@@ -97,6 +100,7 @@ function buildQuery(f: AppliedFilters, offset: number, limit: number) {
   if (f.productId) params.set('productId', f.productId);
   else if (f.productQ.trim()) params.set('productQ', f.productQ.trim());
   if (f.q.trim()) params.set('q', f.q.trim());
+  withListSort(params, f.sortBy, f.sortDir);
   withPagination(params, offset, limit);
   return `/api/inventory/movements?${params.toString()}`;
 }
@@ -340,8 +344,8 @@ export function MovementsPage() {
   const modalRef = useRef<HTMLDivElement>(null);
 
   const listFilters: ListFilters = useMemo(
-    () => ({ ...filters, branchId: branchId || '' }),
-    [filters, branchId],
+    () => ({ ...filters, branchId: branchId || '', sortBy: sortKey, sortDir }),
+    [filters, branchId, sortKey, sortDir],
   );
 
   useEffect(() => {
@@ -424,10 +428,7 @@ export function MovementsPage() {
     };
   }, [hasMore, movements.length, loading, loadingMore, scrollRef]);
 
-  const sorted = useMemo(
-    () => sortMovements(movements, sortKey, sortDir),
-    [movements, sortKey, sortDir],
-  );
+  const sorted = movements;
 
   const sheetFilterCount = useMemo(() => {
     let n = 0;

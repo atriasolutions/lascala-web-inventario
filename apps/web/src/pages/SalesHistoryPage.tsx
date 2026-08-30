@@ -9,7 +9,7 @@ import { useInfiniteList } from '../hooks/useInfiniteList';
 import { api, money, moneyClp } from '../lib/api';
 import { useAuth } from '../lib/auth';
 import { loadListFilters, saveListFilters } from '../lib/listFiltersPersist';
-import { withPagination } from '../lib/pagination';
+import { withListSort, withPagination } from '../lib/pagination';
 import {
   CHANGE_TICKET_DAYS,
   allowsChangeTicket,
@@ -19,7 +19,6 @@ import {
 } from '../lib/salePrint';
 import {
   nextSaleSort,
-  sortSales,
   type SaleSortKey,
   type SortDir,
 } from '../lib/salesListSort';
@@ -84,7 +83,11 @@ type AppliedFilters = {
   notes: string;
 };
 
-type ListFilters = AppliedFilters & { branchId: string };
+type ListFilters = AppliedFilters & {
+  branchId: string;
+  sortBy: SaleSortKey;
+  sortDir: SortDir;
+};
 
 const DEFAULT_FILTERS: AppliedFilters = {
   period: 'today',
@@ -123,7 +126,7 @@ function hasTextFilters(f: AppliedFilters) {
   );
 }
 
-function buildQuery(f: AppliedFilters, offset: number, limit: number) {
+function buildQuery(f: AppliedFilters & { sortBy: SaleSortKey; sortDir: SortDir }, offset: number, limit: number) {
   const { dateFrom, dateTo } = resolveDates(f);
   const params = new URLSearchParams();
   if (dateFrom) params.set('dateFrom', dateFrom);
@@ -132,6 +135,7 @@ function buildQuery(f: AppliedFilters, offset: number, limit: number) {
   if (f.seller.trim()) params.set('seller', f.seller.trim());
   if (f.pos.trim()) params.set('pos', f.pos.trim());
   if (f.notes.trim()) params.set('notes', f.notes.trim());
+  withListSort(params, f.sortBy, f.sortDir);
   withPagination(params, offset, limit);
   return `/api/sales?${params.toString()}`;
 }
@@ -203,8 +207,8 @@ export function SalesHistoryPage() {
   const deepLinkHandled = useRef<string | null>(null);
 
   const listFilters: ListFilters = useMemo(
-    () => ({ ...filters, branchId: branchId || '' }),
-    [filters, branchId],
+    () => ({ ...filters, branchId: branchId || '', sortBy: sortKey, sortDir }),
+    [filters, branchId, sortKey, sortDir],
   );
 
   useEffect(() => {
@@ -249,7 +253,7 @@ export function SalesHistoryPage() {
     if (error) toast.error(error);
   }, [error]);
 
-  const sorted = useMemo(() => sortSales(sales, sortKey, sortDir), [sales, sortKey, sortDir]);
+  const sorted = sales;
 
   const periodRangeActive = Boolean(filters.dateFrom || filters.dateTo);
   const hasExtraFilters = periodRangeActive || hasTextFilters(filters);
