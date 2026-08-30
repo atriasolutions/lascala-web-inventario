@@ -7362,8 +7362,24 @@ a.ing-row:hover { border-color: #e3b7cf; }
   gap: 0.4rem 0.55rem;
   min-width: 0;
 }
-.mov-card-head .badge {
+.mov-card-head .badge,
+.mov-card-head .mov-type-badge {
   flex-shrink: 0;
+}
+.mov-type-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 1.375rem;
+  padding: 0.18rem 0.55rem;
+  font-size: 0.68rem;
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+}
+.mov-col-type .mov-type-badge {
+  max-width: 100%;
 }
 .mov-card-when {
   font-size: 0.75rem;
@@ -7591,6 +7607,28 @@ a.ing-row:hover { border-color: #e3b7cf; }
 .mov-sort-select select {
   min-height: 44px;
   margin: 0;
+}
+
+@media (max-width: 900px) {
+  .mov-filters {
+    display: flex;
+    flex-wrap: nowrap;
+    align-items: center;
+    gap: 0.65rem;
+    width: 100%;
+    max-width: 100%;
+    min-width: 0;
+  }
+  .mov-filters .inv-filters-btn {
+    flex: 1 1 auto;
+    min-width: 0;
+    min-height: 44px;
+  }
+  .mov-filters .mov-sort-select {
+    flex: 0 0 auto;
+    margin: 0;
+    min-width: 9.5rem;
+  }
 }
 
 @media (max-width: 640px) {

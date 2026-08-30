@@ -285,14 +285,6 @@ function fmtDateCompact(d: string) {
   return { day, time, full: fmtDate(d) };
 }
 
-function fmtDay(d: string) {
-  return new Date(d.length <= 10 ? `${d}T12:00:00` : d).toLocaleDateString('es-CL', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  });
-}
-
 function shortLinkLabel(label: string | null) {
   if (!label) return 'Ver';
   return label.replace(/^Ver\s+/i, '');
@@ -342,6 +334,7 @@ export function MovementsPage() {
   const [draftUserId, setDraftUserId] = useState('');
   const [draftProductId, setDraftProductId] = useState('');
   const [draftProductText, setDraftProductText] = useState('');
+  const [draftType, setDraftType] = useState<TypeFilter>('all');
   const [branchUsers, setBranchUsers] = useState<{ id: string; full_name: string }[]>([]);
   const filtersTitleId = useId();
   const modalRef = useRef<HTMLDivElement>(null);
@@ -436,30 +429,15 @@ export function MovementsPage() {
     [movements, sortKey, sortDir],
   );
 
-  const hasExtraFilters = Boolean(
-    filters.dateFrom ||
-      filters.dateTo ||
-      filters.userId ||
-      filters.productId ||
-      filters.productQ.trim() ||
-      filters.q.trim(),
-  );
-
-  const summaryChips = useMemo(() => {
-    const chips: { key: string; label: string }[] = [];
-    if (filters.dateFrom) chips.push({ key: 'from', label: `Desde ${fmtDay(filters.dateFrom)}` });
-    if (filters.dateTo) chips.push({ key: 'to', label: `Hasta ${fmtDay(filters.dateTo)}` });
-    if (filters.userId) {
-      chips.push({ key: 'user', label: `Usuario: ${filters.userName || 'elegido'}` });
-    }
-    if (filters.productId || filters.productQ.trim()) {
-      chips.push({
-        key: 'product',
-        label: `Producto: ${filters.productLabel || filters.productQ.trim()}`,
-      });
-    }
-    if (filters.q.trim()) chips.push({ key: 'q', label: filters.q.trim() });
-    return chips;
+  const sheetFilterCount = useMemo(() => {
+    let n = 0;
+    if (filters.type !== 'all') n += 1;
+    if (filters.dateFrom) n += 1;
+    if (filters.dateTo) n += 1;
+    if (filters.userId) n += 1;
+    if (filters.productId || filters.productQ.trim()) n += 1;
+    if (filters.q.trim()) n += 1;
+    return n;
   }, [filters]);
 
   const kpiIn = movements
@@ -485,6 +463,7 @@ export function MovementsPage() {
     setDraftUserId(filters.userId);
     setDraftProductId(filters.productId);
     setDraftProductText(filters.productLabel || filters.productQ);
+    setDraftType(filters.type);
     setDrawerOpen(true);
     void api<{ users: { id: string; full_name: string }[] }>('/api/inventory/movements/users')
       .then((data) => setBranchUsers(data.users || []))
@@ -500,6 +479,7 @@ export function MovementsPage() {
     const productText = draftProductText.trim();
     setFilters((prev) => ({
       ...prev,
+      type: draftType,
       dateFrom: draftDateFrom,
       dateTo: draftDateTo,
       userId: draftUserId,
@@ -562,23 +542,30 @@ export function MovementsPage() {
             </div>
           </div>
 
-          <div className="ing-filters" role="toolbar" aria-label="Filtros de movimientos">
-            {TYPE_CHIPS.map((chip) => (
-              <button
-                key={chip.id}
-                type="button"
-                className={`ing-chip${filters.type === chip.id ? ' is-active' : ''}`}
-                aria-pressed={filters.type === chip.id}
-                onClick={() => setType(chip.id)}
-              >
-                {chip.label}
-              </button>
-            ))}
-            <button type="button" className="btn secondary ing-filters-btn" onClick={openDrawer}>
+          <div className="ing-filters mov-filters" role="toolbar" aria-label="Filtros de movimientos">
+            <div className="mov-type-chips desktop-only" role="group" aria-label="Tipo de movimiento">
+              {TYPE_CHIPS.map((chip) => (
+                <button
+                  key={chip.id}
+                  type="button"
+                  className={`ing-chip${filters.type === chip.id ? ' is-active' : ''}`}
+                  aria-pressed={filters.type === chip.id}
+                  onClick={() => setType(chip.id)}
+                >
+                  {chip.label}
+                </button>
+              ))}
+            </div>
+            <button
+              type="button"
+              className={`btn secondary ing-filters-btn inv-filters-btn${sheetFilterCount > 0 ? ' has-count' : ''}`}
+              onClick={openDrawer}
+              aria-expanded={drawerOpen}
+            >
               Filtros
-              {hasExtraFilters ? (
-                <span className="prod-filters-badge" aria-label="Filtros activos">
-                  {summaryChips.length}
+              {sheetFilterCount > 0 ? (
+                <span className="prod-filters-badge" aria-label={`${sheetFilterCount} filtros activos`}>
+                  {sheetFilterCount}
                 </span>
               ) : null}
             </button>
@@ -639,7 +626,9 @@ export function MovementsPage() {
                   {sorted.map((m) => (
                     <article key={m.id} className="list-card mov-card">
                       <div className="mov-card-head">
-                        <span className={typeBadgeClass(m.movement_type)}>{m.type_label}</span>
+                        <span className={`${typeBadgeClass(m.movement_type)} mov-type-badge`}>
+                          {m.type_label}
+                        </span>
                         <span className="mov-card-when muted">{fmtDate(m.created_at)}</span>
                       </div>
                       <strong className="mov-card-product">{m.product_name}</strong>
@@ -743,7 +732,9 @@ export function MovementsPage() {
                               </div>
                             </td>
                             <td className="mov-col-type">
-                              <span className={typeBadgeClass(m.movement_type)}>{m.type_label}</span>
+                              <span className={`${typeBadgeClass(m.movement_type)} mov-type-badge`}>
+                          {m.type_label}
+                        </span>
                             </td>
                             <td className="mov-col-product">
                               <div className="mov-product-stack">
@@ -818,23 +809,41 @@ export function MovementsPage() {
 
             <div className="ing-filters-sheet-body">
             <div className="ing-filter-fields">
-              <div className="field">
-                <label htmlFor="mov-f-from">Fecha desde</label>
-                <input
-                  id="mov-f-from"
-                  type="date"
-                  value={draftDateFrom}
-                  onChange={(e) => setDraftDateFrom(e.target.value)}
-                />
+              <div className="field mov-f-type-field mobile-only">
+                <label htmlFor="mov-f-type">Tipo</label>
+                <select
+                  id="mov-f-type"
+                  value={draftType}
+                  onChange={(e) => setDraftType(e.target.value as TypeFilter)}
+                >
+                  {TYPE_CHIPS.map((chip) => (
+                    <option key={chip.id} value={chip.id}>
+                      {chip.label}
+                    </option>
+                  ))}
+                </select>
               </div>
-              <div className="field">
+              <div className="field field-date">
+                <label htmlFor="mov-f-from">Fecha desde</label>
+                <div className="field-date-control">
+                  <input
+                    id="mov-f-from"
+                    type="date"
+                    value={draftDateFrom}
+                    onChange={(e) => setDraftDateFrom(e.target.value)}
+                  />
+                </div>
+              </div>
+              <div className="field field-date">
                 <label htmlFor="mov-f-to">Fecha hasta</label>
-                <input
-                  id="mov-f-to"
-                  type="date"
-                  value={draftDateTo}
-                  onChange={(e) => setDraftDateTo(e.target.value)}
-                />
+                <div className="field-date-control">
+                  <input
+                    id="mov-f-to"
+                    type="date"
+                    value={draftDateTo}
+                    onChange={(e) => setDraftDateTo(e.target.value)}
+                  />
+                </div>
               </div>
               <div className="field">
                 <label htmlFor="mov-f-user">Usuario</label>
