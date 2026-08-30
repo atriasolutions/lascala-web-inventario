@@ -7929,15 +7929,6 @@ button.inv-stat.is-active {
   white-space: nowrap;
 }
 
-@media (min-width: 901px) {
-  .inv-filters-desktop {
-    display: flex;
-  }
-  .inv-filters-btn {
-    display: none;
-  }
-}
-
 .inv-status {
   margin: 0 0 0.55rem;
   font-size: 0.82rem;
@@ -8168,8 +8159,64 @@ button.inv-stat.is-active {
   box-shadow: inset 3px 0 0 #b00040;
 }
 
-/* Figura Inventario reemplazada: panel de stats a la derecha */
-@media (min-width: 1100px) {
+/* Stock: filas y KPIs más compactos en viewports medios */
+@media (max-width: 1400px) {
+  .inv-list .inv-stats-mobile {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.4rem;
+  }
+  .inv-list .inv-stat {
+    padding: 0.45rem 0.5rem;
+  }
+  .inv-list .inv-stat-value {
+    font-size: 1.05rem;
+  }
+  .inv-list .inv-stat-meta {
+    font-size: 0.68rem;
+  }
+  .inv-table tbody td {
+    padding-top: 0.45rem;
+    padding-bottom: 0.45rem;
+  }
+  .inv-table th {
+    padding-top: 0.5rem;
+    padding-bottom: 0.5rem;
+    font-size: 0.72rem;
+  }
+  .inv-row-thumb {
+    width: 40px;
+    height: 52px;
+    border-radius: 6px;
+  }
+  .inv-row-product {
+    gap: 0.55rem;
+  }
+  .inv-row-product strong {
+    font-size: 0.88rem;
+  }
+  .inv-row-product .muted {
+    font-size: 0.72rem;
+  }
+  .inv-adjust-btn {
+    min-height: 40px;
+    padding: 0.35rem 0.65rem;
+    font-size: 0.82rem;
+  }
+}
+
+@media (max-width: 1280px) {
+  .inv-table tbody td {
+    padding-top: 0.38rem;
+    padding-bottom: 0.38rem;
+  }
+  .inv-row-thumb {
+    width: 36px;
+    height: 46px;
+  }
+}
+
+/* Panel KPI lateral solo en pantallas amplias */
+@media (min-width: 1401px) {
   .main:has(.inv-list) .ing-list-workspace {
     grid-template-columns: minmax(0, 1fr) minmax(200px, 240px);
   }
@@ -8190,7 +8237,7 @@ button.inv-stat.is-active {
     display: none;
   }
 }
-@media (max-width: 1099px) {
+@media (max-width: 1400px) {
   .main:has(.inv-list) .inv-side-panel {
     display: none;
   }
@@ -8661,12 +8708,6 @@ button.inv-stat.is-active {
     grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
     gap: 1rem;
   }
-  .prod-filters-desktop {
-    display: flex;
-  }
-  .prod-filters-btn {
-    display: none;
-  }
 }
 .prod-card {
   display: flex;
@@ -8806,6 +8847,64 @@ button.inv-stat.is-active {
   font-weight: 700;
   font-variant-numeric: tabular-nums;
   font-size: 0.95rem;
+}
+
+/* Productos: grid más denso en laptops ~14" */
+@media (max-width: 1400px) {
+  .prod-grid {
+    grid-template-columns: repeat(auto-fill, minmax(148px, 1fr));
+    gap: 0.7rem;
+  }
+  .prod-card-media {
+    aspect-ratio: 4 / 5;
+  }
+  .prod-card-body {
+    padding: 0.5rem 0.55rem 0.65rem;
+  }
+  .prod-card-name {
+    font-size: 0.86rem;
+    min-height: calc(1.2em * 2);
+  }
+  .prod-card-meta {
+    font-size: 0.68rem;
+  }
+  .prod-card-price {
+    font-size: 0.88rem;
+    padding-top: 0.25rem;
+  }
+  .prod-card-policy {
+    margin-top: 0.18rem;
+  }
+  .prod-card-policy .prod-policy-line {
+    font-size: 0.66rem;
+  }
+}
+
+@media (max-width: 1400px) {
+  .prod-page .prod-toolbar {
+    gap: 0.5rem 0.65rem;
+  }
+  .prod-page .prod-status {
+    margin-top: 0.15rem;
+    font-size: 0.78rem;
+  }
+  .inv-list .inv-topbar .page-intro p {
+    font-size: 0.88rem;
+  }
+  .inv-list .inv-toolbar {
+    gap: 0.4rem;
+  }
+}
+
+@media (max-width: 1280px) {
+  .prod-grid {
+    grid-template-columns: repeat(auto-fill, minmax(128px, 1fr));
+    gap: 0.55rem;
+  }
+  .prod-card-badges .badge {
+    font-size: 0.65rem;
+    padding: 0.18rem 0.45rem;
+  }
 }
 
 /* Productos empty → `.sales-empty` (sin .prod-empty-visual) */

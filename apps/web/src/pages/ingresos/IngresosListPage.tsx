@@ -129,11 +129,11 @@ export function IngresosListPage() {
   const isDefaultOpen =
     filters.status === 'pending_and_partial' && !filters.dateFrom && !filters.dateTo && !filters.q.trim();
 
-  const hasExtraFilters =
-    Boolean(filters.dateFrom) ||
-    Boolean(filters.dateTo) ||
-    Boolean(filters.q.trim()) ||
-    filters.status !== 'pending_and_partial';
+  const sheetFilterCount =
+    (filters.dateFrom ? 1 : 0) +
+    (filters.dateTo ? 1 : 0) +
+    (filters.q.trim() ? 1 : 0) +
+    (filters.status !== 'pending_and_partial' ? 1 : 0);
 
 
   function openDrawer() {
@@ -206,8 +206,18 @@ export function IngresosListPage() {
         >
           Pendiente + Parcial
         </button>
-        <button type="button" className="btn secondary ing-filters-btn" data-help="cta.ingresos.filtros" onClick={openDrawer}>
+        <button
+          type="button"
+          className={`btn secondary ing-filters-btn${sheetFilterCount > 0 ? ' has-count' : ''}`}
+          data-help="cta.ingresos.filtros"
+          onClick={openDrawer}
+        >
           Filtros
+          {sheetFilterCount > 0 ? (
+            <span className="prod-filters-badge" aria-label={`${sheetFilterCount} filtros activos`}>
+              {sheetFilterCount}
+            </span>
+          ) : null}
         </button>
       </div>
 {error && <p className="error">{error}</p>}

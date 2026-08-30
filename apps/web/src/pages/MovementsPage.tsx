@@ -608,11 +608,28 @@ export function MovementsPage() {
 
             {!loading && !movements.length && (
               <div className="sales-empty">
-                <h3>Sin movimientos</h3>
-                <p className="muted">Ventas, devoluciones, cambios e ingresos dejan la trazabilidad acá.</p>
-                <Link to="/inventario" className="btn secondary" style={{ marginTop: '0.75rem' }}>
-                  Ir a Stock
-                </Link>
+                {sheetFilterCount > 0 ? (
+                  <>
+                    <h3>Ningún movimiento coincide</h3>
+                    <p className="muted">Prueba otros filtros o un rango de fechas distinto.</p>
+                    <button
+                      type="button"
+                      className="btn secondary"
+                      style={{ marginTop: '0.75rem' }}
+                      onClick={clearFilters}
+                    >
+                      Limpiar filtros
+                    </button>
+                  </>
+                ) : (
+                  <>
+                    <h3>Sin movimientos</h3>
+                    <p className="muted">Ventas, devoluciones, cambios e ingresos dejan la trazabilidad acá.</p>
+                    <Link to="/inventario" className="btn secondary" style={{ marginTop: '0.75rem' }}>
+                      Ir a Stock
+                    </Link>
+                  </>
+                )}
               </div>
             )}
 

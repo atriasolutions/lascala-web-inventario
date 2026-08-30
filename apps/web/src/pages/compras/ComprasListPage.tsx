@@ -119,11 +119,11 @@ export function ComprasListPage() {
   const isDefaultEmpty =
     filters.status === 'all' && !filters.dateFrom && !filters.dateTo && !filters.q.trim();
 
-  const hasExtraFilters =
-    Boolean(filters.dateFrom) ||
-    Boolean(filters.dateTo) ||
-    Boolean(filters.q.trim()) ||
-    filters.status !== 'all';
+  const sheetFilterCount =
+    (filters.dateFrom ? 1 : 0) +
+    (filters.dateTo ? 1 : 0) +
+    (filters.q.trim() ? 1 : 0) +
+    (filters.status !== 'all' ? 1 : 0);
 
 
   function openDrawer() {
@@ -202,8 +202,17 @@ export function ComprasListPage() {
             >
               Pendientes
             </button>
-            <button type="button" className="btn secondary ing-filters-btn" onClick={openDrawer}>
+            <button
+              type="button"
+              className={`btn secondary ing-filters-btn${sheetFilterCount > 0 ? ' has-count' : ''}`}
+              onClick={openDrawer}
+            >
               Filtros
+              {sheetFilterCount > 0 ? (
+                <span className="prod-filters-badge" aria-label={`${sheetFilterCount} filtros activos`}>
+                  {sheetFilterCount}
+                </span>
+              ) : null}
             </button>
           </div>
 {error && <p className="error">{error}</p>}
