@@ -8159,21 +8159,8 @@ button.inv-stat.is-active {
   box-shadow: inset 3px 0 0 #b00040;
 }
 
-/* Stock: filas y KPIs más compactos en viewports medios */
+/* Stock: filas más compactas en viewports medios */
 @media (max-width: 1400px) {
-  .inv-list .inv-stats-mobile {
-    grid-template-columns: repeat(3, minmax(0, 1fr));
-    gap: 0.4rem;
-  }
-  .inv-list .inv-stat {
-    padding: 0.45rem 0.5rem;
-  }
-  .inv-list .inv-stat-value {
-    font-size: 1.05rem;
-  }
-  .inv-list .inv-stat-meta {
-    font-size: 0.68rem;
-  }
   .inv-table tbody td {
     padding-top: 0.45rem;
     padding-bottom: 0.45rem;
@@ -8204,6 +8191,18 @@ button.inv-stat.is-active {
   }
 }
 
+@media (min-width: 1100px) and (max-width: 1400px) {
+  .inv-list .inv-stats-side .inv-stat {
+    padding: 0.45rem 0.55rem;
+  }
+  .inv-list .inv-stats-side .inv-stat-value {
+    font-size: 1.05rem;
+  }
+  .inv-list .inv-stats-side .inv-stat-meta {
+    font-size: 0.68rem;
+  }
+}
+
 @media (max-width: 1280px) {
   .inv-table tbody td {
     padding-top: 0.38rem;
@@ -8215,34 +8214,50 @@ button.inv-stat.is-active {
   }
 }
 
-/* Panel KPI lateral solo en pantallas amplias */
-@media (min-width: 1401px) {
+/* Stock: lista ancha + KPIs centrados en columna derecha */
+.inv-list .ing-list-workspace,
+.main:has(.inv-list) .ing-list-workspace {
+  grid-template-columns: minmax(0, 1fr);
+}
+
+@media (min-width: 1100px) {
   .main:has(.inv-list) .ing-list-workspace {
-    grid-template-columns: minmax(0, 1fr) minmax(200px, 240px);
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(152px, 188px);
+    grid-template-rows: minmax(0, 1fr);
+    align-items: start;
+    gap: 0.65rem;
   }
   .main:has(.inv-list) .inv-side-panel {
     display: flex;
     flex-direction: column;
-    gap: 0.65rem;
+    align-items: center;
+    justify-self: center;
+    width: 100%;
+    max-width: 188px;
     align-self: start;
     position: sticky;
-    top: 0.5rem;
+    top: calc(var(--header-h, 56px) * 0.15 + 0.35rem);
   }
   .main:has(.inv-list) .inv-stats-side {
     display: grid;
     grid-template-columns: 1fr;
     gap: 0.5rem;
+    width: 100%;
   }
   .main:has(.inv-list) .inv-stats-mobile {
     display: none;
   }
 }
-@media (max-width: 1400px) {
+
+@media (max-width: 1099px) {
   .main:has(.inv-list) .inv-side-panel {
     display: none;
   }
   .main:has(.inv-list) .inv-stats-mobile {
     display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 0.4rem;
   }
 }
 
