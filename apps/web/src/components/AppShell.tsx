@@ -116,11 +116,12 @@ const primaryMobileAdmin: NavItem[] = [
   { to: '/gastos', label: 'Gastos', icon: IconWallet, helpKey: 'nav.gastos', roles: adminOnly },
 ];
 
-/** Bottom nav móvil (encargado/a, vendedor/a): consulta en piso. */
+/** Bottom nav móvil (encargado/a, vendedor/a): consulta en piso + Más (4+1 = 5 columnas). */
 const primaryMobileStaff: NavItem[] = [
   { to: '/ventas', label: 'Historial', icon: IconPeso, helpKey: 'nav.ventas' },
   { to: '/productos', label: 'Productos', icon: IconShirt, helpKey: 'nav.productos' },
-  { to: '/inventario', label: 'Stock', icon: IconBox, helpKey: 'nav.stock', end: true },
+  { to: '/inventario', label: 'Stock', icon: IconBox, helpKey: 'nav.stock' },
+  { to: '/movimientos', label: 'Movimientos', icon: IconSwap, helpKey: 'nav.movimientos', end: true },
 ];
 
 /** Sheet «Más» — operación de piso (POS, ingresos, mermas) solo en desktop. */
@@ -300,7 +301,7 @@ export function AppShell() {
     ? visibleMoreLinks.some((l) => location.pathname.startsWith(l.to))
     : location.pathname.startsWith('/ayuda');
 
-  /** Encargado/a y vendedor/a en mobile: solo Historial, Productos y Stock. */
+  /** Encargado/a y vendedor/a en mobile: consulta acotada (Historial, Productos, Stock, Movimientos, Ayuda). */
   useEffect(() => {
     if (!isMobile || fullMobileNav) return;
     if (location.pathname === '/') return;

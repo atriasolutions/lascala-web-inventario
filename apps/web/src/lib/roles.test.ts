@@ -43,6 +43,7 @@ describe('roles UI', () => {
     assert.equal(isMobileStaffRouteAllowed('/ventas'), true);
     assert.equal(isMobileStaffRouteAllowed('/productos'), true);
     assert.equal(isMobileStaffRouteAllowed('/inventario'), true);
+    assert.equal(isMobileStaffRouteAllowed('/movimientos'), true);
     assert.equal(isMobileStaffRouteAllowed('/ayuda/overview'), true);
     assert.equal(isMobileStaffRouteAllowed('/compras'), false);
     assert.equal(isMobileStaffRouteAllowed('/vender'), false);

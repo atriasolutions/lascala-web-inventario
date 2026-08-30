@@ -19,13 +19,19 @@ export function isAdminRole(role: string) {
 }
 
 /** Rutas mobile permitidas para Encargado/a y Vendedor/a (consulta en piso + ayuda). */
-export const MOBILE_STAFF_ROUTE_PREFIXES = ['/ventas', '/productos', '/inventario', '/ayuda'] as const;
+export const MOBILE_STAFF_ROUTE_PREFIXES = [
+  '/ventas',
+  '/productos',
+  '/inventario',
+  '/movimientos',
+  '/ayuda',
+] as const;
 
 export function isMobileStaffRole(role: string) {
   return role === 'branch_manager' || role === 'seller';
 }
 
-/** Bottom nav admin (Inicio, Compras, …) vs staff (Historial, Productos, Stock). */
+/** Bottom nav admin (Inicio, Compras, …) vs staff (Historial, Productos, Stock, Movimientos). */
 export function hasFullMobileNav(
   user: Parameters<typeof isHiddenSuperAdmin>[0],
   branchRole: string,
