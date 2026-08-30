@@ -13,7 +13,7 @@ import { PwaInstallHint } from './PwaInstallHint';
 import { PushAlertsBanner } from './PushAlertsBanner';
 import { ShellTitleContext } from './shellTitle';
 import { WorkplaceSwitcher } from './WorkplaceSwitcher';
-import { canUseMobileApp, isAdminRole, roleLabel as formatRoleLabel } from '../lib/roles';
+import { canUseMobileApp, hasFullMobileNav, isAdminRole, isMobileStaffRouteAllowed, roleLabel as formatRoleLabel } from '../lib/roles';
 import { installServiceWorkerNavigation } from '../lib/swNavigation';
 import { useMobileViewport } from '../hooks/useMobileViewport';
 import {
@@ -109,11 +109,18 @@ const settingsNavItem: NavItem = {
 };
 
 /** Bottom nav móvil (administradora): Inicio, Compras, Historial, Gastos + Más. */
-const primaryMobile: NavItem[] = [
+const primaryMobileAdmin: NavItem[] = [
   { to: '/', label: 'Inicio', icon: IconHome, helpKey: 'nav.dashboard', end: true, roles: adminOnly },
   { to: '/compras', label: 'Compras', icon: IconReceipt, helpKey: 'nav.compras', roles: adminOnly },
   { to: '/ventas', label: 'Historial', icon: IconPeso, helpKey: 'nav.ventas', roles: adminOnly },
   { to: '/gastos', label: 'Gastos', icon: IconWallet, helpKey: 'nav.gastos', roles: adminOnly },
+];
+
+/** Bottom nav móvil (encargado/a, vendedor/a): consulta en piso. */
+const primaryMobileStaff: NavItem[] = [
+  { to: '/ventas', label: 'Historial', icon: IconPeso, helpKey: 'nav.ventas' },
+  { to: '/productos', label: 'Productos', icon: IconShirt, helpKey: 'nav.productos' },
+  { to: '/inventario', label: 'Stock', icon: IconBox, helpKey: 'nav.stock', end: true },
 ];
 
 /** Sheet «Más» — operación de piso (POS, ingresos, mermas) solo en desktop. */
@@ -173,6 +180,7 @@ export function AppShell() {
   const activeBranch = branches.find((b) => b.id === branchId);
   const role = activeBranch?.role || '';
   const isOwner = isAdminRole(role);
+  const fullMobileNav = hasFullMobileNav(user, role);
   const mobileAllowed = canUseMobileApp(user, role);
   const roleLabel = role ? formatRoleLabel(role) : '';
 
@@ -255,11 +263,11 @@ export function AppShell() {
     if (location.pathname.startsWith('/inventarios')) return 'Inventarios';
     if (location.pathname.startsWith('/ayuda')) return 'Ayuda';
     if (location.pathname.startsWith('/admin')) return 'Ajustes';
-    const hit = [...navSections.flatMap((s) => s.items), ...primaryMobile].find((l) =>
+    const hit = [...navSections.flatMap((s) => s.items), ...(fullMobileNav ? primaryMobileAdmin : primaryMobileStaff)].find((l) =>
       'end' in l && l.end ? location.pathname === l.to : location.pathname.startsWith(l.to),
     );
     return hit ? hit.label : "L'Scala";
-  }, [location.pathname, titleOverride, isMobile]);
+  }, [location.pathname, titleOverride, isMobile, fullMobileNav]);
 
   const eyebrow = useMemo(() => {
     if (location.pathname.startsWith('/admin')) return "Boutique L'Scala · administración";
@@ -283,10 +291,23 @@ export function AppShell() {
     [role],
   );
   const visibleMoreLinks = moreLinks.filter((l) => canSeeNav(l, role));
-  const visibleMobile = primaryMobile.filter((l) => canSeeNav(l, role));
+  const visibleMobile = fullMobileNav
+    ? primaryMobileAdmin.filter((l) => canSeeNav(l, role))
+    : primaryMobileStaff;
   const showPinned = canSeeNav(pinnedNav, role);
   const showSettingsNav = canSeeNav(settingsNavItem, role);
-  const moreActive = visibleMoreLinks.some((l) => location.pathname.startsWith(l.to));
+  const moreActive = fullMobileNav
+    ? visibleMoreLinks.some((l) => location.pathname.startsWith(l.to))
+    : location.pathname.startsWith('/ayuda');
+
+  /** Encargado/a y vendedor/a en mobile: solo Historial, Productos y Stock. */
+  useEffect(() => {
+    if (!isMobile || fullMobileNav) return;
+    if (location.pathname === '/') return;
+    if (!isMobileStaffRouteAllowed(location.pathname)) {
+      navigate('/ventas', { replace: true });
+    }
+  }, [isMobile, fullMobileNav, location.pathname, navigate]);
 
   /** Abre la sección que contiene la ruta activa (sin pisar el resto del acordeón). */
   useEffect(() => {
@@ -581,20 +602,31 @@ export function AppShell() {
               </div>
             )}
             <div className="more-grid">
-              {visibleMoreLinks.map((l) => (
-                <NavLink
-                  key={l.to}
-                  to={l.to}
-                  end={l.end}
-                  data-help={l.helpKey}
-                  className={offlineNavClass(l.to).trim() || undefined}
-                  title={!online && l.to !== '/vender' ? 'Se necesita conexión' : undefined}
-                  onClick={() => setMoreOpen(false)}
-                >
-                  <span className="nav-ico"><l.icon size={18} /></span>
-                  {l.label}
-                </NavLink>
-              ))}
+              {fullMobileNav
+                ? visibleMoreLinks.map((l) => (
+                    <NavLink
+                      key={l.to}
+                      to={l.to}
+                      end={l.end}
+                      data-help={l.helpKey}
+                      className={offlineNavClass(l.to).trim() || undefined}
+                      title={!online && l.to !== '/vender' ? 'Se necesita conexión' : undefined}
+                      onClick={() => setMoreOpen(false)}
+                    >
+                      <span className="nav-ico"><l.icon size={18} /></span>
+                      {l.label}
+                    </NavLink>
+                  ))
+                : (
+                  <NavLink
+                    to="/ayuda"
+                    data-help="nav.ayuda"
+                    onClick={() => setMoreOpen(false)}
+                  >
+                    <span className="nav-ico"><IconHelp size={18} /></span>
+                    Ayuda
+                  </NavLink>
+                )}
               <button
                 type="button"
                 onClick={() => {

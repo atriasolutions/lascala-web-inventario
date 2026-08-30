@@ -1,6 +1,15 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
-import { isAdminRole, isLeadRole, canRegisterProductCode, canCreateProductInIngresosNoBarcode, roleLabel } from './roles.ts';
+import {
+  canUseMobileApp,
+  hasFullMobileNav,
+  isAdminRole,
+  isLeadRole,
+  isMobileStaffRouteAllowed,
+  canRegisterProductCode,
+  canCreateProductInIngresosNoBarcode,
+  roleLabel,
+} from './roles.ts';
 
 describe('roles UI', () => {
   it('mapea labels Administrador/a Encargado/a Vendedor/a', () => {
@@ -23,5 +32,19 @@ describe('roles UI', () => {
     assert.equal(canRegisterProductCode('seller'), false);
     assert.equal(canCreateProductInIngresosNoBarcode('seller'), true);
     assert.equal(canCreateProductInIngresosNoBarcode('branch_manager'), true);
+  });
+
+  it('mobile: owner nav completo; staff consulta acotada', () => {
+    assert.equal(canUseMobileApp(null, 'owner'), true);
+    assert.equal(canUseMobileApp(null, 'branch_manager'), true);
+    assert.equal(canUseMobileApp(null, 'seller'), true);
+    assert.equal(hasFullMobileNav(null, 'owner'), true);
+    assert.equal(hasFullMobileNav(null, 'branch_manager'), false);
+    assert.equal(isMobileStaffRouteAllowed('/ventas'), true);
+    assert.equal(isMobileStaffRouteAllowed('/productos'), true);
+    assert.equal(isMobileStaffRouteAllowed('/inventario'), true);
+    assert.equal(isMobileStaffRouteAllowed('/ayuda/overview'), true);
+    assert.equal(isMobileStaffRouteAllowed('/compras'), false);
+    assert.equal(isMobileStaffRouteAllowed('/vender'), false);
   });
 });

@@ -18,13 +18,36 @@ export function isAdminRole(role: string) {
   return role === 'owner';
 }
 
-/** Mobile (~900px): solo Administrador/a o superadmin de soporte. */
-export function canUseMobileApp(
+/** Rutas mobile permitidas para Encargado/a y Vendedor/a (consulta en piso + ayuda). */
+export const MOBILE_STAFF_ROUTE_PREFIXES = ['/ventas', '/productos', '/inventario', '/ayuda'] as const;
+
+export function isMobileStaffRole(role: string) {
+  return role === 'branch_manager' || role === 'seller';
+}
+
+/** Bottom nav admin (Inicio, Compras, …) vs staff (Historial, Productos, Stock). */
+export function hasFullMobileNav(
   user: Parameters<typeof isHiddenSuperAdmin>[0],
   branchRole: string,
 ) {
   if (isHiddenSuperAdmin(user)) return true;
   return isAdminRole(branchRole);
+}
+
+export function isMobileStaffRouteAllowed(pathname: string) {
+  if (pathname === '/') return true;
+  return MOBILE_STAFF_ROUTE_PREFIXES.some(
+    (p) => pathname === p || pathname.startsWith(`${p}/`),
+  );
+}
+
+/** Mobile (~900px): todos los roles de piso; staff con rutas acotadas. */
+export function canUseMobileApp(
+  user: Parameters<typeof isHiddenSuperAdmin>[0],
+  branchRole: string,
+) {
+  if (isHiddenSuperAdmin(user)) return true;
+  return isAdminRole(branchRole) || isMobileStaffRole(branchRole);
 }
 
 /** Administrador/a o Encargado/a: ajustes de stock, aplicar/anular toma, precio de venta. */

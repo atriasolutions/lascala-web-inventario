@@ -148,7 +148,7 @@ function HomeRedirect() {
   const isMobile =
     typeof window !== 'undefined' && window.matchMedia('(max-width: 900px)').matches;
   if (activeRole === 'branch_manager' || activeRole === 'seller') {
-    return <Navigate to={isMobile ? '/productos' : '/vender'} replace />;
+    return <Navigate to={isMobile ? '/ventas' : '/vender'} replace />;
   }
   return <Navigate to="/vender" replace />;
 }
