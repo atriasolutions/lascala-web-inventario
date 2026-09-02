@@ -1,8 +1,9 @@
-import { type FormEvent, useState } from 'react';
+import { type FormEvent, useEffect, useState } from 'react';
 import { Navigate } from 'react-router-dom';
 import { BoutiqueLoader } from '../components/BoutiqueLoader';
 import { userFacingError } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { consumeSessionExpiredNotice } from '../lib/sessionExpiry';
 import { toast } from '../lib/toast';
 
 /** Login del equipo. Sin recuperación pública de contraseña. */
@@ -12,6 +13,11 @@ export function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
+
+  useEffect(() => {
+    if (!consumeSessionExpiredNotice()) return;
+    toast.warn('Tu sesión expiró. Ingresa de nuevo.');
+  }, []);
 
   if (!loading && token) return <Navigate to="/" replace />;
   if (loading) return <BoutiqueLoader label="Cargando…" variant="page" />;

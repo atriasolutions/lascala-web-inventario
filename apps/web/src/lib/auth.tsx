@@ -106,6 +106,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
           }
         }
       } catch {
+        // api() ya limpia token y redirige en 401 autenticado.
         localStorage.removeItem('lscala_token');
         setToken(null);
         setUser(null);

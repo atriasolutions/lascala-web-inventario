@@ -1,3 +1,5 @@
+import { handleSessionExpired } from './sessionExpiry';
+
 const API_URL = import.meta.env.VITE_API_URL || 'http://localhost:4000';
 
 /** Copy Chile cuando el API no es alcanzable (fetch / offline / ECONNREFUSED). */
@@ -31,6 +33,10 @@ type RequestOpts = {
   body?: unknown;
   branchId?: string | null;
   posId?: string | null;
+  /**
+   * Bearer: string = forzar token; null = sin Authorization (login);
+   * omitido = leer `lscala_token` de localStorage.
+   */
   token?: string | null;
 };
 
@@ -61,9 +67,20 @@ export function userFacingError(err: unknown, fallback = 'Ocurrió un error'): s
   return fallback;
 }
 
+function resolveToken(opts: RequestOpts): string | null {
+  // `token: null` = petición anónima (login). No usar ?? porque null es nullish.
+  if (opts.token === null) return null;
+  if (typeof opts.token === 'string') return opts.token;
+  try {
+    return localStorage.getItem('lscala_token');
+  } catch {
+    return null;
+  }
+}
+
 export async function api<T = unknown>(path: string, opts: RequestOpts = {}): Promise<T> {
   const headers: Record<string, string> = { 'Content-Type': 'application/json' };
-  const token = opts.token ?? localStorage.getItem('lscala_token');
+  const token = resolveToken(opts);
   if (token) headers.Authorization = `Bearer ${token}`;
   const branchId = opts.branchId ?? localStorage.getItem('lscala_branch');
   const posId = opts.posId ?? localStorage.getItem('lscala_pos');
@@ -83,6 +100,10 @@ export async function api<T = unknown>(path: string, opts: RequestOpts = {}): Pr
 
   const data = (await res.json().catch(() => ({}))) as { error?: string };
   if (!res.ok) {
+    // Solo con Bearer enviado: no confundir 401 de login (credenciales) con sesión vencida.
+    if (res.status === 401 && token) {
+      handleSessionExpired();
+    }
     throw new ApiError(res.status, data.error || 'Error de API');
   }
   return data as T;

@@ -98,7 +98,6 @@ export async function syncOfflineSalesQueue(branchId: string): Promise<SyncRespo
       } catch (err) {
         if (err instanceof ApiError && err.status === 401) {
           authBlocked = true;
-          toast.warn('Sesión vencida. Inicia sesión de nuevo para enviar las ventas guardadas.');
           notifySync();
           return null;
         }
