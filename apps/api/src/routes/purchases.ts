@@ -14,6 +14,7 @@ import {
   assertCanCreateProductInIngresosNoBarcode,
   assertCanRegisterProductCode,
 } from '../auth/roles.js';
+import { resolveBrandInput } from '../services/brands.js';
 import { asyncHandler, HttpError } from '../utils/errors.js';
 import { fetchLimit, parsePagination, slicePage } from '../utils/pagination.js';
 import { orderByClause, parseSortBy, parseSortDir } from '../utils/listSort.js';
@@ -26,6 +27,7 @@ const createProductSchema = z.object({
   categoryId: z.string().uuid().optional().nullable(),
   barcode: z.string().optional().nullable(),
   brand: z.string().optional().nullable(),
+  brandId: z.string().uuid().optional().nullable(),
   sizeLabel: z.string().optional().nullable(),
   color: z.string().optional().nullable(),
   productType: z.string().optional().nullable(),
@@ -103,13 +105,19 @@ async function createProductFromPurchaseItem(
   const internalCode =
     requestedCode ?? (await nextInternalCodeWithClient(client, params.organizationId));
   const name = params.create.name ?? params.description;
+  const brandResolved = await resolveBrandInput({
+    organizationId: params.organizationId,
+    brandId: params.create.brandId,
+    brand: params.create.brand,
+    client,
+  });
 
   const result = await client.query(
     `INSERT INTO products (
-       organization_id, category_id, internal_code, barcode, name, description, brand, size_label, color,
+       organization_id, category_id, internal_code, barcode, name, description, brand, brand_id, size_label, color,
        product_type, season, cost_price, sale_price, status, allows_exchange, allows_return,
        notes, created_by
-     ) VALUES ($1,$2,$3,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'draft',true,true,$13,$14)
+     ) VALUES ($1,$2,$3,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'draft',true,true,$14,$15)
      RETURNING *`,
     [
       params.organizationId,
@@ -117,7 +125,8 @@ async function createProductFromPurchaseItem(
       internalCode,
       name,
       params.create.description ?? null,
-      params.create.brand ?? null,
+      brandResolved?.brand ?? null,
+      brandResolved?.brandId ?? null,
       params.create.sizeLabel ?? null,
       params.create.color ?? null,
       params.create.productType ?? null,

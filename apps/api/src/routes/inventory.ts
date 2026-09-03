@@ -198,6 +198,7 @@ inventoryRouter.get(
   asyncHandler(async (req, res) => {
     const q = String(req.query.q || '').trim();
     const categoryId = String(req.query.categoryId || '').trim();
+    const brandId = String(req.query.brandId || '').trim();
     const onlyLow = String(req.query.onlyLow || '') === '1' || String(req.query.onlyLow || '') === 'true';
     const photo = String(req.query.photo || '').trim(); // '1' | '0' | ''
     const tracksStock = String(req.query.tracksStock || '').trim();
@@ -228,6 +229,12 @@ inventoryRouter.get(
       params.push(categoryId);
       where += ` AND p.category_id = $${params.length}::uuid`;
     }
+    if (brandId) {
+      const parsed = z.string().uuid().safeParse(brandId);
+      if (!parsed.success) throw new HttpError(400, 'brandId inválido');
+      params.push(brandId);
+      where += ` AND p.brand_id = $${params.length}::uuid`;
+    }
     if (onlyLow) {
       where += ` AND ib.quantity <= COALESCE(ib.low_stock_threshold, p.low_stock_threshold, 1)`;
     }
@@ -253,6 +260,7 @@ inventoryRouter.get(
         OR p.internal_code ILIKE $${params.length}
         OR COALESCE(p.barcode,'') ILIKE $${params.length}
         OR COALESCE(p.brand,'') ILIKE $${params.length}
+        OR COALESCE(br.name,'') ILIKE $${params.length}
         OR COALESCE(p.size_label,'') ILIKE $${params.length}
         OR COALESCE(c.name,'') ILIKE $${params.length}
       )`;
@@ -262,6 +270,7 @@ inventoryRouter.get(
        FROM inventory_balances ib
        JOIN products p ON p.id = ib.product_id
        LEFT JOIN categories c ON c.id = p.category_id
+       LEFT JOIN brands br ON br.id = p.brand_id
        ${where}`;
 
     const summary = await query(
@@ -280,7 +289,9 @@ inventoryRouter.get(
     const result = await query(
       `SELECT ib.id, ib.product_id, ib.branch_id, ib.quantity,
               COALESCE(ib.low_stock_threshold, p.low_stock_threshold, 1) AS low_stock_threshold,
-              p.name, p.internal_code, p.barcode, p.brand, p.size_label, p.sale_price,
+              p.name, p.internal_code, p.barcode, p.brand, p.brand_id,
+              COALESCE(br.name, p.brand) AS brand_name,
+              p.size_label, p.sale_price,
               p.category_id, c.name AS category_name,
               p.tracks_stock,
               (SELECT url FROM product_photos ph WHERE ph.product_id = p.id ORDER BY sort_order LIMIT 1) AS photo_url,
@@ -358,12 +369,15 @@ inventoryRouter.get(
     const dateTo = String(req.query.dateTo || '').trim();
     const userId = optionalUuid(req.query.userId, 'Usuario');
     const productId = optionalUuid(req.query.productId, 'Producto');
+    const brandId = optionalUuid(req.query.brandId, 'Marca');
 
     const params: unknown[] = [req.activeBranchId];
     let sql = `
       SELECT m.*,
              p.name AS product_name,
              p.internal_code,
+             p.brand_id,
+             COALESCE(br.name, p.brand) AS brand_name,
              u.full_name AS created_by_name,
              pu.id AS purchase_id,
              pu.invoice_number AS purchase_invoice,
@@ -383,6 +397,7 @@ inventoryRouter.get(
              vs.receipt_number AS voucher_sale_receipt
       FROM inventory_movements m
       JOIN products p ON p.id = m.product_id
+      LEFT JOIN brands br ON br.id = p.brand_id
       LEFT JOIN users u ON u.id = m.created_by
       LEFT JOIN purchases pu
         ON m.reference_type = 'purchase' AND pu.id = m.reference_id
@@ -425,11 +440,17 @@ inventoryRouter.get(
         OR COALESCE(p.barcode,'') ILIKE $${params.length}
       )`;
     }
+    if (brandId) {
+      params.push(brandId);
+      sql += ` AND p.brand_id = $${params.length}::uuid`;
+    }
     if (q) {
       params.push(`%${q}%`);
       sql += ` AND (
         p.name ILIKE $${params.length}
         OR p.internal_code ILIKE $${params.length}
+        OR COALESCE(br.name,'') ILIKE $${params.length}
+        OR COALESCE(p.brand,'') ILIKE $${params.length}
         OR COALESCE(u.full_name,'') ILIKE $${params.length}
         OR COALESCE(m.notes,'') ILIKE $${params.length}
         OR COALESCE(pu.invoice_number,'') ILIKE $${params.length}

@@ -35,7 +35,12 @@ export function mapApiProductToCatalog(row: Record<string, unknown>): PosCatalog
     internal_code: String(row.internal_code || ''),
     barcode: row.barcode == null || row.barcode === '' ? null : String(row.barcode),
     sale_price: String(row.sale_price ?? '0'),
-    brand: row.brand == null ? null : String(row.brand),
+    brand:
+      row.brand_name != null && String(row.brand_name).trim()
+        ? String(row.brand_name)
+        : row.brand == null
+          ? null
+          : String(row.brand),
     size_label: row.size_label == null ? null : String(row.size_label),
     color: row.color == null ? null : String(row.color),
     allows_exchange: Boolean(row.allows_exchange),

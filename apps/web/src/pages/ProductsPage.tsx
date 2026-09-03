@@ -6,6 +6,7 @@ import {
   useRef,
   useState,
 } from 'react';
+import { type BrandOption } from '../components/BrandLookup';
 import { ProductPhotoInput } from '../components/ProductPhotoInput';
 import { ProductPhotoPlaceholder } from '../components/ProductPhotoPlaceholder';
 import { ProductFichaFields } from '../components/ProductFichaFields';
@@ -19,6 +20,7 @@ import { PosModal } from '../components/PosModal';
 import { IconPencil, IconTrash } from '../components/icons';
 import { api, mediaUrl, money } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { brandLabel } from '../lib/brandDisplay';
 import { isLeadRole, canRegisterProductCode, CODE_REGISTER_FORBIDDEN } from '../lib/roles';
 import { chileMoneyFromNumber, parseChileMoney } from '../lib/chileMoney';
 import { toast } from '../lib/toast';
@@ -33,6 +35,8 @@ type Product = {
   internal_code: string;
   barcode: string | null;
   brand: string | null;
+  brand_id?: string | null;
+  brand_name?: string | null;
   size_label: string | null;
   color: string | null;
   product_type: string | null;
@@ -60,7 +64,8 @@ type FormState = {
   name: string;
   categoryId: string;
   salePrice: string;
-  brand: string;
+  brandId: string;
+  brandLabel: string;
   sizeLabel: string;
   color: string;
   season: string;
@@ -83,7 +88,8 @@ const emptyForm = (): FormState => ({
   name: '',
   categoryId: '',
   salePrice: '',
-  brand: '',
+  brandId: '',
+  brandLabel: '',
   sizeLabel: '',
   color: '',
   season: '',
@@ -111,6 +117,7 @@ function isLowStock(p: Product) {
 function buildProductsQuery(opts: {
   q: string;
   categoryId: string;
+  brandId: string;
   lowStock: boolean;
   pendingPhoto: boolean;
   allowsReturn: ReturnFilter;
@@ -119,6 +126,7 @@ function buildProductsQuery(opts: {
   const params = new URLSearchParams();
   if (opts.q.trim()) params.set('q', opts.q.trim());
   if (opts.categoryId) params.set('categoryId', opts.categoryId);
+  if (opts.brandId) params.set('brandId', opts.brandId);
   if (opts.lowStock) params.set('lowStock', '1');
   if (opts.pendingPhoto) params.set('pendingPhoto', '1');
   if (opts.allowsReturn) params.set('allowsReturn', opts.allowsReturn);
@@ -239,9 +247,11 @@ export function ProductsPage() {
   const canArchiveProduct = isLeadRole(role);
   const [products, setProducts] = useState<Product[]>([]);
   const [categories, setCategories] = useState<Category[]>([]);
+  const [brands, setBrands] = useState<BrandOption[]>([]);
   const [q, setQ] = useState('');
   const [qDebounced, setQDebounced] = useState('');
   const [categoryId, setCategoryId] = useState('');
+  const [brandId, setBrandId] = useState('');
   const [lowStock, setLowStock] = useState(false);
   const [pendingPhoto, setPendingPhoto] = useState(false);
   const [allowsReturn, setAllowsReturn] = useState<ReturnFilter>('');
@@ -265,6 +275,7 @@ export function ProductsPage() {
   const [modalPhotoFailed, setModalPhotoFailed] = useState(false);
   const [filtersOpen, setFiltersOpen] = useState(false);
   const [draftCategoryId, setDraftCategoryId] = useState('');
+  const [draftBrandId, setDraftBrandId] = useState('');
   const [draftLowStock, setDraftLowStock] = useState(false);
   const [draftPendingPhoto, setDraftPendingPhoto] = useState(false);
   const [draftAllowsReturn, setDraftAllowsReturn] = useState<ReturnFilter>('');
@@ -303,6 +314,7 @@ export function ProductsPage() {
 
   const sheetFilterCount =
     (categoryId ? 1 : 0) +
+    (brandId ? 1 : 0) +
     (lowStock ? 1 : 0) +
     (pendingPhoto ? 1 : 0) +
     (allowsReturn ? 1 : 0) +
@@ -319,11 +331,12 @@ export function ProductsPage() {
     setLoading(true);
     setError('');
     try {
-      const [p, c] = await Promise.all([
+      const [p, c, b] = await Promise.all([
         api<{ products: Product[] }>(
           buildProductsQuery({
             q: qDebounced,
             categoryId,
+            brandId,
             lowStock,
             pendingPhoto,
             allowsReturn,
@@ -331,9 +344,11 @@ export function ProductsPage() {
           }),
         ),
         api<{ categories: Category[] }>('/api/catalog/categories'),
+        api<{ brands: BrandOption[] }>('/api/catalog/brands'),
       ]);
       setProducts(p.products);
       setCategories(c.categories);
+      setBrands(b.brands || []);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Error');
     } finally {
@@ -344,7 +359,7 @@ export function ProductsPage() {
   useEffect(() => {
     void load();
     // eslint-disable-next-line react-hooks/exhaustive-deps -- reload on filter / sucursal
-  }, [qDebounced, categoryId, lowStock, pendingPhoto, allowsReturn, tracksStockFilter, branchId]);
+  }, [qDebounced, categoryId, brandId, lowStock, pendingPhoto, allowsReturn, tracksStockFilter, branchId]);
 
   useEffect(() => {
     if (!modalOpen) return;
@@ -391,6 +406,7 @@ export function ProductsPage() {
 
   function openFiltersSheet() {
     setDraftCategoryId(categoryId);
+    setDraftBrandId(brandId);
     setDraftLowStock(lowStock);
     setDraftPendingPhoto(pendingPhoto);
     setDraftAllowsReturn(allowsReturn);
@@ -400,6 +416,7 @@ export function ProductsPage() {
 
   function applyFiltersSheet() {
     setCategoryId(draftCategoryId);
+    setBrandId(draftBrandId);
     setLowStock(draftLowStock);
     setPendingPhoto(draftPendingPhoto);
     setAllowsReturn(draftAllowsReturn);
@@ -409,11 +426,13 @@ export function ProductsPage() {
 
   function clearSheetDraftAndApply() {
     setDraftCategoryId('');
+    setDraftBrandId('');
     setDraftLowStock(false);
     setDraftPendingPhoto(false);
     setDraftAllowsReturn('');
     setDraftTracksStock('');
     setCategoryId('');
+    setBrandId('');
     setLowStock(false);
     setPendingPhoto(false);
     setAllowsReturn('');
@@ -493,7 +512,8 @@ export function ProductsPage() {
       name: product.name,
       categoryId: product.category_id || '',
       salePrice: chileMoneyFromNumber(product.sale_price),
-      brand: product.brand || '',
+      brandId: product.brand_id || '',
+      brandLabel: brandLabel(product),
       sizeLabel: product.size_label || '',
       color: product.color || '',
       season: product.season || '',
@@ -636,11 +656,13 @@ export function ProductsPage() {
     setQ('');
     setQDebounced('');
     setCategoryId('');
+    setBrandId('');
     setLowStock(false);
     setPendingPhoto(false);
     setAllowsReturn('');
     setTracksStockFilter('');
     setDraftCategoryId('');
+    setDraftBrandId('');
     setDraftLowStock(false);
     setDraftPendingPhoto(false);
     setDraftAllowsReturn('');
@@ -787,7 +809,7 @@ export function ProductsPage() {
     const body: Record<string, unknown> = {
       name: form.name.trim(),
       categoryId: form.categoryId || null,
-      brand: form.brand.trim() || null,
+      brandId: form.brandId || null,
       sizeLabel: form.sizeLabel.trim() || null,
       color: form.color.trim() || null,
       season: form.season.trim() || null,
@@ -840,11 +862,15 @@ export function ProductsPage() {
     try {
       if (editing) {
         await api(`/api/products/${editing.id}`, { method: 'PATCH', body });
+        const brandName =
+          brands.find((b) => b.id === form.brandId)?.name || form.brandLabel || null;
         const local: Product = {
           ...editing,
           name: String(body.name),
           category_id: (body.categoryId as string) || null,
-          brand: (body.brand as string | null) ?? null,
+          brand_id: (body.brandId as string | null) ?? null,
+          brand_name: brandName,
+          brand: brandName,
           size_label: (body.sizeLabel as string | null) ?? null,
           color: (body.color as string | null) ?? null,
           season: (body.season as string | null) ?? null,
@@ -1020,7 +1046,7 @@ export function ProductsPage() {
                     {p.barcode && p.internal_code && p.barcode !== p.internal_code
                       ? `${p.barcode} · ${p.internal_code}`
                       : p.barcode || p.internal_code}
-                    {p.brand ? ` · ${p.brand}` : ''}
+                    {brandLabel(p) ? ` · ${brandLabel(p)}` : ''}
                     {p.size_label ? ` · ${p.size_label}` : ''}
                   </div>
                   <PolicyLine
@@ -1117,7 +1143,8 @@ export function ProductsPage() {
                   values={{
                     name: form.name,
                     categoryId: form.categoryId,
-                    brand: form.brand,
+                    brandId: form.brandId,
+                    brandLabel: form.brandLabel,
                     sizeLabel: form.sizeLabel,
                     color: form.color,
                     season: form.season,
@@ -1125,6 +1152,8 @@ export function ProductsPage() {
                   }}
                   onChange={patchForm}
                   categories={categories}
+                  brands={brands}
+                  onBrandsChange={setBrands}
                   disabled={saving || photoBusy}
                   nameRef={nameRef}
                   code={
@@ -1622,6 +1651,22 @@ export function ProductsPage() {
                   {categories.map((c) => (
                     <option key={c.id} value={c.id}>
                       {c.name}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="field">
+                <label htmlFor="prod-sheet-brand">Marca</label>
+                <select
+                  id="prod-sheet-brand"
+                  value={draftBrandId}
+                  onChange={(e) => setDraftBrandId(e.target.value)}
+                >
+                  <option value="">Todas las marcas</option>
+                  {brands.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
                     </option>
                   ))}
                 </select>

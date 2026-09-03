@@ -513,7 +513,7 @@ export function IngresoDetailPage() {
     barcode: string;
     name: string;
     categoryId: string | null;
-    brand: string | null;
+    brandId: string | null;
     sizeLabel: string | null;
     color: string | null;
     season: string | null;
@@ -540,7 +540,7 @@ export function IngresoDetailPage() {
               barcode: payload.barcode,
               name: payload.name,
               categoryId: payload.categoryId,
-              brand: payload.brand,
+              brandId: payload.brandId,
               sizeLabel: payload.sizeLabel,
               color: payload.color,
               season: payload.season,

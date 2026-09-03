@@ -12,6 +12,7 @@ import {
   normalizeBarcode,
 } from '../services/inventory.js';
 import { assertCanEditSalePrice, assertCanRegisterProductCode } from '../auth/roles.js';
+import { resolveBrandInput } from '../services/brands.js';
 import { asyncHandler, HttpError } from '../utils/errors.js';
 
 /** http(s), archivos subidos o assets estáticos de marca en public/brand */
@@ -51,6 +52,12 @@ productsRouter.get(
       if (!parsed.success) throw new HttpError(400, 'categoryId inválido');
     }
     const categoryId = categoryIdRaw;
+    const brandIdRaw = req.query.brandId ? String(req.query.brandId) : null;
+    if (brandIdRaw) {
+      const parsed = z.string().uuid().safeParse(brandIdRaw);
+      if (!parsed.success) throw new HttpError(400, 'brandId inválido');
+    }
+    const brandId = brandIdRaw;
 
     if (lowStock && !req.activeBranchId) {
       throw new HttpError(400, 'Selecciona una sucursal (X-Branch-Id) para filtrar stock bajo');
@@ -80,11 +87,13 @@ productsRouter.get(
     let sql = `
       SELECT p.*,
         c.name AS category_name,
+        COALESCE(br.name, p.brand) AS brand_name,
         (SELECT url FROM product_photos ph WHERE ph.product_id = p.id ORDER BY sort_order LIMIT 1) AS photo_url,
         EXISTS(SELECT 1 FROM product_photos ph2 WHERE ph2.product_id = p.id) AS has_photo
         ${stockSelect}
       FROM products p
       LEFT JOIN categories c ON c.id = p.category_id
+      LEFT JOIN brands br ON br.id = p.brand_id
       ${stockJoin}
       WHERE p.organization_id = $1`;
     if (!includeArchived) {
@@ -94,6 +103,10 @@ productsRouter.get(
     if (categoryId) {
       params.push(categoryId);
       sql += ` AND p.category_id = $${params.length}`;
+    }
+    if (brandId) {
+      params.push(brandId);
+      sql += ` AND p.brand_id = $${params.length}`;
     }
     if (pendingPhoto) {
       sql += ` AND NOT EXISTS(SELECT 1 FROM product_photos ph3 WHERE ph3.product_id = p.id)`;
@@ -121,6 +134,7 @@ productsRouter.get(
         OR p.internal_code ILIKE $${params.length}
         OR COALESCE(p.barcode,'') ILIKE $${params.length}
         OR COALESCE(p.brand,'') ILIKE $${params.length}
+        OR COALESCE(br.name,'') ILIKE $${params.length}
         OR COALESCE(c.name,'') ILIKE $${params.length}
         OR COALESCE(p.description,'') ILIKE $${params.length}
         OR COALESCE(p.notes,'') ILIKE $${params.length}
@@ -176,10 +190,12 @@ productsRouter.get(
     const result = await query(
       `SELECT p.*,
          c.name AS category_name,
+         COALESCE(br.name, p.brand) AS brand_name,
          (SELECT url FROM product_photos ph WHERE ph.product_id = p.id ORDER BY sort_order LIMIT 1) AS photo_url,
          COALESCE(ib.quantity, 0) AS stock
        FROM products p
        LEFT JOIN categories c ON c.id = p.category_id
+       LEFT JOIN brands br ON br.id = p.brand_id
        LEFT JOIN inventory_balances ib ON ib.product_id = p.id AND ib.branch_id = $2
        WHERE p.organization_id = $1
          AND p.status NOT IN ('archived', 'merma', 'returned_to_supplier')
@@ -209,6 +225,7 @@ productsRouter.post(
         barcode: z.string().optional().nullable(),
         codeMode: z.enum(['auto', 'manual']).optional(),
         brand: z.string().optional().nullable(),
+        brandId: z.string().uuid().optional().nullable(),
         sizeLabel: z.string().optional().nullable(),
         color: z.string().optional().nullable(),
         productType: z.string().optional().nullable(),
@@ -265,13 +282,21 @@ productsRouter.post(
     const lowStockThreshold = body.lowStockThreshold ?? lowDefault;
     const tracksStock = body.tracksStock ?? true;
 
+    const brandResolved = await resolveBrandInput({
+      organizationId: req.user!.organizationId,
+      brandId: body.brandId,
+      brand: body.brand,
+    });
+    const brandText = brandResolved?.brand ?? null;
+    const brandFk = brandResolved?.brandId ?? null;
+
     const result = await query(
       `INSERT INTO products (
-         organization_id, category_id, internal_code, barcode, name, description, brand, size_label, color,
+         organization_id, category_id, internal_code, barcode, name, description, brand, brand_id, size_label, color,
          product_type, season, cost_price, sale_price, status, allows_exchange, allows_return,
          tracks_stock, low_stock_threshold, no_movement_alert_days,
          notes, exclusive_notes, created_by
-       ) VALUES ($1,$2,$3,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,'draft',$13,$14,$15,$16,$17,$18,$19,$20)
+       ) VALUES ($1,$2,$3,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,'draft',$14,$15,$16,$17,$18,$19,$20,$21)
        RETURNING *`,
       [
         req.user!.organizationId,
@@ -279,7 +304,8 @@ productsRouter.post(
         internalCode,
         body.name,
         body.description ?? null,
-        body.brand ?? null,
+        brandText,
+        brandFk,
         body.sizeLabel ?? null,
         body.color ?? null,
         body.productType ?? null,
@@ -414,6 +440,7 @@ productsRouter.patch(
         photoUrl: photoUrlSchema,
         categoryId: z.string().uuid().optional().nullable(),
         brand: z.string().optional().nullable(),
+        brandId: z.string().uuid().optional().nullable(),
         sizeLabel: z.string().optional().nullable(),
         color: z.string().optional().nullable(),
       })
@@ -448,6 +475,13 @@ productsRouter.patch(
     const prevSale = Number(currentRow.sale_price);
     const nextSale = body.salePrice;
 
+    const brandResolved = await resolveBrandInput({
+      organizationId: req.user!.organizationId,
+      brandId: body.brandId,
+      brand: body.brand,
+    });
+    const touchBrand = brandResolved !== undefined;
+
     const result = await query(
       `UPDATE products SET
          name = COALESCE($1, name),
@@ -460,17 +494,18 @@ productsRouter.patch(
          notes = CASE WHEN $7::boolean THEN $8 ELSE notes END,
          category_id = CASE WHEN $9::boolean THEN $10 ELSE category_id END,
          brand = CASE WHEN $11::boolean THEN $12 ELSE brand END,
-         size_label = CASE WHEN $13::boolean THEN $14 ELSE size_label END,
-         color = CASE WHEN $15::boolean THEN $16 ELSE color END,
-         tracks_stock = COALESCE($17, tracks_stock),
-         low_stock_threshold = COALESCE($18, low_stock_threshold),
-         no_movement_alert_days = CASE WHEN $19::boolean THEN $20 ELSE no_movement_alert_days END,
-         description = CASE WHEN $21::boolean THEN $22 ELSE description END,
-         product_type = CASE WHEN $23::boolean THEN $24 ELSE product_type END,
-         season = CASE WHEN $25::boolean THEN $26 ELSE season END,
-         exclusive_notes = CASE WHEN $27::boolean THEN $28 ELSE exclusive_notes END,
+         brand_id = CASE WHEN $11::boolean THEN $13 ELSE brand_id END,
+         size_label = CASE WHEN $14::boolean THEN $15 ELSE size_label END,
+         color = CASE WHEN $16::boolean THEN $17 ELSE color END,
+         tracks_stock = COALESCE($18, tracks_stock),
+         low_stock_threshold = COALESCE($19, low_stock_threshold),
+         no_movement_alert_days = CASE WHEN $20::boolean THEN $21 ELSE no_movement_alert_days END,
+         description = CASE WHEN $22::boolean THEN $23 ELSE description END,
+         product_type = CASE WHEN $24::boolean THEN $25 ELSE product_type END,
+         season = CASE WHEN $26::boolean THEN $27 ELSE season END,
+         exclusive_notes = CASE WHEN $28::boolean THEN $29 ELSE exclusive_notes END,
          updated_at = now()
-       WHERE id = $29 AND organization_id = $30
+       WHERE id = $30 AND organization_id = $31
        RETURNING *`,
       [
         body.name ?? null,
@@ -483,8 +518,9 @@ productsRouter.patch(
         body.notes ?? null,
         body.categoryId !== undefined,
         body.categoryId ?? null,
-        body.brand !== undefined,
-        body.brand ?? null,
+        touchBrand,
+        brandResolved?.brand ?? null,
+        brandResolved?.brandId ?? null,
         body.sizeLabel !== undefined,
         body.sizeLabel ?? null,
         body.color !== undefined,

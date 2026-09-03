@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { z } from 'zod';
 import { query } from '../db/pool.js';
 import { isOrgOwner, requireAuth, requireBranch, requireRoles } from '../middleware/auth.js';
+import { normalizeBrandName, upsertBrand } from '../services/brands.js';
 import { asyncHandler, HttpError, isUniqueViolation } from '../utils/errors.js';
 
 export const catalogRouter = Router();
@@ -84,6 +85,45 @@ catalogRouter.post(
       ],
     );
     res.status(201).json({ supplier: result.rows[0] });
+  }),
+);
+
+catalogRouter.get(
+  '/brands',
+  asyncHandler(async (req, res) => {
+    const q = String(req.query.q || '').trim();
+    const params: unknown[] = [req.user!.organizationId];
+    let sql = `SELECT b.*,
+         (SELECT COUNT(*)::int FROM products p WHERE p.brand_id = b.id) AS product_count
+       FROM brands b
+       WHERE b.organization_id = $1`;
+    if (q) {
+      params.push(`%${q}%`);
+      sql += ` AND b.name ILIKE $${params.length}`;
+    }
+    sql += ' ORDER BY b.name';
+    const result = await query(sql, params);
+    res.json({ brands: result.rows });
+  }),
+);
+
+catalogRouter.post(
+  '/brands',
+  requireBranch,
+  requireRoles('owner', 'branch_manager', 'seller'),
+  asyncHandler(async (req, res) => {
+    const body = z.object({ name: z.string().trim().min(1).max(120) }).parse(req.body);
+    const name = normalizeBrandName(body.name);
+    if (!name) throw new HttpError(400, 'Indica el nombre de la marca');
+    try {
+      const brand = await upsertBrand(req.user!.organizationId, name);
+      res.status(201).json({ brand });
+    } catch (e) {
+      if (isUniqueViolation(e)) {
+        throw new HttpError(409, 'Ya existe esa marca');
+      }
+      throw e;
+    }
   }),
 );
 

@@ -17,6 +17,7 @@ import { SortableTh } from '../components/SortableTh';
 import { useInfiniteList } from '../hooks/useInfiniteList';
 import { api, mediaUrl, money } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { brandLabel } from '../lib/brandDisplay';
 import { isLeadRole } from '../lib/roles';
 import { loadListFilters, saveListFilters } from '../lib/listFiltersPersist';
 import {
@@ -73,6 +74,8 @@ type Balance = {
   internal_code: string;
   barcode: string | null;
   brand: string | null;
+  brand_id?: string | null;
+  brand_name?: string | null;
   size_label: string | null;
   quantity: number | string;
   low_stock_threshold: number | string;
@@ -586,7 +589,7 @@ export function InventoryPage() {
                           <div className="meta">
                             {b.internal_code}
                             {b.category_name ? ` · ${b.category_name}` : ''}
-                            {b.brand ? ` · ${b.brand}` : ''}
+                            {brandLabel(b) ? ` · ${brandLabel(b)}` : ''}
                             {b.size_label ? ` · ${b.size_label}` : ''}
                           </div>
                           <div className="inv-card-metrics">
@@ -687,7 +690,7 @@ export function InventoryPage() {
                                   <strong>{b.name}</strong>
                                   <div className="muted">
                                     {b.category_name || 'Sin categoría'}
-                                    {b.brand ? ` · ${b.brand}` : ''}
+                                    {brandLabel(b) ? ` · ${brandLabel(b)}` : ''}
                                     {b.size_label ? ` · ${b.size_label}` : ''}
                                   </div>
                                 </div>

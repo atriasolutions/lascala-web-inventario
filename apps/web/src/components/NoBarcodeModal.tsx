@@ -1,4 +1,5 @@
 import { useEffect, useId, useMemo, useRef, useState } from 'react';
+import { type BrandOption } from './BrandLookup';
 import { ColorSwatch } from './ColorSwatch';
 import { ModalOverlayClose } from './ModalOverlayClose';
 import { PosModal } from './PosModal';
@@ -11,6 +12,7 @@ import { ConfirmDialog } from './ConfirmDialog';
 import { ProductPhotoInput } from './ProductPhotoInput';
 import { ProductPhotoPlaceholder } from './ProductPhotoPlaceholder';
 import { api, mediaUrl, money } from '../lib/api';
+import { brandLabel } from '../lib/brandDisplay';
 import { parseChileMoney } from '../lib/chileMoney';
 import { lineFloorSalePrice, type PurchaseItem } from '../lib/purchasesStatus';
 import { fileToDataUrl } from '../pages/compras/purchaseFormTypes';
@@ -25,6 +27,7 @@ export type ProductSearchHit = {
   barcode: string | null;
   internal_code: string;
   brand?: string | null;
+  brand_name?: string | null;
   color?: string | null;
   size_label?: string | null;
   category_name?: string | null;
@@ -51,7 +54,7 @@ type Props = {
     barcode: string;
     name: string;
     categoryId: string | null;
-    brand: string | null;
+    brandId: string | null;
     sizeLabel: string | null;
     color: string | null;
     season: string | null;
@@ -111,7 +114,9 @@ export function NoBarcodeModal({
   const [color, setColor] = useState('');
   const [sizeLabel, setSizeLabel] = useState('');
   const [categoryId, setCategoryId] = useState('');
-  const [brand, setBrand] = useState('');
+  const [brandId, setBrandId] = useState('');
+  const [brandLabelState, setBrandLabelState] = useState('');
+  const [brands, setBrands] = useState<BrandOption[]>([]);
   const [season, setSeason] = useState('');
   const [description, setDescription] = useState('');
   const [photoUrl, setPhotoUrl] = useState('');
@@ -140,7 +145,7 @@ export function NoBarcodeModal({
     Boolean(color.trim()) ||
     Boolean(sizeLabel.trim()) ||
     Boolean(categoryId) ||
-    Boolean(brand.trim()) ||
+    Boolean(brandId) ||
     Boolean(photoUrl || photoPreview) ||
     Boolean(barcode.trim() && codeMode === 'scan');
 
@@ -190,11 +195,15 @@ export function NoBarcodeModal({
     setColor(first?.color || '');
     setSizeLabel(first?.size_label || '');
     setCategoryId('');
-    setBrand('');
+    setBrandId('');
+    setBrandLabelState('');
     setSeason('');
     setDescription(first?.description || '');
     setReceiveQty(1);
     setLabelCopies(1);
+    void api<{ brands: BrandOption[] }>('/api/catalog/brands')
+      .then((data) => setBrands(data.brands || []))
+      .catch(() => setBrands([]));
     requestAnimationFrame(() => {
       panelRef.current?.querySelector<HTMLElement>('input, select, button')?.focus();
     });
@@ -347,7 +356,7 @@ export function NoBarcodeModal({
         barcode: check.barcode || code,
         name: name.trim(),
         categoryId: categoryId || null,
-        brand: brand.trim() || null,
+        brandId: brandId || null,
         sizeLabel: sizeLabel.trim() || null,
         color: color.trim() || null,
         season: season.trim() || null,
@@ -611,7 +620,8 @@ export function NoBarcodeModal({
                         values={{
                           name,
                           categoryId,
-                          brand,
+                          brandId,
+                          brandLabel: brandLabelState,
                           sizeLabel,
                           color,
                           season,
@@ -620,13 +630,16 @@ export function NoBarcodeModal({
                         onChange={(partial) => {
                           if (partial.name !== undefined) setName(partial.name);
                           if (partial.categoryId !== undefined) setCategoryId(partial.categoryId);
-                          if (partial.brand !== undefined) setBrand(partial.brand);
+                          if (partial.brandId !== undefined) setBrandId(partial.brandId);
+                          if (partial.brandLabel !== undefined) setBrandLabelState(partial.brandLabel);
                           if (partial.sizeLabel !== undefined) setSizeLabel(partial.sizeLabel);
                           if (partial.color !== undefined) setColor(partial.color);
                           if (partial.season !== undefined) setSeason(partial.season);
                           if (partial.description !== undefined) setDescription(partial.description);
                         }}
                         categories={categories}
+                        brands={brands}
+                        onBrandsChange={setBrands}
                         disabled={busy || photoBusy}
                         code={{
                           locked: false,
@@ -775,7 +788,7 @@ export function NoBarcodeModal({
                 <li className="muted">Sin resultados</li>
               ) : null}
               {searchHits.map((p) => {
-                const meta = [p.size_label, p.color, p.brand, p.category_name, p.internal_code]
+                const meta = [p.size_label, p.color, brandLabel(p), p.category_name, p.internal_code]
                   .filter(Boolean)
                   .join(' · ');
                 return (

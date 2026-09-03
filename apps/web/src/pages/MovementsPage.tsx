@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Link, useSearchParams } from 'react-router-dom';
+import { type BrandOption } from '../components/BrandLookup';
 import { InfiniteListFooter } from '../components/InfiniteListFooter';
 import { IconChevronDown } from '../components/icons';
 import { ModalOverlayClose } from '../components/ModalOverlayClose';
@@ -9,6 +10,7 @@ import { SortableTh } from '../components/SortableTh';
 import { useInfiniteList } from '../hooks/useInfiniteList';
 import { api } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { brandLabel } from '../lib/brandDisplay';
 import { loadListFilters, saveListFilters } from '../lib/listFiltersPersist';
 import {
   nextMovementSort,
@@ -31,6 +33,9 @@ type Movement = {
   link_label: string | null;
   product_name: string;
   internal_code: string;
+  brand_id?: string | null;
+  brand_name?: string | null;
+  brand?: string | null;
   quantity_delta: number;
   quantity_after: number;
   created_by_name: string | null;
@@ -49,6 +54,7 @@ type AppliedFilters = {
   productId: string;
   productQ: string;
   productLabel: string;
+  brandId: string;
   /** Búsqueda de documento / toma (p. ej. INV… desde Reportes). */
   q: string;
 };
@@ -68,6 +74,7 @@ const DEFAULT_FILTERS: AppliedFilters = {
   productId: '',
   productQ: '',
   productLabel: '',
+  brandId: '',
   q: '',
 };
 
@@ -99,6 +106,7 @@ function buildQuery(f: AppliedFilters & { sortBy: MovementSortKey; sortDir: Sort
   if (f.userId) params.set('userId', f.userId);
   if (f.productId) params.set('productId', f.productId);
   else if (f.productQ.trim()) params.set('productQ', f.productQ.trim());
+  if (f.brandId) params.set('brandId', f.brandId);
   if (f.q.trim()) params.set('q', f.q.trim());
   withListSort(params, f.sortBy, f.sortDir);
   withPagination(params, offset, limit);
@@ -338,8 +346,10 @@ export function MovementsPage() {
   const [draftUserId, setDraftUserId] = useState('');
   const [draftProductId, setDraftProductId] = useState('');
   const [draftProductText, setDraftProductText] = useState('');
+  const [draftBrandId, setDraftBrandId] = useState('');
   const [draftType, setDraftType] = useState<TypeFilter>('all');
   const [branchUsers, setBranchUsers] = useState<{ id: string; full_name: string }[]>([]);
+  const [brands, setBrands] = useState<BrandOption[]>([]);
   const filtersTitleId = useId();
   const modalRef = useRef<HTMLDivElement>(null);
 
@@ -437,6 +447,7 @@ export function MovementsPage() {
     if (filters.dateTo) n += 1;
     if (filters.userId) n += 1;
     if (filters.productId || filters.productQ.trim()) n += 1;
+    if (filters.brandId) n += 1;
     if (filters.q.trim()) n += 1;
     return n;
   }, [filters]);
@@ -464,11 +475,17 @@ export function MovementsPage() {
     setDraftUserId(filters.userId);
     setDraftProductId(filters.productId);
     setDraftProductText(filters.productLabel || filters.productQ);
+    setDraftBrandId(filters.brandId || '');
     setDraftType(filters.type);
     setDrawerOpen(true);
-    void api<{ users: { id: string; full_name: string }[] }>('/api/inventory/movements/users')
-      .then((data) => setBranchUsers(data.users || []))
-      .catch(() => setBranchUsers([]));
+    void Promise.all([
+      api<{ users: { id: string; full_name: string }[] }>('/api/inventory/movements/users')
+        .then((data) => setBranchUsers(data.users || []))
+        .catch(() => setBranchUsers([])),
+      api<{ brands: BrandOption[] }>('/api/catalog/brands')
+        .then((data) => setBrands(data.brands || []))
+        .catch(() => setBrands([])),
+    ]);
   }
 
   function closeDrawer() {
@@ -488,6 +505,7 @@ export function MovementsPage() {
       productId: draftProductId,
       productQ: draftProductId ? '' : productText,
       productLabel: productText,
+      brandId: draftBrandId,
     }));
     setDrawerOpen(false);
   }
@@ -652,6 +670,7 @@ export function MovementsPage() {
                       <strong className="mov-card-product">{m.product_name}</strong>
                       <div className="meta">
                         {m.internal_code}
+                        {brandLabel(m) ? ` · ${brandLabel(m)}` : ''}
                         {m.created_by_name ? (
                           <span className="muted"> · {m.created_by_name}</span>
                         ) : null}
@@ -759,7 +778,10 @@ export function MovementsPage() {
                                 <span className="mov-product-name" title={m.product_name}>
                                   {m.product_name}
                                 </span>
-                                <span className="mov-product-code muted">{m.internal_code}</span>
+                                <span className="mov-product-code muted">
+                                  {m.internal_code}
+                                  {brandLabel(m) ? ` · ${brandLabel(m)}` : ''}
+                                </span>
                               </div>
                             </td>
                             <td className="mov-col-reason">
@@ -892,6 +914,21 @@ export function MovementsPage() {
                     setDraftProductText(next.text);
                   }}
                 />
+              </div>
+              <div className="field">
+                <label htmlFor="mov-f-brand">Marca</label>
+                <select
+                  id="mov-f-brand"
+                  value={draftBrandId}
+                  onChange={(e) => setDraftBrandId(e.target.value)}
+                >
+                  <option value="">Todas las marcas</option>
+                  {brands.map((b) => (
+                    <option key={b.id} value={b.id}>
+                      {b.name}
+                    </option>
+                  ))}
+                </select>
               </div>
             </div>
             </div>

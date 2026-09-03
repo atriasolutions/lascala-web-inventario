@@ -1,4 +1,5 @@
 import type { ReactNode, Ref } from 'react';
+import { BrandLookup, type BrandOption } from './BrandLookup';
 import { ChileMoneyInput } from './ChileMoneyInput';
 import { ColorSelect } from './ColorSelect';
 import { IconPencil } from './icons';
@@ -17,7 +18,9 @@ export const PRODUCT_SEASONS = [
 export type ProductFichaValues = {
   name: string;
   categoryId: string;
-  brand: string;
+  brandId: string;
+  /** Nombre para vista cuando la lista de marcas aún no tiene el id. */
+  brandLabel?: string;
   sizeLabel: string;
   color: string;
   season: string;
@@ -31,7 +34,7 @@ export type ProductFichaFieldKey =
   | 'name'
   | 'categoryId'
   | 'salePrice'
-  | 'brand'
+  | 'brandId'
   | 'sizeLabel'
   | 'color'
   | 'season'
@@ -57,6 +60,8 @@ type Props = {
   values: ProductFichaValues;
   onChange: (partial: Partial<ProductFichaValues>) => void;
   categories: ProductFichaCategory[];
+  brands: BrandOption[];
+  onBrandsChange: (next: BrandOption[]) => void;
   disabled?: boolean;
   nameRef?: Ref<HTMLInputElement>;
   code: CodeField;
@@ -117,6 +122,8 @@ export function ProductFichaFields({
   values,
   onChange,
   categories,
+  brands,
+  onBrandsChange,
   disabled,
   nameRef,
   code,
@@ -141,6 +148,10 @@ export function ProductFichaFields({
   const catName =
     categories.find((c) => c.id === values.categoryId)?.name ||
     (values.categoryId ? '—' : 'Sin categoría');
+  const brandViewName =
+    brands.find((b) => b.id === values.brandId)?.name ||
+    (values.brandLabel || '').trim() ||
+    '';
 
   const saleDisplay =
     salePrice.mode === 'locked'
@@ -286,15 +297,21 @@ export function ProductFichaFields({
         <h4 className="prod-section-title">Detalle</h4>
         <div className="prod-section-grid">
           {field(
-            'brand',
+            'brandId',
             'Marca',
             `${idPrefix}-brand`,
-            displayOrDash(values.brand),
-            <input
+            displayOrDash(brandViewName),
+            <BrandLookup
               id={`${idPrefix}-brand`}
-              value={values.brand}
-              onChange={(e) => onChange({ brand: e.target.value })}
-              autoComplete="off"
+              value={values.brandId}
+              brands={brands}
+              onChange={(brandId) =>
+                onChange({
+                  brandId,
+                  brandLabel: brands.find((b) => b.id === brandId)?.name || '',
+                })
+              }
+              onBrandsChange={onBrandsChange}
               disabled={disabled}
             />,
           )}
