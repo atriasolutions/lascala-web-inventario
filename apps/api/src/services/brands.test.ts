@@ -12,6 +12,12 @@ describe('normalizeBrandName', () => {
     assert.equal(normalizeBrandName('YEANS'), 'JEANS');
     assert.equal(normalizeBrandName('jean'), 'JEANS');
     assert.equal(normalizeBrandName('DivineJeans'), 'DIVINE JEANS');
+    assert.equal(normalizeBrandName('DIVINE YEANS'), 'DIVINE JEANS');
+    assert.equal(normalizeBrandName('DIVENE JEANS'), 'DIVINE JEANS');
+    assert.equal(normalizeBrandName('JULLIETA'), 'JULIETTA');
+    assert.equal(normalizeBrandName('LINIATRE'), 'LINEATRE');
+    assert.equal(normalizeBrandName('MOHICAN0'), 'MOHICANO');
+    assert.equal(normalizeBrandName('SYMPONY'), 'SYMPHONY');
   });
 
   it('vacío → null', () => {
