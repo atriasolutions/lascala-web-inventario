@@ -55,6 +55,8 @@ export type SalePrintSale = {
   total: string;
   subtotal?: string;
   discount: string;
+  /** % global (0 | 5…30). */
+  discount_pct?: number | string;
   sold_at: string;
   seller_name: string;
   pos_name: string;
@@ -74,6 +76,8 @@ export type SalePrintItem = {
   quantity: number;
   unit_price: string;
   line_total: string;
+  discount_pct?: number | string;
+  discount_amount?: number | string;
   allows_exchange: boolean;
   allows_return: boolean;
 };

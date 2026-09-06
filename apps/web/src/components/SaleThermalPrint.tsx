@@ -72,6 +72,7 @@ export function SaleThermalPrint({ job }: Props) {
           ]
             .filter(Boolean)
             .join(' · ');
+          const lineDiscPct = Number(i.discount_pct) || 0;
           const right = `${String(i.quantity).padStart(2, ' ')} ${money(i.line_total)}`;
           return (
             <div key={i.id} className="sale-print-item">
@@ -79,6 +80,11 @@ export function SaleThermalPrint({ job }: Props) {
                 {thermalPadLine(i.name.slice(0, 28), right)}
               </p>
               {detail ? <p className="sale-print-item-meta">{detail}</p> : null}
+              {lineDiscPct > 0 ? (
+                <p className="sale-print-item-meta">
+                  Desc. {lineDiscPct}% (−{money(Number(i.discount_amount) || 0)})
+                </p>
+              ) : null}
             </div>
           );
         })}
@@ -92,7 +98,12 @@ export function SaleThermalPrint({ job }: Props) {
         ) : null}
         {Number(sale.discount) > 0 ? (
           <p className="sale-print-total-line mono">
-            {thermalPadLine('Descuento', `-${money(sale.discount)}`)}
+            {thermalPadLine(
+              Number(sale.discount_pct) > 0
+                ? `Desc. ${Number(sale.discount_pct)}%`
+                : 'Descuento',
+              `-${money(sale.discount)}`,
+            )}
           </p>
         ) : null}
         <p className="sale-print-total-line sale-print-total-strong mono">

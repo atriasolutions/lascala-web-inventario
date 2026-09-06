@@ -1,6 +1,12 @@
 import type { PoolClient } from 'pg';
 import type { SalePaymentMethod } from '../domain/paymentMethod.js';
 import {
+  lineSaleAmounts,
+  parseSaleDiscountPct,
+  saleGlobalAmounts,
+  type SaleDiscountPct,
+} from '../domain/saleDiscount.js';
+import {
   applyStockDeltaWithClient,
   getSettingNumber,
   getSettingText,
@@ -14,6 +20,8 @@ export type CreateSaleItemInput = {
   productId: string;
   quantity: number;
   unitPrice?: number;
+  /** Preset % por línea (0 | 5…30). */
+  discountPct?: number;
 };
 
 export type CreateSaleParams = {
@@ -22,7 +30,10 @@ export type CreateSaleParams = {
   posId: string;
   sellerUserId: string;
   notes?: string | null;
+  /** @deprecated Preferir discountPct. Monto absoluto legacy si no viene %. */
   discount?: number;
+  /** Descuento global % (presets). */
+  discountPct?: number;
   items: CreateSaleItemInput[];
   paymentMethod?: SalePaymentMethod;
   /** Solo POST /api/sales/offline-sync */
@@ -42,6 +53,9 @@ export type CreatedSaleResult = {
 /**
  * Crea venta + ítems + vouchers + movimientos de stock en la TX del client.
  * Online: allowNegative omitido/false. Offline sync: allowNegative true.
+ *
+ * Precios: unit_price = p. venta base; descuento línea → line_total;
+ * descuento global sobre suma de line_total.
  */
 export async function createSaleWithClient(
   client: PoolClient,
@@ -54,11 +68,12 @@ export async function createSaleWithClient(
     "Condiciones de cambio L'Scala",
   );
 
-  let subtotal = 0;
   const lineData: {
     productId: string;
     quantity: number;
     unitPrice: number;
+    discountPct: SaleDiscountPct;
+    discountAmount: number;
     lineTotal: number;
     allowsExchange: boolean;
     tracksStock: boolean;
@@ -78,20 +93,55 @@ export async function createSaleWithClient(
     );
     if (!prod.rows[0]) throw new HttpError(400, 'Producto inválido');
     const unitPrice = item.unitPrice ?? Number(prod.rows[0].sale_price);
-    const lineTotal = unitPrice * item.quantity;
-    subtotal += lineTotal;
+    const discountPct = parseSaleDiscountPct(item.discountPct);
+    const amounts = lineSaleAmounts(unitPrice, item.quantity, discountPct);
     lineData.push({
       productId: item.productId,
       quantity: item.quantity,
       unitPrice,
-      lineTotal,
+      discountPct: amounts.discountPct,
+      discountAmount: amounts.discountAmount,
+      lineTotal: amounts.lineTotal,
       allowsExchange: prod.rows[0].allows_exchange || prod.rows[0].allows_return,
       tracksStock: prod.rows[0].tracks_stock,
     });
   }
 
-  const discount = params.discount ?? 0;
-  const total = Math.max(subtotal - discount, 0);
+  const globalPct = parseSaleDiscountPct(params.discountPct);
+  let subtotal: number;
+  let discount: number;
+  let discountPct: SaleDiscountPct;
+  let total: number;
+
+  if (params.discountPct != null) {
+    const g = saleGlobalAmounts(
+      lineData.map((l) => l.lineTotal),
+      globalPct,
+    );
+    subtotal = g.subtotal;
+    discount = g.discount;
+    discountPct = g.discountPct;
+    total = g.total;
+  } else if (params.discount != null && Number(params.discount) > 0) {
+    // Legacy: monto absoluto sin %
+    subtotal = saleGlobalAmounts(
+      lineData.map((l) => l.lineTotal),
+      0,
+    ).subtotal;
+    discount = Math.max(0, Math.round(Number(params.discount) || 0));
+    discountPct = 0;
+    total = Math.max(subtotal - discount, 0);
+  } else {
+    const g = saleGlobalAmounts(
+      lineData.map((l) => l.lineTotal),
+      0,
+    );
+    subtotal = g.subtotal;
+    discount = 0;
+    discountPct = 0;
+    total = g.total;
+  }
+
   const receiptNumber = await nextReceiptNumber(params.organizationId);
 
   const soldAt =
@@ -105,14 +155,14 @@ export async function createSaleWithClient(
   const saleRes = await client.query(
     `INSERT INTO sales
       (organization_id, branch_id, pos_id, seller_user_id, receipt_number,
-       subtotal, discount, total, notes, sold_at, client_sale_id, offline_synced_at,
+       subtotal, discount, discount_pct, total, notes, sold_at, client_sale_id, offline_synced_at,
        payment_method)
      VALUES (
-       $1,$2,$3,$4,$5,$6,$7,$8,$9,
-       COALESCE($10::timestamptz, now()),
-       $11,
-       $12::timestamptz,
-       $13::sale_payment_method
+       $1,$2,$3,$4,$5,$6,$7,$8,$9,$10,
+       COALESCE($11::timestamptz, now()),
+       $12,
+       $13::timestamptz,
+       $14::sale_payment_method
      )
      RETURNING *`,
     [
@@ -123,6 +173,7 @@ export async function createSaleWithClient(
       receiptNumber,
       subtotal,
       discount,
+      discountPct,
       total,
       params.notes ?? null,
       soldAt?.toISOString() ?? null,
@@ -138,9 +189,18 @@ export async function createSaleWithClient(
 
   for (const line of lineData) {
     const itemRes = await client.query(
-      `INSERT INTO sale_items (sale_id, product_id, quantity, unit_price, line_total)
-       VALUES ($1,$2,$3,$4,$5) RETURNING *`,
-      [sale.id, line.productId, line.quantity, line.unitPrice, line.lineTotal],
+      `INSERT INTO sale_items
+        (sale_id, product_id, quantity, unit_price, discount_pct, discount_amount, line_total)
+       VALUES ($1,$2,$3,$4,$5,$6,$7) RETURNING *`,
+      [
+        sale.id,
+        line.productId,
+        line.quantity,
+        line.unitPrice,
+        line.discountPct,
+        line.discountAmount,
+        line.lineTotal,
+      ],
     );
 
     if (line.tracksStock) {

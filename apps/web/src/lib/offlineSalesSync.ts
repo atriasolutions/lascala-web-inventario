@@ -87,10 +87,12 @@ export async function syncOfflineSalesQueue(branchId: string): Promise<SyncRespo
               soldAt: s.soldAt,
               notes: s.notes || 'Venta offline',
               paymentMethod: s.paymentMethod || 'cash',
+              discountPct: s.discountPct || 0,
               items: s.items.map((it) => ({
                 productId: it.productId,
                 quantity: it.quantity,
                 unitPrice: it.unitPrice,
+                discountPct: it.discountPct || 0,
               })),
             })),
           },

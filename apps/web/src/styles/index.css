@@ -2963,6 +2963,69 @@ a.is-nav-offline,
   font-variant-numeric: tabular-nums;
   font-size: 0.92rem;
 }
+.pos-cart-disc-tag {
+  font-size: 0.72rem;
+  font-weight: 700;
+  color: var(--color-brand);
+}
+
+.pos-disc-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  margin-top: 0.35rem;
+}
+.pos-disc-chips.is-compact {
+  margin-top: 0.3rem;
+}
+.pos-disc-chip {
+  appearance: none;
+  border: 1px solid var(--color-line);
+  background: #fff;
+  color: var(--color-muted);
+  font-family: var(--font-body);
+  font-size: 0.68rem;
+  font-weight: 700;
+  line-height: 1;
+  padding: 0.28rem 0.4rem;
+  border-radius: 8px;
+  cursor: pointer;
+  min-height: 28px;
+}
+.pos-disc-chip.is-active {
+  border-color: var(--color-brand);
+  color: var(--color-brand);
+  background: rgba(230, 0, 126, 0.08);
+}
+.pos-disc-chip:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
+.pos-global-disc {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  margin-bottom: 0.55rem;
+}
+.pos-global-disc-label {
+  font-size: 0.72rem;
+  font-weight: 650;
+}
+.pos-ticket-sub-row {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.85rem;
+  margin-bottom: 0.25rem;
+}
+.pos-finalize-disc {
+  margin-bottom: 0.65rem;
+}
+.pos-finalize-sub {
+  margin: 0 0 0.35rem;
+  font-size: 0.85rem;
+}
 
 .color-swatch {
   display: inline-block;
@@ -7714,8 +7777,10 @@ a.ing-row:hover { border-color: #e3b7cf; }
   font-size: 0.85rem;
 }
 .sales-detail-discount {
-  margin: 0 0 0.65rem;
-  font-size: 0.85rem;
+  font-size: 0.92rem;
+}
+.sales-detail-total .sales-detail-discount {
+  margin: 0;
 }
 .sales-detail-rules {
   margin: 0 0 0.85rem;
@@ -7760,12 +7825,17 @@ a.ing-row:hover { border-color: #e3b7cf; }
 }
 .sales-detail-total {
   display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 0.75rem;
+  flex-direction: column;
+  gap: 0.35rem;
   padding: 0.75rem 0;
   border-top: 1px solid var(--color-line);
   font-size: 1.05rem;
+}
+.sales-detail-total-row {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 0.75rem;
 }
 .sales-detail-total strong {
   color: var(--color-brand);

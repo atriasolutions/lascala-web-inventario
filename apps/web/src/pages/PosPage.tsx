@@ -31,6 +31,12 @@ import { toast } from '../lib/toast';
 import { useSalePrint } from '../lib/useSalePrint';
 import type { PaymentMethod } from '../lib/paymentMethod';
 import type { PosCatalogProduct } from '../lib/posCatalogCache';
+import {
+  SALE_DISCOUNT_PRESETS,
+  lineSaleAmounts,
+  saleGlobalAmounts,
+  type SaleDiscountPct,
+} from '../lib/saleDiscount';
 
 type Product = {
   id: string;
@@ -64,7 +70,49 @@ function fromCatalog(p: PosCatalogProduct): Product {
   };
 }
 
-type CartLine = { product: Product; quantity: number };
+type CartLine = { product: Product; quantity: number; discountPct: SaleDiscountPct };
+
+function DiscountPctChips({
+  value,
+  onChange,
+  disabled,
+  ariaLabel,
+  compact,
+}: {
+  value: SaleDiscountPct;
+  onChange: (pct: SaleDiscountPct) => void;
+  disabled?: boolean;
+  ariaLabel: string;
+  compact?: boolean;
+}) {
+  return (
+    <div
+      className={`pos-disc-chips${compact ? ' is-compact' : ''}`}
+      role="group"
+      aria-label={ariaLabel}
+    >
+      <button
+        type="button"
+        className={`pos-disc-chip${!value ? ' is-active' : ''}`}
+        disabled={disabled}
+        onClick={() => onChange(0)}
+      >
+        0%
+      </button>
+      {SALE_DISCOUNT_PRESETS.map((pct) => (
+        <button
+          key={pct}
+          type="button"
+          className={`pos-disc-chip${value === pct ? ' is-active' : ''}`}
+          disabled={disabled}
+          onClick={() => onChange(pct)}
+        >
+          {pct}%
+        </button>
+      ))}
+    </div>
+  );
+}
 
 function productAllowsVoucher(p: Product) {
   return Boolean(p.allows_exchange || p.allows_return);
@@ -179,6 +227,7 @@ export function PosPage() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [includeChangeTickets, setIncludeChangeTickets] = useState(true);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
+  const [globalDiscountPct, setGlobalDiscountPct] = useState<SaleDiscountPct>(0);
 
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQ, setSearchQ] = useState('');
@@ -248,7 +297,7 @@ export function PosPage() {
         };
         return copy;
       }
-      return [...prev, { product, quantity: 1 }];
+      return [...prev, { product, quantity: 1, discountPct: 0 }];
     });
     setStage(product);
     setStagePulse(true);
@@ -305,7 +354,28 @@ export function PosPage() {
     }
   }
 
-  const total = cart.reduce((sum, c) => sum + Number(c.product.sale_price) * c.quantity, 0);
+  const pricedLines = useMemo(
+    () =>
+      cart.map((c) => {
+        const amounts = lineSaleAmounts(
+          Number(c.product.sale_price) || 0,
+          c.quantity,
+          c.discountPct,
+        );
+        return { ...c, ...amounts };
+      }),
+    [cart],
+  );
+
+  const totals = useMemo(
+    () => saleGlobalAmounts(
+      pricedLines.map((l) => l.lineTotal),
+      globalDiscountPct,
+    ),
+    [pricedLines, globalDiscountPct],
+  );
+
+  const total = totals.total;
 
   function bumpQty(id: string, delta: number) {
     setCart((prev) =>
@@ -316,9 +386,16 @@ export function PosPage() {
     focusBarcode();
   }
 
+  function setLineDiscount(id: string, discountPct: SaleDiscountPct) {
+    setCart((prev) =>
+      prev.map((c) => (c.product.id === id ? { ...c, discountPct } : c)),
+    );
+  }
+
   function clearCart() {
     setCart([]);
     setStage(null);
+    setGlobalDiscountPct(0);
     setConfirmOpen(false);
     focusBarcode();
   }
@@ -367,6 +444,7 @@ export function PosPage() {
           productId: c.product.id,
           quantity: c.quantity,
           unitPrice: Number(c.product.sale_price) || 0,
+          discountPct: c.discountPct,
         }));
         const { pendingCount: pendingAfter } = await offlineQueue.enqueue({
           clientSaleId,
@@ -376,6 +454,7 @@ export function PosPage() {
           items,
           notes: 'Venta offline',
           paymentMethod,
+          discountPct: globalDiscountPct,
         });
         await applyLocalSale(items);
         toast.success(
@@ -386,6 +465,7 @@ export function PosPage() {
         setConfirmOpen(false);
         setCart([]);
         setStage(null);
+        setGlobalDiscountPct(0);
         setLiveMsg('Venta guardada offline');
         focusBarcode();
         return;
@@ -398,7 +478,12 @@ export function PosPage() {
           body: {
             posId,
             paymentMethod,
-            items: cart.map((c) => ({ productId: c.product.id, quantity: c.quantity })),
+            discountPct: globalDiscountPct,
+            items: cart.map((c) => ({
+              productId: c.product.id,
+              quantity: c.quantity,
+              discountPct: c.discountPct,
+            })),
           },
         },
       );
@@ -427,6 +512,7 @@ export function PosPage() {
       setConfirmOpen(false);
       setCart([]);
       setStage(null);
+      setGlobalDiscountPct(0);
       setLiveMsg('Venta registrada');
       focusBarcode();
     } catch (err) {
@@ -740,7 +826,7 @@ export function PosPage() {
         <div className="pos-ticket-list">
           {!cart.length && <p className="muted">Sin prendas</p>}
           <ul className="pos-cart-list">
-            {cart.map((c) => {
+            {pricedLines.map((c) => {
               const short = lineLacksStock(c);
               return (
                 <li
@@ -777,11 +863,22 @@ export function PosPage() {
                     {short ? (
                       <span className="badge stock-short">Unidades insuficientes</span>
                     ) : null}
+                    <DiscountPctChips
+                      compact
+                      value={c.discountPct}
+                      onChange={(pct) => setLineDiscount(c.product.id, pct)}
+                      ariaLabel={`Descuento de ${c.product.name}`}
+                    />
                   </div>
                   <div className="pos-cart-footer">
                     <div className="pos-cart-line-meta">
                       <span className="muted">{money(c.product.sale_price)} c/u</span>
-                      <strong>{money(Number(c.product.sale_price) * c.quantity)}</strong>
+                      {c.discountPct > 0 && c.discountAmount > 0 ? (
+                        <span className="pos-cart-disc-tag" title={`Descuento ${c.discountPct}%`}>
+                          −{c.discountPct}% · −{money(c.discountAmount)}
+                        </span>
+                      ) : null}
+                      <strong>{money(c.lineTotal)}</strong>
                     </div>
                     <div className="pos-qty" role="group" aria-label={`Cantidad ${c.product.name}`}>
                       <button
@@ -812,6 +909,29 @@ export function PosPage() {
         </div>
 
         <div className="pos-ticket-footer desktop-only">
+          {cart.length > 0 ? (
+            <div className="pos-global-disc">
+              <span className="muted pos-global-disc-label">Desc. venta</span>
+              <DiscountPctChips
+                compact
+                value={globalDiscountPct}
+                onChange={setGlobalDiscountPct}
+                ariaLabel="Descuento de toda la venta"
+              />
+            </div>
+          ) : null}
+          {totals.discount > 0 || pricedLines.some((l) => l.discountAmount > 0) ? (
+            <div className="pos-ticket-sub-row">
+              <span className="muted">Subtotal</span>
+              <span>{money(totals.subtotal)}</span>
+            </div>
+          ) : null}
+          {totals.discount > 0 ? (
+            <div className="pos-ticket-sub-row">
+              <span className="muted">Desc. {totals.discountPct}%</span>
+              <span>−{money(totals.discount)}</span>
+            </div>
+          ) : null}
           <div className="pos-ticket-total-row">
             <span className="muted">Total</span>
             <div className="pos-total">{money(total)}</div>
@@ -840,7 +960,7 @@ export function PosPage() {
           onClick={openFinalizeConfirm}
           disabled={busy || !cart.length}
         >
-          {busy ? '…' : 'Finalizar'}
+          {busy ? 'Procesando…' : 'Finalizar'}
         </button>
       </div>
 
@@ -942,6 +1062,24 @@ export function PosPage() {
             </div>
 
             <div id={confirmDescId} className="pos-finalize-body">
+              <div className="pos-global-disc pos-finalize-disc">
+                <span className="muted pos-global-disc-label">Desc. venta</span>
+                <DiscountPctChips
+                  compact
+                  value={globalDiscountPct}
+                  onChange={setGlobalDiscountPct}
+                  disabled={busy}
+                  ariaLabel="Descuento de toda la venta"
+                />
+              </div>
+              {totals.discount > 0 || pricedLines.some((l) => l.discountAmount > 0) ? (
+                <p className="pos-finalize-sub muted">
+                  Subtotal {money(totals.subtotal)}
+                  {totals.discount > 0
+                    ? ` · Desc. ${totals.discountPct}% −${money(totals.discount)}`
+                    : ''}
+                </p>
+              ) : null}
               <p className="pos-finalize-total">
                 Total <strong>{money(total)}</strong>
               </p>

@@ -32,6 +32,7 @@ type Sale = {
   total: string;
   subtotal?: string;
   discount: string;
+  discount_pct?: number | string;
   sold_at: string;
   seller_name: string;
   pos_name: string;
@@ -52,6 +53,8 @@ type SaleItem = {
   quantity: number;
   unit_price: string;
   line_total: string;
+  discount_pct?: number | string;
+  discount_amount?: number | string;
   allows_exchange: boolean;
   allows_return: boolean;
 };
@@ -866,12 +869,6 @@ export function SalesHistoryPage() {
                 Medio de pago: <strong>{paymentMethodLabel(selected.payment_method)}</strong>
               </p>
 
-              {Number(selected.discount) > 0 && (
-                <p className="sales-detail-discount muted">
-                  Descuento: {money(selected.discount)}
-                </p>
-              )}
-
               <div className="sales-detail-rules" role="note">
                 <strong>Reglas de cambio / devolución</strong>
                 <ul>
@@ -902,6 +899,9 @@ export function SalesHistoryPage() {
                         <div className="meta">
                           {i.internal_code} · {i.quantity} × {money(i.unit_price)}
                           {i.size_label ? ` · ${i.size_label}` : ''}
+                          {Number(i.discount_pct) > 0
+                            ? ` · Desc. ${Number(i.discount_pct)}% (−${money(i.discount_amount || 0)})`
+                            : ''}
                         </div>
                         <div className="meta sales-detail-elig">
                           <span className={`badge${elig.ok ? ' brand' : ''}`}>
@@ -918,8 +918,29 @@ export function SalesHistoryPage() {
 
               {!detailLoading && (
                 <div className="sales-detail-total">
-                  <span>Total</span>
-                  <strong>{money(selected.total)}</strong>
+                  {selected.subtotal &&
+                  (Number(selected.discount) > 0 ||
+                    items.some((i) => Number(i.discount_pct) > 0)) ? (
+                    <div className="sales-detail-total-row muted">
+                      <span>Subtotal</span>
+                      <span>{money(selected.subtotal)}</span>
+                    </div>
+                  ) : null}
+                  {Number(selected.discount) > 0 ? (
+                    <div className="sales-detail-total-row sales-detail-discount muted">
+                      <span>
+                        Descuento venta
+                        {Number(selected.discount_pct) > 0
+                          ? ` ${Number(selected.discount_pct)}%`
+                          : ''}
+                      </span>
+                      <span>−{money(selected.discount)}</span>
+                    </div>
+                  ) : null}
+                  <div className="sales-detail-total-row">
+                    <span>Total</span>
+                    <strong>{money(selected.total)}</strong>
+                  </div>
                 </div>
               )}
 

@@ -11,10 +11,16 @@ import { orderByClause, parseSortBy, parseSortDir } from '../utils/listSort.js';
 export const salesRouter = Router();
 salesRouter.use(requireAuth, requireBranch);
 
+const discountPctSchema = z
+  .union([z.literal(0), z.literal(5), z.literal(10), z.literal(15), z.literal(20), z.literal(25), z.literal(30)])
+  .optional()
+  .default(0);
+
 const saleItemSchema = z.object({
   productId: z.string().uuid(),
   quantity: z.number().int().positive(),
   unitPrice: z.number().nonnegative().optional(),
+  discountPct: discountPctSchema,
 });
 
 const paymentMethodSchema = z.enum(['cash', 'card']).optional().default('cash');
@@ -232,6 +238,7 @@ salesRouter.post(
               soldAt: z.string().min(1).optional(),
               notes: z.string().optional().nullable(),
               discount: z.number().nonnegative().optional(),
+              discountPct: discountPctSchema,
               paymentMethod: paymentMethodSchema,
               items: z.array(saleItemSchema).min(1),
             }),
@@ -291,6 +298,7 @@ salesRouter.post(
           sellerUserId,
           notes: noteParts.join(' '),
           discount: entry.discount,
+          discountPct: entry.discountPct,
           paymentMethod: parseSalePaymentMethod(entry.paymentMethod),
           items: entry.items,
           allowNegative: true,
@@ -410,6 +418,7 @@ salesRouter.post(
         posId: z.string().uuid(),
         notes: z.string().optional().nullable(),
         discount: z.number().nonnegative().optional(),
+        discountPct: discountPctSchema,
         paymentMethod: paymentMethodSchema,
         items: z.array(saleItemSchema).min(1),
       })
@@ -428,6 +437,7 @@ salesRouter.post(
         sellerUserId: req.user!.id,
         notes: body.notes ?? null,
         discount: body.discount,
+        discountPct: body.discountPct,
         paymentMethod: parseSalePaymentMethod(body.paymentMethod),
         items: body.items,
         allowNegative: false,

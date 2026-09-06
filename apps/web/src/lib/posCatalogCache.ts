@@ -59,6 +59,7 @@ export type OfflineSaleItem = {
   productId: string;
   quantity: number;
   unitPrice?: number;
+  discountPct?: number;
 };
 
 export type OfflineSaleDraft = {
@@ -69,6 +70,7 @@ export type OfflineSaleDraft = {
   items: OfflineSaleItem[];
   notes?: string;
   paymentMethod?: PaymentMethod;
+  discountPct?: number;
 };
 
 export type OfflineSaleRecord = OfflineSaleDraft & {
