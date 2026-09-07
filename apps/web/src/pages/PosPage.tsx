@@ -10,6 +10,7 @@ import {
 } from 'react';
 import { useBlocker } from 'react-router-dom';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { ChileMoneyInput } from '../components/ChileMoneyInput';
 import { ModalOverlayClose } from '../components/ModalOverlayClose';
 import { PosModal } from '../components/PosModal';
 import { SaleThermalPrint } from '../components/SaleThermalPrint';
@@ -18,6 +19,7 @@ import { PaymentMethodSwitch } from '../components/PaymentMethodSwitch';
 import { ProductPhotoPlaceholder } from '../components/ProductPhotoPlaceholder';
 import { api, mediaUrl, money } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { parseChileMoney } from '../lib/chileMoney';
 import { useNetworkStatus } from '../lib/networkStatus';
 import { usePosCatalog } from '../hooks/usePosCatalog';
 import { useOfflineSalesQueue } from '../hooks/useOfflineSalesQueue';
@@ -227,6 +229,7 @@ export function PosPage() {
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [includeChangeTickets, setIncludeChangeTickets] = useState(true);
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
+  const [cashTendered, setCashTendered] = useState('');
   const [globalDiscountPct, setGlobalDiscountPct] = useState<SaleDiscountPct>(0);
 
   const [searchOpen, setSearchOpen] = useState(false);
@@ -377,6 +380,14 @@ export function PosPage() {
 
   const total = totals.total;
 
+  const cashPaid = parseChileMoney(cashTendered);
+  const cashShortfall =
+    paymentMethod === 'cash' && cashPaid != null ? Math.max(0, total - cashPaid) : null;
+  const cashChange =
+    paymentMethod === 'cash' && cashPaid != null ? Math.max(0, cashPaid - total) : null;
+  const cashInsufficient =
+    paymentMethod === 'cash' && (cashPaid == null || cashPaid < total);
+
   function bumpQty(id: string, delta: number) {
     setCart((prev) =>
       prev
@@ -396,6 +407,7 @@ export function PosPage() {
     setCart([]);
     setStage(null);
     setGlobalDiscountPct(0);
+    setCashTendered('');
     setConfirmOpen(false);
     focusBarcode();
   }
@@ -419,17 +431,35 @@ export function PosPage() {
     }
     setIncludeChangeTickets(eligibleVoucherUnits > 0);
     setPaymentMethod('cash');
+    setCashTendered('');
     setConfirmOpen(true);
   }
 
   function closeFinalizeConfirm() {
     if (busy) return;
     setConfirmOpen(false);
+    setCashTendered('');
     focusBarcode();
+  }
+
+  function onPaymentMethodChange(next: PaymentMethod) {
+    setPaymentMethod(next);
+    if (next !== 'cash') setCashTendered('');
   }
 
   async function confirmFinalize() {
     if (!posId || !cart.length || !branchId) return;
+    if (paymentMethod === 'cash') {
+      const paid = parseChileMoney(cashTendered);
+      if (paid == null || paid < total) {
+        toast.warn(
+          paid == null
+            ? 'Indica con cuánto paga la clienta'
+            : `Faltan ${money(total - paid)} para cubrir el total`,
+        );
+        return;
+      }
+    }
     if (cart.some(lineLacksStock)) {
       toast.error('No hay unidades suficientes en esta sucursal');
       setConfirmOpen(false);
@@ -1085,10 +1115,50 @@ export function PosPage() {
               </p>
               <PaymentMethodSwitch
                 value={paymentMethod}
-                onChange={setPaymentMethod}
+                onChange={onPaymentMethodChange}
                 disabled={busy}
                 className="pos-finalize-payment"
               />
+              {paymentMethod === 'cash' ? (
+                <div className="pos-finalize-cash">
+                  <div className="field">
+                    <label htmlFor="pos-cash-tendered">Con cuánto paga</label>
+                    <ChileMoneyInput
+                      id="pos-cash-tendered"
+                      value={cashTendered}
+                      onChange={setCashTendered}
+                      placeholder="0"
+                      disabled={busy}
+                      aria-describedby="pos-cash-feedback"
+                    />
+                  </div>
+                  <p
+                    id="pos-cash-feedback"
+                    className={`pos-finalize-cash-feedback${
+                      cashPaid == null
+                        ? ' is-muted'
+                        : cashShortfall && cashShortfall > 0
+                          ? ' is-short'
+                          : ' is-ok'
+                    }`}
+                    aria-live="polite"
+                  >
+                    {cashPaid == null ? (
+                      'Ingresa el monto recibido'
+                    ) : cashShortfall && cashShortfall > 0 ? (
+                      <>
+                        Faltan <strong>{money(cashShortfall)}</strong>
+                      </>
+                    ) : cashChange && cashChange > 0 ? (
+                      <>
+                        Vuelto <strong>{money(cashChange)}</strong>
+                      </>
+                    ) : (
+                      <strong>Pago exacto</strong>
+                    )}
+                  </p>
+                </div>
+              ) : null}
               <ul className="pos-finalize-list">
                 {online ? (
                   <>
@@ -1158,7 +1228,7 @@ export function PosPage() {
                 type="button"
                 className="btn"
                 onClick={() => void confirmFinalize()}
-                disabled={busy}
+                disabled={busy || cashInsufficient}
               >
                 {busy ? 'Procesando…' : online ? 'Confirmar e imprimir' : 'Guardar en este equipo'}
               </button>
