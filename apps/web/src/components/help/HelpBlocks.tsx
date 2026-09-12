@@ -86,7 +86,7 @@ export function HelpBlocks({ blocks, heading }: { blocks: HelpBlock[]; heading: 
             <HelpYoutube
               key={key}
               videoId={helpYoutubeId(b.slot)}
-              title={`${heading}: ${b.shoot}`}
+              title={`${heading}: ${b.shoot.replace(/^(Video|Grabar):\s*/i, '')}`}
               shoot={b.shoot}
             />
           );

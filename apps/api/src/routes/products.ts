@@ -73,15 +73,18 @@ productsRouter.get(
     let stockSelect = '';
     let stockJoin = '';
     let lowParam = 0;
+    let branchParam = 0;
     if (includeStock) {
       params.push(branchId);
-      const branchParam = params.length;
+      branchParam = params.length;
       params.push(lowDefault);
       lowParam = params.length;
       stockSelect = `,
         COALESCE(ib.quantity, 0) AS stock,
         COALESCE(ib.low_stock_threshold, p.low_stock_threshold, $${lowParam}) AS low_stock_threshold`;
-      stockJoin = ` LEFT JOIN inventory_balances ib ON ib.product_id = p.id AND ib.branch_id = $${branchParam}`;
+      // INNER: catálogo operativo de la sucursal activa (solo prendas con balance en esa branch).
+      // Evita listar en La Serena productos que solo existen/tienen stock en Calama.
+      stockJoin = ` INNER JOIN inventory_balances ib ON ib.product_id = p.id AND ib.branch_id = $${branchParam}`;
     }
 
     let sql = `
@@ -329,7 +332,9 @@ productsRouter.post(
         body.photoUrl,
       ]);
     }
-    if (req.activeBranchId && tracksStock) {
+    // Siempre crea balance en la sucursal activa: así la prenda pertenece al catálogo
+    // operativo de esa branch (aunque tracks_stock sea false o qty=0).
+    if (req.activeBranchId) {
       await query(
         `INSERT INTO inventory_balances (product_id, branch_id, quantity, low_stock_threshold)
          VALUES ($1, $2, 0, $3)

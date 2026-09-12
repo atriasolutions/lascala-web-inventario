@@ -248,7 +248,7 @@ export function ProductFichaFields({
           {!hideSalePrice
             ? field(
                 'salePrice',
-                'Precio venta',
+                'Precio venta (UND)',
                 `${idPrefix}-sale`,
                 <>
                   <span>{saleDisplay}</span>

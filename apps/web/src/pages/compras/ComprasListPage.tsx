@@ -23,6 +23,9 @@ import {
   type PurchaseStatus,
 } from '../../lib/purchasesStatus';
 import { unpackComprobante } from '../../lib/comprobanteEmbed';
+import { ConfirmDialog } from '../../components/ConfirmDialog';
+import { IconTrash } from '../../components/icons';
+import { toast } from '../../lib/toast';
 
 type StatusFilter = 'all' | PurchaseStatus;
 
@@ -101,6 +104,7 @@ export function ComprasListPage() {
 
   const {
     items: purchases,
+    setItems,
     hasMore,
     loading,
     loadingMore,
@@ -110,6 +114,23 @@ export function ComprasListPage() {
   } = useInfiniteList({ filters: listFilters, fetchPage });
 
   const sortedPurchases = purchases;
+  const [deleteTarget, setDeleteTarget] = useState<Purchase | null>(null);
+  const [deleting, setDeleting] = useState(false);
+
+  async function confirmDelete() {
+    if (!deleteTarget || deleting) return;
+    setDeleting(true);
+    try {
+      await api(`/api/purchases/${deleteTarget.id}`, { method: 'DELETE' });
+      setItems((prev) => prev.filter((p) => p.id !== deleteTarget.id));
+      toast.success('Compra eliminada');
+      setDeleteTarget(null);
+    } catch (err) {
+      toast.error(err instanceof Error ? err.message : 'No se pudo eliminar');
+    } finally {
+      setDeleting(false);
+    }
+  }
 
   function toggleSort(column: PurchaseSortKey) {
     const next = nextSort(sortKey, sortDir, column);
@@ -259,27 +280,45 @@ export function ComprasListPage() {
                 {sortedPurchases.map((p) => {
                   const action = rowAction(p.status as PurchaseStatus);
                   const prog = purchaseProgress(p);
+                  const canDelete = p.status === 'pending_reception';
                   return (
-                    <Link key={p.id} to={`/compras/${p.id}`} className="list-card ing-row">
-                      <div className="row">
-                        <strong>{purchaseRef(p)}</strong>
-                        <span className={statusBadgeClass(p.status as PurchaseStatus)}>
-                          {statusLabel(p.status)}
-                        </span>
+                    <div key={p.id} className="list-card ing-row">
+                      <Link to={`/compras/${p.id}`} className="ing-card-link">
+                        <div className="row">
+                          <strong>{purchaseRef(p)}</strong>
+                          <span className={statusBadgeClass(p.status as PurchaseStatus)}>
+                            {statusLabel(p.status)}
+                          </span>
+                        </div>
+                        <div className="meta">
+                          {formatDate(p.purchased_at || p.created_at)}
+                          {p.supplier_name ? ` · ${p.supplier_name}` : ''}
+                        </div>
+                        <div className="ing-card-foot">
+                          <span className="ing-progress-meta">
+                            {prog.ordered > 0
+                              ? `${prog.received} de ${prog.ordered} uds`
+                              : progressLabel(p)}
+                          </span>
+                        </div>
+                      </Link>
+                      <div className="ing-row-actions ing-card-actions">
+                        <Link to={`/compras/${p.id}`} className="ing-row-action">
+                          {action}
+                        </Link>
+                        {canDelete ? (
+                          <button
+                            type="button"
+                            className="ing-row-action-icon"
+                            aria-label={`Eliminar compra ${purchaseRef(p)}`}
+                            title="Eliminar"
+                            onClick={() => setDeleteTarget(p)}
+                          >
+                            <IconTrash size={16} />
+                          </button>
+                        ) : null}
                       </div>
-                      <div className="meta">
-                        {formatDate(p.purchased_at || p.created_at)}
-                        {p.supplier_name ? ` · ${p.supplier_name}` : ''}
-                      </div>
-                      <div className="ing-card-foot">
-                        <span className="ing-progress-meta">
-                          {prog.ordered > 0
-                            ? `${prog.received} de ${prog.ordered} uds`
-                            : progressLabel(p)}
-                        </span>
-                        <span className="ing-row-action">{action}</span>
-                      </div>
-                    </Link>
+                    </div>
                   );
                 })}
               </div>
@@ -329,6 +368,7 @@ export function ComprasListPage() {
                     {sortedPurchases.map((p) => {
                       const action = rowAction(p.status as PurchaseStatus);
                       const prog = purchaseProgress(p);
+                      const canDelete = p.status === 'pending_reception';
                       const pct =
                         prog.ordered > 0
                           ? Math.min(100, Math.round((prog.received / prog.ordered) * 100))
@@ -371,9 +411,22 @@ export function ComprasListPage() {
                             </span>
                           </td>
                           <td className="ing-td-action">
-                            <Link to={`/compras/${p.id}`} className="ing-row-action">
-                              {action}
-                            </Link>
+                            <div className="ing-row-actions">
+                              <Link to={`/compras/${p.id}`} className="ing-row-action">
+                                {action}
+                              </Link>
+                              {canDelete ? (
+                                <button
+                                  type="button"
+                                  className="ing-row-action-icon"
+                                  aria-label={`Eliminar compra ${purchaseRef(p)}`}
+                                  title="Eliminar"
+                                  onClick={() => setDeleteTarget(p)}
+                                >
+                                  <IconTrash size={16} />
+                                </button>
+                              ) : null}
+                            </div>
                           </td>
                         </tr>
                       );
@@ -479,6 +532,21 @@ export function ComprasListPage() {
           </div></ModalOverlayClose>
         </PosModal>
       )}
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        title="Eliminar compra"
+        message="¿Eliminar esta compra? No se puede deshacer."
+        cancelLabel="Cancelar"
+        confirmLabel={deleting ? 'Eliminando…' : 'Eliminar'}
+        danger
+        onCancel={() => {
+          if (!deleting) setDeleteTarget(null);
+        }}
+        onConfirm={() => {
+          void confirmDelete();
+        }}
+      />
     </div>
   );
 }

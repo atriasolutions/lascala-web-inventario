@@ -489,74 +489,75 @@ export function AppShell() {
           <PwaInstallHint />
           {isOwner ? <PushAlertsBanner /> : null}
 
-          <header className="topbar-desktop">
-            <div className="topbar-title">
-              <span className="topbar-eyebrow">{eyebrow}</span>
-              <h1>{title}</h1>
-            </div>
-            <div className="right">
-              {isOwner ? (
-                <div className="topbar-workplace-switch">
-                  <WorkplaceSwitcher compact />
-                </div>
-              ) : (
-                <div className="topbar-workplace-switch">
-                  <WorkplaceSwitcher compact posOnly />
-                </div>
-              )}
-              <HelpModeToggle />
-              <NotificationBell />
-              <div className="user-menu" ref={userMenuRef}>
-                <button
-                  className={`user-chip${userMenuOpen ? ' is-open' : ''}`}
-                  type="button"
-                  data-help="header.usuaria"
-                  aria-haspopup="menu"
-                  aria-expanded={userMenuOpen}
-                  onClick={() => setUserMenuOpen((v) => !v)}
-                >
-                  <span className="avatar">{initials(user?.fullName)}</span>
-                  <span className="user-chip-text">
-                    <strong>{user?.fullName?.split(' ')[0] || 'Usuario'}</strong>
-                    <span>{roleLabel}</span>
-                  </span>
-                  <span className="user-chip-chevron">
-                    <IconChevronDown size={14} />
-                  </span>
-                </button>
-                {userMenuOpen && (
-                  <div className="user-menu-panel" role="menu">
-                    <div className="user-menu-head">
-                      <strong>{user?.fullName}</strong>
-                      <span className="muted">{user?.email}</span>
-                      <span className="muted">{roleLabel} · {activeBranch?.name}</span>
-                    </div>
-                    <button
-                      className="user-menu-item"
-                      type="button"
-                      role="menuitem"
-                      onClick={() => {
-                        setUserMenuOpen(false);
-                        setAccountOpen(true);
-                      }}
-                    >
-                      <IconUsers size={16} /> Mi cuenta
-                    </button>
-                    <button
-                      className="user-menu-item"
-                      type="button"
-                      role="menuitem"
-                      onClick={openLogout}
-                    >
-                      <IconLogout size={16} /> Cerrar sesión
-                    </button>
+          <div className="main-top-chrome">
+            <header className="topbar-desktop">
+              <div className="topbar-title">
+                <span className="topbar-eyebrow">{eyebrow}</span>
+                <h1>{title}</h1>
+              </div>
+              <div className="right">
+                {isOwner ? (
+                  <div className="topbar-workplace-switch">
+                    <WorkplaceSwitcher compact />
+                  </div>
+                ) : (
+                  <div className="topbar-workplace-switch">
+                    <WorkplaceSwitcher compact posOnly />
                   </div>
                 )}
+                <HelpModeToggle />
+                <NotificationBell />
+                <div className="user-menu" ref={userMenuRef}>
+                  <button
+                    className={`user-chip${userMenuOpen ? ' is-open' : ''}`}
+                    type="button"
+                    data-help="header.usuaria"
+                    aria-haspopup="menu"
+                    aria-expanded={userMenuOpen}
+                    onClick={() => setUserMenuOpen((v) => !v)}
+                  >
+                    <span className="avatar">{initials(user?.fullName)}</span>
+                    <span className="user-chip-text">
+                      <strong>{user?.fullName?.split(' ')[0] || 'Usuario'}</strong>
+                      <span>{roleLabel}</span>
+                    </span>
+                    <span className="user-chip-chevron">
+                      <IconChevronDown size={14} />
+                    </span>
+                  </button>
+                  {userMenuOpen && (
+                    <div className="user-menu-panel" role="menu">
+                      <div className="user-menu-head">
+                        <strong>{user?.fullName}</strong>
+                        <span className="muted">{roleLabel} · {activeBranch?.name}</span>
+                      </div>
+                      <button
+                        className="user-menu-item"
+                        type="button"
+                        role="menuitem"
+                        onClick={() => {
+                          setUserMenuOpen(false);
+                          setAccountOpen(true);
+                        }}
+                      >
+                        <IconUsers size={16} /> Mi cuenta
+                      </button>
+                      <button
+                        className="user-menu-item"
+                        type="button"
+                        role="menuitem"
+                        onClick={openLogout}
+                      >
+                        <IconLogout size={16} /> Cerrar sesión
+                      </button>
+                    </div>
+                  )}
+                </div>
               </div>
-            </div>
-          </header>
+            </header>
 
-          <HelpModeBanner />
+            <HelpModeBanner />
+          </div>
 
           <div className="main-content">
             <Outlet />

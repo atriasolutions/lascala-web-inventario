@@ -105,6 +105,11 @@ export function CompraDetailPage() {
     });
   }
 
+  async function onDelete() {
+    if (!id) return;
+    await api(`/api/purchases/${id}`, { method: 'DELETE' });
+  }
+
   if (loading) {
     return <p className="muted" style={{ padding: '1rem 0' }}>Cargando compra…</p>;
   }
@@ -148,6 +153,7 @@ export function CompraDetailPage() {
           : 'Consulta el documento aquí o continúa la recepción en Ingresos.'
       }
       onSubmit={editable ? onSubmit : undefined}
+      onDelete={editable ? onDelete : undefined}
     />
   );
 }

@@ -30,48 +30,46 @@ export type HelpChapter = {
 
 /** IDs de YouTube por slot. Cuando pegues el ID, aparece el iframe. */
 export const HELP_YOUTUBE: Record<string, string> = {
-  'overview.flujo': YT_PENDING,
-  'overview.pwa': YT_PENDING,
-  'dashboard.tablero': YT_PENDING,
-  'caja.cobrar': YT_PENDING,
-  'caja.offline': YT_PENDING,
-  'ingresos.recibir': YT_PENDING,
-  'compras.documento': YT_PENDING,
-  'ventas.historial': YT_PENDING,
-  'productos.ficha': YT_PENDING,
-  'stock.vitrina': YT_PENDING,
-  'inventarios.toma': YT_PENDING,
-  'inventarios.conciliar': YT_PENDING,
-  'movimientos.lista': YT_PENDING,
-  'mermas.registrar': YT_PENDING,
-  'mermas.ticket': YT_PENDING,
-  'gastos.nuevo': YT_PENDING,
-  'reportes.vistas': YT_PENDING,
-  'ajustes.impresoras': YT_PENDING,
-  'header.puesto': YT_PENDING,
+  'overview.flujo': 'iuYdkK7MWTU',
+  'dashboard.tablero': 'o4KaRAATZsw',
+  'caja.cobrar': 'JmKGhlv7ego',
+  'ingresos.recibir': 'xYx0EWB1028',
+  'compras.documento': '33kIZqLtug8',
+  'ventas.historial': 'Q36qK8-XIoM',
+  'productos.ficha': 'T1fbZpFm7Go',
+  'stock.vitrina': 'DevX1IL461g',
+  'inventarios.toma': 'uc6kOHof5JE',
+  'inventarios.conciliar': '67gJ_4I3-NI',
+  'movimientos.lista': 'ZGDKZhjWmLs',
+  'mermas.registrar': 'A9La7E3k4ZU',
+  'mermas.ticket': '40Iqxp8hSmA',
+  'gastos.nuevo': 'MsOo9HiiafY',
+  'reportes.vistas': '2jAfo9cegHA',
+  'ajustes.impresoras': '9X7eXwlPus0',
+  'header.puesto': 'Iyi-t0fP1uk',
 };
 
 /** Capturas bajo `public/help/`. Si el archivo no existe, se muestra el slot con la consigna. */
 export const HELP_IMAGES: Record<string, string> = {
   'overview.header': '/help/overview-header.png',
   'overview.ayuda': '/help/overview-ayuda.png',
-  'dashboard.atajos': '/help/dashboard-atajos.png',
-  'caja.pantalla': '/help/caja-pantalla.png',
-  'caja.ticket': '/help/caja-ticket.png',
-  'ingresos.pendiente': '/help/ingresos-pendiente.png',
-  'compras.lista': '/help/compras-lista.png',
-  'ventas.filtros': '/help/ventas-filtros.png',
-  'productos.lista': '/help/productos-lista.png',
+  'dashboard.inicio': '/help/dashboard-inicio.jpg',
+  'caja.pantalla': '/help/ventas-pos.jpg',
+  'caja.ticket': '/help/ventas-comprobante.png',
+  'ingresos.pendiente': '/help/ingresos-lista.jpg',
+  'compras.lista': '/help/compras-lista.jpg',
+  'ventas.filtros': '/help/historial-ventas.jpg',
+  'productos.lista': '/help/productos-grid.jpg',
   'stock.lista': '/help/stock-lista.png',
-  'inventarios.lista': '/help/inventarios-lista.png',
-  'inventarios.opciones': '/help/inventarios-opciones.png',
-  'movimientos.fila': '/help/movimientos-fila.png',
-  'mermas.tabs': '/help/mermas-tabs.png',
-  'mermas.voucher': '/help/mermas-voucher.png',
-  'gastos.form': '/help/gastos-form.png',
-  'reportes.pg': '/help/reportes-pg.png',
-  'ajustes.tabs': '/help/ajustes-tabs.png',
-  'header.campana': '/help/header-campana.png',
+  'inventarios.lista': '/help/inventarios-conteo.png',
+  'inventarios.opciones': '/help/inventarios-conciliacion.png',
+  'movimientos.fila': '/help/movimientos-lista.png',
+  'mermas.tabs': '/help/mermas-registrar.png',
+  'mermas.voucher': '/help/mermas-cambio.png',
+  'gastos.form': '/help/gastos-lista.png',
+  'reportes.pg': '/help/reportes-ventas.png',
+  'ajustes.tabs': '/help/ajustes-impresoras.png',
+  'header.campana': '/help/header-alertas.png',
 };
 
 export function isYoutubeReady(id: string | undefined): boolean {
@@ -110,9 +108,15 @@ export const HELP_CHAPTERS: HelpChapter[] = [
         type: 'see',
         items: [
           'Arriba: sucursal, caja, campana de alertas, tu nombre y el botón ?',
-          'A la izquierda: Ventas, Ingresos, Mermas y el resto según tu rol',
+          'A la izquierda (computador): Ventas, Ingresos, Mermas y el resto según tu rol',
+          'En el celular: barra inferior distinta si eres Administrador/a o piso (vendedor/a · encargado/a)',
           'En cada pantalla: el trabajo del día, no un título repetido (ese ya está arriba)',
         ],
+      },
+      {
+        type: 'callout',
+        kind: 'tip',
+        text: 'Si la sesión caduca, vuelves al login con el aviso «Tu sesión expiró. Ingresa de nuevo.» No pierdes el trabajo ya guardado en el servidor; solo tienes que entrar otra vez.',
       },
       { type: 'h', text: 'El camino de una prenda' },
       {
@@ -128,7 +132,7 @@ export const HELP_CHAPTERS: HelpChapter[] = [
       {
         type: 'video',
         slot: 'overview.flujo',
-        shoot: 'Video: mostrar el menú (Ingresos → Stock → Ventas) y decir en voz alta que el stock es de la sucursal activa.',
+        shoot: 'Recorrido: menú e inventario por sucursal',
       },
       {
         type: 'callout',
@@ -138,7 +142,7 @@ export const HELP_CHAPTERS: HelpChapter[] = [
       {
         type: 'image',
         slot: 'overview.header',
-        shoot: 'Foto: el header completo, con sucursal y caja visibles, sin datos personales de más.',
+        shoot: 'Foto: header con Sucursal y Caja/POS visibles; chip de usuaria con nombre y rol (sin email ni datos de más).',
       },
       {
         type: 'p',
@@ -154,14 +158,28 @@ export const HELP_CHAPTERS: HelpChapter[] = [
         kind: 'ojo',
         text: 'Los vestidos de fiesta, por defecto, van sin cambio ni devolución. La ficha lo marca; no prometas un cambio en sala si la prenda no lo permite.',
       },
+      { type: 'h', text: 'Listas, filtros y scroll' },
       {
         type: 'p',
-        text: 'Si instalas la app en el celular de caja (PWA), puedes cobrar un rato sin red: la venta queda en este equipo y se envía al reconectar. El resto de módulos pide conexión.',
+        text: 'Las listas largas (Productos, Stock, Movimientos, Historial, Ingresos, Compras, Gastos, Mermas…) cargan de a poco al bajar. Los filtros y el orden se aplican en el servidor: lo que ves ya viene filtrado de la sucursal activa.',
       },
       {
-        type: 'video',
-        slot: 'overview.pwa',
-        shoot: 'Video: banner de sin conexión en Caja, armar un ticket corto y Finalizar (venta queda pendiente en el equipo).',
+        type: 'see',
+        items: [
+          'Productos: categoría, marca, stock bajo, sin foto, devolución, control de stock',
+          'Stock: categoría, stock bajo, foto, con/sin control, con/sin unidades',
+          'Movimientos: tipo, fechas, usuaria, producto, marca',
+          'Historial de ventas: fechas y búsqueda; en el detalle ves medio de pago y descuentos',
+          'Ingresos / Compras: estado, fechas y texto (chip Pendiente es el día a día)',
+          'Gastos (admin): fechas y categoría',
+          'Mermas: fechas, prenda, motivo, usuaria; vouchers por número, venta y estado',
+          'Reportes (admin): período y, en Ventas, chips Efectivo / Tarjeta',
+        ],
+      },
+      {
+        type: 'callout',
+        kind: 'quien',
+        text: 'Compras, Gastos, Reportes y Dashboard solo los ve Administrador/a. Encargado/a y Vendedor/a trabajan el piso (Ventas, Ingresos, Stock, etc.). Lo que aparece en el menú y en la barra del celular depende del rol.',
       },
       {
         type: 'p',
@@ -170,7 +188,7 @@ export const HELP_CHAPTERS: HelpChapter[] = [
       {
         type: 'image',
         slot: 'overview.ayuda',
-        shoot: 'Foto: el botón ? del header encendido y el aviso “Modo ayuda” debajo del header, sin tapar sucursal ni caja.',
+        shoot: 'Foto: botón ? encendido (fucsia) y franja “Modo ayuda” debajo del header, sin tapar Sucursal ni Caja.',
       },
     ],
   },
@@ -182,15 +200,18 @@ export const HELP_CHAPTERS: HelpChapter[] = [
     blocks: [
       {
         type: 'p',
-        text: 'Es el tablero del día para Administrador/a: cómo va la sucursal activa, no para cobrar. El cobro es en Ventas.',
+        text: 'Es el Inicio de Administrador/a: cómo va la sucursal activa hoy y en el mes. No sirve para cobrar: el cobro es en Ventas.',
       },
       { type: 'roles', who: ['owner'] },
       {
         type: 'see',
         items: [
-          'Ventas del día y del mes de la sucursal activa',
-          'Atajos a Ventas, Ingresos, Gastos y Compras',
-          'Alertas que conviene mirar (stock bajo, poca rotación, vouchers)',
+          'Saludo y «Hoy en» la sucursal del header',
+          'Ventas del día y del mes (toda la sucursal)',
+          'Atajo rápido (p. ej. Compras)',
+          'Caja del mes: ventas frente a salidas (gastos y reinversión)',
+          'Gastos a revisar',
+          'Resumen «Números de la sucursal» (todas las cajas)',
         ],
       },
       {
@@ -200,17 +221,26 @@ export const HELP_CHAPTERS: HelpChapter[] = [
       },
       {
         type: 'image',
-        slot: 'dashboard.atajos',
-        shoot: 'Foto: la franja de atajos (Ventas / Ingresos / Gastos / Compras) con los recuadros de ventas del día y del mes.',
+        slot: 'dashboard.inicio',
+        shoot: 'Foto: Inicio con saludo, ventas del día/mes, atajo Compras, ventas frente a salidas y gastos a revisar.',
       },
       {
         type: 'p',
-        text: 'Si cambias la sucursal arriba, el tablero cambia con ella. No mezcles sucursales al leer números.',
+        text: 'Arriba eliges Sucursal (y Caja/POS). Los montos del tablero son de esa sucursal: si cambias la sucursal, cambian los números. No mezcles sucursales al leer el día.',
+      },
+      {
+        type: 'p',
+        text: 'En «Ventas frente a salidas» ves ventas del mes contra gastos de operación y reinversión en mercadería (compras). El neto indica si la caja del mes va positiva o no. «Gastos a revisar» resume operación y compras; desde ahí puedes ir a registrar o ver gastos.',
+      },
+      {
+        type: 'callout',
+        kind: 'tip',
+        text: 'Las compras cuentan como reinversión en mercadería, aparte de los gastos de operación. El cobro del día a día sigue en Ventas.',
       },
       {
         type: 'video',
         slot: 'dashboard.tablero',
-        shoot: 'Video: abrir Dashboard, cambiar sucursal en el header y mostrar que los montos del día se actualizan.',
+        shoot: 'Video 1 — recorrido del Dashboard',
       },
     ],
   },
@@ -236,7 +266,7 @@ export const HELP_CHAPTERS: HelpChapter[] = [
       {
         type: 'image',
         slot: 'caja.pantalla',
-        shoot: 'Foto: Ventas con una o dos prendas en el ticket, sucursal y caja visibles arriba. Sin montos inventados de más: una venta de ejemplo anónima.',
+        shoot: 'Ventas — pistoleo, carrito y descuentos',
       },
       {
         type: 'steps',
@@ -245,13 +275,34 @@ export const HELP_CHAPTERS: HelpChapter[] = [
           'Revisa que la sucursal y la caja del header sean las de este puesto.',
           'Pistolea el código de la etiqueta (o Buscar por nombre / código).',
           'Revisa talla, color y precio. Suma otra prenda si hace falta.',
-          'Pulsa Finalizar, confirma, y espera el comprobante si hay impresora.',
+          'Si hay promo: descuento por ítem en la línea y/o Desc. venta al finalizar (5–30%).',
+          'Pulsa Finalizar: elige Efectivo o Tarjeta, confirma, y espera el comprobante si hay impresora.',
         ],
+      },
+      { type: 'h', text: 'Descuentos' },
+      {
+        type: 'p',
+        text: 'Puedes marcar un % en cada prenda del ticket y, al finalizar, un Desc. venta de toda la venta. Se combinan: primero el de la línea y después el global. Los montos descontados se redondean a múltiplos de $500 (plata limpia en sala).',
+      },
+      {
+        type: 'callout',
+        kind: 'tip',
+        text: 'El descuento se ve en el comprobante y en el Historial (por línea y, si hubo, Descuento venta entre Subtotal y Total).',
+      },
+      { type: 'h', text: 'Medio de pago y efectivo' },
+      {
+        type: 'p',
+        text: 'En Finalizar eliges Efectivo o Tarjeta. Con Efectivo aparece «Con cuánto paga»: mientras escribes te dice si faltan pesos o cuánto es el vuelto. Confirmar e imprimir solo se habilita cuando el monto alcanza el total (pago exacto o con vuelto).',
+      },
+      {
+        type: 'callout',
+        kind: 'ojo',
+        text: 'Con Tarjeta no pides vuelto: el bloque de efectivo se oculta. El medio de pago queda en el ticket y en el Historial.',
       },
       {
         type: 'video',
         slot: 'caja.cobrar',
-        shoot: 'Video: pistolear una prenda en Caja hasta Finalizar (incluido el confirm). No hace falta mostrar datos de cliente.',
+        shoot: 'Video 1 — recorrido de Ventas',
       },
       {
         type: 'callout',
@@ -261,16 +312,11 @@ export const HELP_CHAPTERS: HelpChapter[] = [
       {
         type: 'image',
         slot: 'caja.ticket',
-        shoot: 'Foto: comprobante impreso o vista de impresión, señalando el número de voucher de cambio (no el folio de boleta).',
+        shoot: 'Comprobante de venta y tickets de cambio/devolución',
       },
       {
         type: 'p',
         text: 'Sin internet puedes seguir cobrando si este equipo ya cargó el catálogo una vez. Las ventas quedan aquí y se envían al reconectar.',
-      },
-      {
-        type: 'video',
-        slot: 'caja.offline',
-        shoot: 'Video: Caja con aviso de sin conexión, Finalizar, y el mensaje de venta guardada en el equipo.',
       },
       {
         type: 'callout',
@@ -301,7 +347,7 @@ export const HELP_CHAPTERS: HelpChapter[] = [
       {
         type: 'image',
         slot: 'ingresos.pendiente',
-        shoot: 'Foto: lista de Ingresos con el chip Pendiente activo y al menos un documento por recibir.',
+        shoot: 'Ingresos — mercadería a stock por sucursal',
       },
       {
         type: 'steps',
@@ -309,14 +355,24 @@ export const HELP_CHAPTERS: HelpChapter[] = [
         items: [
           'Entra a Ingresos y deja el chip en Pendiente (es el trabajo del día).',
           'Abre el documento. Revisa prenda, talla y cantidad.',
+          'Pistolea o usa Sin código de barras si la prenda no tiene etiqueta aún.',
           'Confirma lo que llegó. El Precio costo ya viene de la compra: no lo cambies “a ojo” en la ficha.',
           'Al confirmar, el stock queda en esta sucursal y aparece en Movimientos.',
         ],
       },
       {
+        type: 'p',
+        text: 'En Sin código de barras (o al crear ficha desde un código nuevo) eliges Marca con el mismo buscador que el proveedor: puedes reutilizar una o crear otra. Las marcas se guardan en mayúsculas.',
+      },
+      {
+        type: 'callout',
+        kind: 'tip',
+        text: 'Filtros de la lista: fechas, estado y texto. El chip Pendiente (incluye parciales) es el día a día de recepción.',
+      },
+      {
         type: 'video',
         slot: 'ingresos.recibir',
-        shoot: 'Video: abrir un ingreso pendiente, confirmar una línea y volver a la lista (el documento avanza de estado).',
+        shoot: 'Video 1 — Ingresos',
       },
       {
         type: 'callout',
@@ -342,19 +398,20 @@ export const HELP_CHAPTERS: HelpChapter[] = [
           'Lista de documentos de la sucursal activa',
           'Botón Nueva compra',
           'Estado: pendiente de recepción, parcial o recibido',
+          'Pendiente: Editar o eliminar (ícono basura)',
         ],
       },
       {
         type: 'image',
         slot: 'compras.lista',
-        shoot: 'Foto: listado de Compras con Nueva compra visible y un documento en estado pendiente.',
+        shoot: 'Compras — documentos por sucursal',
       },
       {
         type: 'steps',
         title: 'Registrar una compra',
         items: [
           'Nueva compra, sucursal activa ya viene del header.',
-          'Agrega líneas: prenda, cantidad y Precio costo.',
+          'Agrega líneas: prenda, cantidad y Precio costo (UND).',
           'Guarda. Aún no hay stock en vitrina.',
           'Avisa a piso que recepten en Ingresos.',
         ],
@@ -362,12 +419,17 @@ export const HELP_CHAPTERS: HelpChapter[] = [
       {
         type: 'video',
         slot: 'compras.documento',
-        shoot: 'Video: Nueva compra, una línea con Precio costo, guardar, y decir que falta Ingresos para que entre a stock.',
+        shoot: 'Video 1 — Compras',
       },
       {
         type: 'callout',
         kind: 'ojo',
         text: 'Nueva compra no pone unidades en sala. Sin recepción confirmada, Caja no debería vender esa mercadería.',
+      },
+      {
+        type: 'callout',
+        kind: 'tip',
+        text: 'En la lista puedes filtrar por estado y fechas (como Ingresos). El proveedor se elige o crea con el buscador de proveedores.',
       },
     ],
   },
@@ -385,15 +447,19 @@ export const HELP_CHAPTERS: HelpChapter[] = [
       {
         type: 'see',
         items: [
-          'Lista de tickets (fecha, caja, vendedora, total)',
+          'Lista de tickets (fecha, caja, vendedora, total, medio de pago)',
           'Filtros por fecha o texto',
-          'Detalle para reimprimir o ubicar un voucher de cambio',
+          'Detalle: descuentos, Subtotal / Descuento venta / Total, reimpresión y vouchers',
         ],
       },
       {
         type: 'image',
         slot: 'ventas.filtros',
-        shoot: 'Foto: Historial de ventas con filtros y unas pocas filas. Recorta nombres si no aportan.',
+        shoot: 'Historial de ventas — comprobantes de la sucursal',
+      },
+      {
+        type: 'p',
+        text: 'Al abrir un ticket ves Efectivo o Tarjeta, los descuentos por prenda y, si hubo, el Descuento venta entre Subtotal y Total. Desde ahí puedes reimprimir el comprobante (y tickets de cambio si aún aplican).',
       },
       {
         type: 'p',
@@ -402,7 +468,7 @@ export const HELP_CHAPTERS: HelpChapter[] = [
       {
         type: 'video',
         slot: 'ventas.historial',
-        shoot: 'Video: abrir un ticket del historial y señalar dónde aparece el voucher de cambio (si la venta lo trajo).',
+        shoot: 'Video 1 — Historial de ventas',
       },
     ],
   },
@@ -414,21 +480,26 @@ export const HELP_CHAPTERS: HelpChapter[] = [
     blocks: [
       {
         type: 'p',
-        text: 'El catálogo: nombre, foto, código de la etiqueta, categoría y si permite cambio. Nueva prenda crea la ficha; no carga stock ni Precio costo.',
+        text: 'El catálogo: nombre, foto, código de la etiqueta, categoría, marca y si permite cambio. Nueva prenda crea la ficha; no carga stock ni Precio costo.',
       },
       { type: 'roles', who: ['owner', 'lead', 'seller'] },
       {
         type: 'see',
         items: [
-          'Búsqueda y filtros',
+          'Búsqueda y hoja de filtros (categoría, marca, stock bajo, sin foto…)',
           'Nueva prenda',
-          'En la ficha: foto, código y si es vestido de fiesta',
+          'En la ficha: foto, código, marca y si es vestido de fiesta',
         ],
       },
       {
         type: 'image',
         slot: 'productos.lista',
-        shoot: 'Foto: listado de Productos con Nueva prenda y una ficha abierta (sin precios de costo a la vista si no aplica).',
+        shoot: 'Productos — catálogo y filtros',
+      },
+      { type: 'h', text: 'Marca' },
+      {
+        type: 'p',
+        text: 'En la ficha eliges Marca con un buscador (como el de proveedor en Compras): puedes reutilizar una o crear otra. Se guardan en mayúsculas. También filtras el catálogo por marca.',
       },
       {
         type: 'callout',
@@ -443,7 +514,7 @@ export const HELP_CHAPTERS: HelpChapter[] = [
       {
         type: 'video',
         slot: 'productos.ficha',
-        shoot: 'Video: abrir una ficha y mostrar que el campo de precio de venta está bloqueado (sesión vendedora) o editable (encargada).',
+        shoot: 'Video 1 — Productos',
       },
       {
         type: 'callout',
@@ -467,14 +538,14 @@ export const HELP_CHAPTERS: HelpChapter[] = [
         type: 'see',
         items: [
           'Unidades y valor de sala',
-          'Búsqueda, stock bajo',
+          'Búsqueda y filtros (categoría, stock bajo, foto, control de stock…)',
           'Enlace a Movimientos y, si tu rol lo permite, Ajustar',
         ],
       },
       {
         type: 'image',
         slot: 'stock.lista',
-        shoot: 'Foto: Stock con el nombre de la sucursal activa en el intro, KPIs de unidades/valor y la lista.',
+        shoot: 'Stock — disponibilidad de la sucursal activa',
       },
       {
         type: 'callout',
@@ -484,7 +555,7 @@ export const HELP_CHAPTERS: HelpChapter[] = [
       {
         type: 'video',
         slot: 'stock.vitrina',
-        shoot: 'Video: buscar una prenda en Stock y abrir Movimientos (sin inventar un ajuste si no toca).',
+        shoot: 'Video 1 — Stock',
       },
       {
         type: 'callout',
@@ -515,7 +586,7 @@ export const HELP_CHAPTERS: HelpChapter[] = [
       {
         type: 'image',
         slot: 'inventarios.lista',
-        shoot: 'Foto: listado de Inventarios con Nueva toma y una toma en curso o por conciliar (se ve el número de la toma, no un folio de demo).',
+        shoot: 'Inventarios — conteo en curso',
       },
       {
         type: 'steps',
@@ -530,7 +601,7 @@ export const HELP_CHAPTERS: HelpChapter[] = [
       {
         type: 'video',
         slot: 'inventarios.toma',
-        shoot: 'Video: Nueva toma, pistolear dos prendas y mostrar el conteo. No hace falta aplicar si no quieren mover stock de demo.',
+        shoot: 'Video 1 — Inventarios (conteo)',
       },
       { type: 'h', text: 'Si no cuadra' },
       {
@@ -540,12 +611,12 @@ export const HELP_CHAPTERS: HelpChapter[] = [
       {
         type: 'image',
         slot: 'inventarios.opciones',
-        shoot: 'Foto: detalle de una toma en conciliación, con las tres opciones visibles en una línea que no cuadra.',
+        shoot: 'Inventarios — conciliar diferencias',
       },
       {
         type: 'video',
         slot: 'inventarios.conciliar',
-        shoot: 'Video: señalar las tres opciones y el botón Aplicar conciliación (sin aplicarlo si no corresponde).',
+        shoot: 'Video 2 — Inventarios (conciliación)',
       },
       {
         type: 'callout',
@@ -568,25 +639,25 @@ export const HELP_CHAPTERS: HelpChapter[] = [
       {
         type: 'see',
         items: [
-          'Filtros por fecha y tipo',
-          'Cada fila: prenda, cantidad, quién y hora',
+          'Filtros: tipo, fechas, usuaria, producto y marca',
+          'Cada fila: prenda, marca si hay, cantidad, quién y hora',
           'Si no hay nada: un atajo a Stock (vitrina), no a una toma física',
         ],
       },
       {
         type: 'image',
         slot: 'movimientos.fila',
-        shoot: 'Foto: lista de Movimientos con unas filas de venta e ingreso. Recorta si sale un nombre que no haga falta.',
+        shoot: 'Movimientos — entradas y salidas de la sucursal',
       },
       {
         type: 'video',
         slot: 'movimientos.lista',
-        shoot: 'Video: filtrar por un tipo (por ejemplo venta) y abrir o señalar una fila.',
+        shoot: 'Video 1 — Movimientos',
       },
       {
         type: 'callout',
         kind: 'tip',
-        text: 'No se “carga” un movimiento a mano como en una planilla. Si falta una fila, falta la operación de origen (venta, ingreso, merma o ajuste).',
+        text: 'No se “carga” un movimiento a mano como en una planilla. Si falta una fila, falta la operación de origen (venta, ingreso, merma o ajuste). La marca se filtra igual que en Productos.',
       },
     ],
   },
@@ -609,11 +680,6 @@ export const HELP_CHAPTERS: HelpChapter[] = [
           'Historial con scroll, como el resto de listas de piso',
         ],
       },
-      {
-        type: 'image',
-        slot: 'mermas.tabs',
-        shoot: 'Foto: Mermas con las dos pestañas y el botón Registrar merma o Atender ticket.',
-      },
       { type: 'h', text: 'Merma' },
       {
         type: 'steps',
@@ -625,9 +691,14 @@ export const HELP_CHAPTERS: HelpChapter[] = [
         ],
       },
       {
+        type: 'image',
+        slot: 'mermas.tabs',
+        shoot: 'Mermas — registrar merma',
+      },
+      {
         type: 'video',
         slot: 'mermas.registrar',
-        shoot: 'Video: Registrar merma, pistolear, elegir Pérdida y llegar al confirm (puedes cancelar al final).',
+        shoot: 'Video 1 — Mermas y cambios',
       },
       { type: 'h', text: 'Cambio: voucher, no boleta' },
       {
@@ -637,22 +708,29 @@ export const HELP_CHAPTERS: HelpChapter[] = [
       {
         type: 'image',
         slot: 'mermas.voucher',
-        shoot: 'Foto: modal Atender ticket con el campo del número de voucher, o un comprobante donde se ve el voucher (no la boleta).',
+        shoot: 'Mermas — atender ticket de cambio/devolución',
       },
       {
         type: 'steps',
         title: 'Atender un cambio',
         items: [
           'Atender ticket e ingresa el número del voucher (el del comprobante de cambio).',
-          'Revisa la prenda original.',
-          'Destino: volver a vitrina, pérdida o proveedor.',
-          'Si hay prenda nueva, pistolea la que se lleva la clienta.',
+          'Revisa la prenda original y cuántas unidades quedan del ticket.',
+          'Elige Cambio (prenda nueva al mismo precio, incluso 1:1) o Devolución en efectivo.',
+          'Si hay varias unidades, puedes atender solo una parte (cantidad parcial).',
+          'Destino de la prenda que vuelve: vitrina, pérdida o proveedor.',
+          'Si es cambio, pistolea la prenda que se lleva la clienta.',
         ],
+      },
+      {
+        type: 'callout',
+        kind: 'tip',
+        text: 'Cambio 1:1: misma referencia u otra talla al mismo precio de venta. Devolución en efectivo deja un gasto automático en categoría Devoluciones (aparece en Gastos / Reportes).',
       },
       {
         type: 'video',
         slot: 'mermas.ticket',
-        shoot: 'Video: Atender ticket, buscar por el número del voucher y mostrar los destinos (vitrina / pérdida / proveedor).',
+        shoot: 'Video 2 — Mermas y cambios',
       },
       {
         type: 'callout',
@@ -674,17 +752,21 @@ export const HELP_CHAPTERS: HelpChapter[] = [
       { type: 'roles', who: ['owner'] },
       {
         type: 'see',
-        items: ['Nuevo gasto', 'Lista y totales con filtros', 'Categoría, monto y fecha'],
+        items: ['Nuevo gasto', 'Lista y totales con filtros de fecha/categoría', 'Categoría, monto y fecha'],
+      },
+      {
+        type: 'p',
+        text: 'Las devoluciones en efectivo desde Mermas también crean un gasto en categoría Devoluciones: no lo registres dos veces a mano.',
       },
       {
         type: 'image',
         slot: 'gastos.form',
-        shoot: 'Foto: modal o ficha de Nuevo gasto (categoría y monto), sucursal activa arriba.',
+        shoot: 'Gastos — operativos de la sucursal',
       },
       {
         type: 'video',
         slot: 'gastos.nuevo',
-        shoot: 'Video: Nuevo gasto, completar lo mínimo y guardar (o cancelar si no quieres dejar un gasto de prueba).',
+        shoot: 'Video 1 — Gastos',
       },
     ],
   },
@@ -704,6 +786,7 @@ export const HELP_CHAPTERS: HelpChapter[] = [
         items: [
           'Pestañas: Ventas, Stock, Ingresos, Gastos, Mermas, Pérdida/Ganancia',
           'Chips de período (este mes, este año, mes, año, rango)',
+          'En Ventas: chips Efectivo / Tarjeta (además del período)',
           'Descargar Excel',
         ],
       },
@@ -712,14 +795,19 @@ export const HELP_CHAPTERS: HelpChapter[] = [
         text: 'Pérdida/Ganancia no es el estado de resultados de la tienda: es el resultado de cada toma aplicada (faltante, sobrante y neto a precio de venta). Elige la toma por su número, no por un nombre de archivo.',
       },
       {
+        type: 'callout',
+        kind: 'tip',
+        text: 'El filtro Efectivo / Tarjeta aplica a la vista Ventas del reporte (y al Excel de esa vista). El resto de pestañas usa el período y la sucursal activa.',
+      },
+      {
         type: 'image',
         slot: 'reportes.pg',
-        shoot: 'Foto: pestaña Pérdida/Ganancia con el período y una toma (se lee el número de la toma).',
+        shoot: 'Reportes — ventas del período',
       },
       {
         type: 'video',
         slot: 'reportes.vistas',
-        shoot: 'Video: cambiar de Ventas a Pérdida/Ganancia y pulsar Descargar Excel (puedes cancelar la descarga).',
+        shoot: 'Video 1 — Reportes',
       },
     ],
   },
@@ -749,12 +837,12 @@ export const HELP_CHAPTERS: HelpChapter[] = [
       {
         type: 'image',
         slot: 'ajustes.tabs',
-        shoot: 'Foto: Ajustes en Impresoras (sesión no admin) o con las cuatro pestañas (sesión Administrador/a).',
+        shoot: 'Ajustes — impresoras USB de este computador',
       },
       {
         type: 'video',
         slot: 'ajustes.impresoras',
-        shoot: 'Video: abrir Impresoras y señalar las dos tarjetas (etiquetas vs comprobantes) sin cambiar la configuración de piso si ya está bien.',
+        shoot: 'Video 1 — Ajustes',
       },
       {
         type: 'callout',
@@ -788,14 +876,14 @@ export const HELP_CHAPTERS: HelpChapter[] = [
         text: 'Administrador/a puede cambiar sucursal y caja (solo las asignadas). Encargado/a y Vendedor/a ven la sucursal fija y eligen caja.',
       },
       {
-        type: 'video',
-        slot: 'header.puesto',
-        shoot: 'Video: abrir la píldora de caja y elegir otra caja de la misma sucursal (vuelve a la de piso al terminar).',
-      },
-      {
         type: 'image',
         slot: 'header.campana',
-        shoot: 'Foto: campana abierta con una alerta de ejemplo (stock bajo o voucher), sin pinchar un dato sensible.',
+        shoot: 'Header — alertas de la tienda',
+      },
+      {
+        type: 'video',
+        slot: 'header.puesto',
+        shoot: 'Video 1 — Header',
       },
       {
         type: 'p',
@@ -803,8 +891,13 @@ export const HELP_CHAPTERS: HelpChapter[] = [
       },
       {
         type: 'callout',
+        kind: 'quien',
+        text: 'Administrador/a puede activar alertas push en este dispositivo (banner o Ajustes → Alertas) para recibir avisos aunque no tenga la app abierta. Encargado/a y Vendedor/a usan la campana dentro de la sesión.',
+      },
+      {
+        type: 'callout',
         kind: 'tip',
-        text: 'Antes de la primera venta del turno, mira sucursal y caja. Un clic aquí evita cuadrar mal el cierre.',
+        text: 'Antes de la primera venta del turno, mira sucursal y caja. Un clic aquí evita cuadrar mal el cierre. Si ves el aviso de sesión expirada, vuelve a ingresar.',
       },
     ],
   },

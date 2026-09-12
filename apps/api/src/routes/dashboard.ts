@@ -138,22 +138,26 @@ dashboardRouter.get(
       [branchId],
     );
 
+    // Ventas por categoría: partir de sales filtradas por sucursal (o org consolidada).
+    // Ojo: un LEFT JOIN sales con filtro en el ON dejaba sale_items de otras sucursales
+    // y SUM(si.quantity) las contaba igual (s.id NULL).
     const categorySales = await query(
-      `SELECT c.name,
+      `SELECT COALESCE(c.name, 'Sin categoría') AS name,
               COALESCE(SUM(si.quantity),0)::int AS qty,
               COALESCE(SUM(si.line_total),0)::numeric AS revenue
-       FROM categories c
-       LEFT JOIN products p ON p.category_id = c.id
-       LEFT JOIN sale_items si ON si.product_id = p.id
-       LEFT JOIN sales s ON s.id = si.sale_id AND ${salesFilter}
+       FROM sale_items si
+       JOIN sales s ON s.id = si.sale_id
+       JOIN products p ON p.id = si.product_id
+       LEFT JOIN categories c ON c.id = p.category_id
+       WHERE ${salesFilter}
          AND s.sold_at >= (
            ((timezone('${TZ}', now()))::date - 29)::timestamp
            AT TIME ZONE '${TZ}'
          )
-       WHERE c.organization_id = $2
-       GROUP BY c.id, c.name
+       GROUP BY c.id, COALESCE(c.name, 'Sin categoría')
+       HAVING COALESCE(SUM(si.quantity),0) > 0
        ORDER BY qty DESC`,
-      [param, req.user!.organizationId],
+      [param],
     );
 
     const expensesMonth = await query<{ total: string }>(

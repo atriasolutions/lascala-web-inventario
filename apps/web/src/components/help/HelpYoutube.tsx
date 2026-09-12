@@ -7,13 +7,22 @@ type Props = {
 };
 
 export function HelpYoutube({ videoId, title, shoot }: Props) {
-  const caption = shoot ? (
+  const captionText = (shoot || '').replace(/^(Video|Grabar):\s*/i, '').trim();
+  const ready = isYoutubeReady(videoId);
+
+  const caption = captionText ? (
     <p className="help-media-caption">
-      <strong>Grabar:</strong> {shoot.replace(/^Video:\s*/i, '')}
+      {ready ? (
+        captionText
+      ) : (
+        <>
+          <strong>Grabar:</strong> {captionText}
+        </>
+      )}
     </p>
   ) : null;
 
-  if (!isYoutubeReady(videoId)) {
+  if (!ready) {
     return (
       <div className="help-media">
         <div className="help-media-slot help-media-video" role="status">

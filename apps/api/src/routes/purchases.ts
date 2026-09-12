@@ -485,6 +485,54 @@ purchasesRouter.patch(
 );
 
 /**
+ * Eliminar compra pendiente de recepción (documento sin stock aplicado).
+ * Cascada en purchase_items; no toca inventario.
+ */
+purchasesRouter.delete(
+  '/:id',
+  requireRoles('owner', 'branch_manager', 'seller'),
+  asyncHandler(async (req, res) => {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const purchaseRes = await client.query(
+        `SELECT * FROM purchases WHERE id = $1 AND organization_id = $2 AND destination_branch_id = $3 FOR UPDATE`,
+        [req.params.id, req.user!.organizationId, req.activeBranchId],
+      );
+      const purchase = purchaseRes.rows[0];
+      if (!purchase) throw new HttpError(404, 'Compra no encontrada');
+      if (purchase.status !== 'pending_reception') {
+        throw new HttpError(
+          409,
+          'Solo se puede eliminar una compra pendiente de recepción',
+        );
+      }
+
+      const receivedRes = await client.query<{ received: string }>(
+        `SELECT COALESCE(SUM(quantity_received), 0)::text AS received
+         FROM purchase_items WHERE purchase_id = $1`,
+        [purchase.id],
+      );
+      if (Number(receivedRes.rows[0]?.received || 0) > 0) {
+        throw new HttpError(
+          409,
+          'No se puede eliminar: ya hay unidades recibidas en esta compra',
+        );
+      }
+
+      await client.query(`DELETE FROM purchases WHERE id = $1`, [purchase.id]);
+      await client.query('COMMIT');
+      res.status(204).send();
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+  }),
+);
+
+/**
  * Vincular (o desvincular) productId a una línea de compra.
  * Al vincular: products.cost_price = purchase_items.unit_cost (precio costo).
  */

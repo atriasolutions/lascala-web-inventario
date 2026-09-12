@@ -52,6 +52,8 @@ type Props = {
   moodTitle?: string;
   moodCopy?: string;
   onSubmit?: (payload: ReturnType<typeof toApiPayload>) => Promise<void>;
+  /** Solo en edición de compra Pendiente: muestra «Eliminar» con confirmación. */
+  onDelete?: () => Promise<void>;
 };
 
 const EMPTY: PurchaseFormValues = {
@@ -105,10 +107,13 @@ export function PurchaseDocumentForm({
   moodTitle: _moodTitle = 'Documento de compra',
   moodCopy: _moodCopy = 'Registra factura o boleta y las prendas. La recepción a stock se hace después en Ingresos.',
   onSubmit,
+  onDelete,
 }: Props) {
   void _moodTitle;
   void _moodCopy;
   const readOnly = mode === 'view';
+  const [deleteOpen, setDeleteOpen] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const navigate = useNavigate();
   const { branches, branchId } = useAuth();
   const modalTitleId = useId();
@@ -694,13 +699,25 @@ export function PurchaseDocumentForm({
             )}
             <strong className="ing-money">{money(totalCosto)}</strong>
           </div>
-          <button
-            className="btn"
-            type="submit"
-            disabled={busy || Boolean(editor) || !lines.length}
-          >
-            {busy ? 'Guardando…' : submitLabel}
-          </button>
+          <div className="ing-sticky-actions">
+            {onDelete ? (
+              <button
+                type="button"
+                className="btn secondary"
+                disabled={busy || deleting || Boolean(editor)}
+                onClick={() => setDeleteOpen(true)}
+              >
+                Eliminar
+              </button>
+            ) : null}
+            <button
+              className="btn"
+              type="submit"
+              disabled={busy || deleting || Boolean(editor) || !lines.length}
+            >
+              {busy ? 'Guardando…' : submitLabel}
+            </button>
+          </div>
         </div>
       )}
 
@@ -788,7 +805,7 @@ export function PurchaseDocumentForm({
                       />
                     </div>
                     <div className="field">
-                      <label htmlFor="compra-modal-cost">Precio costo</label>
+                      <label htmlFor="compra-modal-cost">Precio costo (UND)</label>
                       <ChileMoneyInput
                         id="compra-modal-cost"
                         value={editor.unitCost}
@@ -797,7 +814,7 @@ export function PurchaseDocumentForm({
                       />
                     </div>
                     <div className="field">
-                      <label htmlFor="compra-modal-sale">Venta</label>
+                      <label htmlFor="compra-modal-sale">Venta (UND)</label>
                       <ChileMoneyInput
                         id="compra-modal-sale"
                         value={editor.salePrice}
@@ -854,6 +871,37 @@ export function PurchaseDocumentForm({
         danger
         onCancel={() => setLowMarginOpen(false)}
         onConfirm={() => commitLineToList({ skipMarginCheck: true })}
+      />
+      <ConfirmDialog
+        open={deleteOpen}
+        title="Eliminar compra"
+        message="¿Eliminar esta compra? No se puede deshacer."
+        cancelLabel="Cancelar"
+        confirmLabel={deleting ? 'Eliminando…' : 'Eliminar'}
+        danger
+        onCancel={() => {
+          if (!deleting) setDeleteOpen(false);
+        }}
+        onConfirm={() => {
+          if (!onDelete || deleting) return;
+          void (async () => {
+            setDeleting(true);
+            setError('');
+            try {
+              allowLeaveRef.current = true;
+              await onDelete();
+              setDeleteOpen(false);
+              toast.success('Compra eliminada');
+              navigate(backTo);
+            } catch (err) {
+              allowLeaveRef.current = false;
+              setError(err instanceof Error ? err.message : 'No se pudo eliminar');
+              setDeleteOpen(false);
+            } finally {
+              setDeleting(false);
+            }
+          })();
+        }}
       />
     </form>
   );
