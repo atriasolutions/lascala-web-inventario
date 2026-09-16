@@ -65,6 +65,7 @@
   /* Shell */
   --header-h: 56px;
   --bottom-nav-h: 58px;
+  --safe-top: env(safe-area-inset-top, 0px);
   --safe-bottom: env(safe-area-inset-bottom, 0px);
   --bottom-nav-pad: calc(0.7rem + env(safe-area-inset-bottom, 0px));
   --page-pad: var(--space-4);
@@ -197,18 +198,20 @@ a:focus:not(:focus-visible) {
   position: relative;
   flex-shrink: 0;
   z-index: 40;
+  /* Sube al borde del shell; el padding-top suma safe-area + aire bajo el notch */
   margin: -0.75rem calc(var(--page-pad) * -1) 0.85rem;
-  padding: 0.5rem var(--page-pad);
-  padding-top: max(0.5rem, env(safe-area-inset-top));
+  padding: calc(var(--safe-top) + 0.5rem) var(--page-pad) 0.55rem;
   display: flex;
   flex-direction: row;
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
-  background: rgba(255, 248, 251, 0.94);
-  backdrop-filter: blur(14px);
+  /* Opaco: evita blur/transparencia detrás del status bar de iOS */
+  background: #fff8fb;
+  backdrop-filter: none;
+  -webkit-backdrop-filter: none;
   border-bottom: 1px solid var(--color-line);
-  min-height: var(--header-h);
+  min-height: calc(var(--header-h) + var(--safe-top));
 }
 
 .mobile-brand {
@@ -7894,7 +7897,7 @@ button.ing-row-action {
 }
 
 .sales-detail-modal {
-  width: min(520px, calc(100vw - 2rem));
+  width: min(680px, calc(100vw - 2rem));
   max-height: min(88vh, 820px);
   overflow: visible;
   display: flex;
@@ -7952,6 +7955,41 @@ button.ing-row-action {
 .sales-detail-item {
   margin: 0;
 }
+.sales-detail-thumb-wrap {
+  display: none;
+}
+.sales-detail-thumb {
+  appearance: none;
+  border: 1px solid var(--color-line);
+  background: #fff;
+  border-radius: 10px;
+  padding: 0;
+  width: 72px;
+  height: 72px;
+  overflow: hidden;
+  cursor: zoom-in;
+  flex-shrink: 0;
+}
+.sales-detail-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.sales-detail-thumb.is-empty {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: default;
+  background: rgba(230, 0, 126, 0.04);
+}
+.sales-detail-thumb-ph {
+  width: 100%;
+  height: 100%;
+}
+.sales-detail-item-body {
+  min-width: 0;
+}
 .sales-detail-elig {
   display: flex;
   flex-wrap: wrap;
@@ -8003,6 +8041,18 @@ button.ing-row-action {
 }
 .sales-detail-actions {
   margin-top: 1rem;
+}
+
+@media (min-width: 901px) {
+  .sales-detail-item {
+    display: grid;
+    grid-template-columns: 72px minmax(0, 1fr);
+    gap: 0.75rem;
+    align-items: start;
+  }
+  .sales-detail-thumb-wrap {
+    display: block;
+  }
 }
 
 @media (max-width: 640px) {
@@ -12327,6 +12377,14 @@ body.help-mode-touch .main-content {
   min-height: 36px;
   vertical-align: middle;
 }
+.help-mobile-toolbar {
+  display: none;
+}
+.help-mobile-mode-btn {
+  min-height: 40px;
+  width: 100%;
+  justify-content: center;
+}
 .help-layout {
   flex: 1 1 auto;
   min-height: 0;
@@ -12766,7 +12824,33 @@ body.help-mode-touch .main-content {
     min-height: 240px;
   }
 
-  /* Ayuda: botones visibles */
+  /* Ayuda: sin intro largo; chips de capítulos más visibles */
+  .help-lede-desktop {
+    display: none;
+  }
+  .help-mobile-toolbar {
+    display: block;
+    margin: 0;
+  }
+  .help-page {
+    gap: 0.55rem;
+  }
+  .help-index {
+    gap: 0.45rem;
+    padding: 0.15rem 0 0.55rem;
+    margin: 0 -0.15rem;
+    padding-left: 0.15rem;
+    padding-right: 0.15rem;
+    scroll-snap-type: x proximity;
+  }
+  .help-index a {
+    font-size: 0.9rem;
+    font-weight: 700;
+    padding: 0.55rem 1rem;
+    min-height: 46px;
+    scroll-snap-align: start;
+    box-shadow: 0 1px 0 rgba(42, 26, 34, 0.04);
+  }
   .help-lede {
     font-size: 0.88rem;
     line-height: 1.45;

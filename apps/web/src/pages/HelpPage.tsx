@@ -16,13 +16,19 @@ export function HelpPage() {
 
   return (
     <div className="help-page">
-      <p className="admin-lede help-lede">
+      <p className="admin-lede help-lede help-lede-desktop">
         Guía de piso. Elige un capítulo a la izquierda. El botón <strong>?</strong> del header explica
         cada menú sin navegar.{' '}
         <button type="button" className="btn ghost help-lede-btn" onClick={() => setActive(true)}>
           Activar modo ayuda
         </button>
       </p>
+
+      <div className="help-mobile-toolbar mobile-only">
+        <button type="button" className="btn secondary help-mobile-mode-btn" onClick={() => setActive(true)}>
+          Activar modo ayuda
+        </button>
+      </div>
 
       <div className="help-layout">
         <nav className="help-index" aria-label="Capítulos de la guía">

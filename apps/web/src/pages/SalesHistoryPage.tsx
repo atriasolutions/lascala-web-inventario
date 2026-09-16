@@ -6,7 +6,8 @@ import { PosModal } from '../components/PosModal';
 import { SaleThermalPrint } from '../components/SaleThermalPrint';
 import { SortableTh } from '../components/SortableTh';
 import { useInfiniteList } from '../hooks/useInfiniteList';
-import { api, money, moneyClp } from '../lib/api';
+import { api, mediaUrl, money, moneyClp } from '../lib/api';
+import { ProductPhotoPlaceholder } from '../components/ProductPhotoPlaceholder';
 import { useAuth } from '../lib/auth';
 import { loadListFilters, saveListFilters } from '../lib/listFiltersPersist';
 import { withListSort, withPagination } from '../lib/pagination';
@@ -57,6 +58,7 @@ type SaleItem = {
   discount_amount?: number | string;
   allows_exchange: boolean;
   allows_return: boolean;
+  photo_url?: string | null;
 };
 
 type ChangeVoucher = {
@@ -204,6 +206,7 @@ export function SalesHistoryPage() {
   const [vouchers, setVouchers] = useState<ChangeVoucher[]>([]);
   const [detailLoading, setDetailLoading] = useState(false);
   const [includeChangeTickets, setIncludeChangeTickets] = useState(true);
+  const [photoLightbox, setPhotoLightbox] = useState<{ src: string; alt: string } | null>(null);
   const { printJob, setPrintJob, reminder: printReminder } = useSalePrint();
   const detailTitleId = useId();
   const detailPanelRef = useRef<HTMLDivElement>(null);
@@ -890,24 +893,43 @@ export function SalesHistoryPage() {
                 <div className="sales-detail-items">
                   {items.map((i) => {
                     const elig = lineEligibility(i);
+                    const photo = mediaUrl(i.photo_url);
                     return (
                       <div className="list-card sales-detail-item" key={i.id}>
-                        <div className="row">
-                          <strong>{i.name}</strong>
-                          <strong>{money(i.line_total)}</strong>
+                        <div className="sales-detail-thumb-wrap desktop-only">
+                          {photo ? (
+                            <button
+                              type="button"
+                              className="sales-detail-thumb"
+                              onClick={() => setPhotoLightbox({ src: photo, alt: i.name })}
+                              aria-label={`Ampliar foto de ${i.name}`}
+                            >
+                              <img src={photo} alt="" />
+                            </button>
+                          ) : (
+                            <div className="sales-detail-thumb is-empty" aria-hidden>
+                              <ProductPhotoPlaceholder className="sales-detail-thumb-ph" />
+                            </div>
+                          )}
                         </div>
-                        <div className="meta">
-                          {i.internal_code} · {i.quantity} × {money(i.unit_price)}
-                          {i.size_label ? ` · ${i.size_label}` : ''}
-                          {Number(i.discount_pct) > 0
-                            ? ` · Desc. ${Number(i.discount_pct)}% (−${money(i.discount_amount || 0)})`
-                            : ''}
-                        </div>
-                        <div className="meta sales-detail-elig">
-                          <span className={`badge${elig.ok ? ' brand' : ''}`}>
-                            {elig.ok ? 'Elegible: Sí' : 'Elegible: No'}
-                          </span>
-                          <span className="muted">{elig.label}</span>
+                        <div className="sales-detail-item-body">
+                          <div className="row">
+                            <strong>{i.name}</strong>
+                            <strong>{money(i.line_total)}</strong>
+                          </div>
+                          <div className="meta">
+                            {i.internal_code} · {i.quantity} × {money(i.unit_price)}
+                            {i.size_label ? ` · ${i.size_label}` : ''}
+                            {Number(i.discount_pct) > 0
+                              ? ` · Desc. ${Number(i.discount_pct)}% (−${money(i.discount_amount || 0)})`
+                              : ''}
+                          </div>
+                          <div className="meta sales-detail-elig">
+                            <span className={`badge${elig.ok ? ' brand' : ''}`}>
+                              {elig.ok ? 'Elegible: Sí' : 'Elegible: No'}
+                            </span>
+                            <span className="muted">{elig.label}</span>
+                          </div>
                         </div>
                       </div>
                     );
@@ -987,6 +1009,29 @@ export function SalesHistoryPage() {
 
       {printJob ? <SaleThermalPrint job={printJob} /> : null}
       {printReminder}
+
+      {photoLightbox && (
+        <PosModal
+          open
+          className="help-lightbox no-print"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setPhotoLightbox(null);
+          }}
+        >
+          <ModalOverlayClose onClose={() => setPhotoLightbox(null)}>
+            <div
+              className="pos-modal-panel help-lightbox-panel"
+              role="dialog"
+              aria-modal="true"
+              aria-label={photoLightbox.alt}
+              onClick={(e) => e.stopPropagation()}
+            >
+              <p className="help-lightbox-title">{photoLightbox.alt}</p>
+              <img src={photoLightbox.src} alt={photoLightbox.alt} className="help-lightbox-img" />
+            </div>
+          </ModalOverlayClose>
+        </PosModal>
+      )}
     </div>
   );
 }

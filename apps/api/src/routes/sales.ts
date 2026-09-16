@@ -383,7 +383,9 @@ salesRouter.get(
               p.size_label,
               p.color,
               p.allows_exchange,
-              p.allows_return
+              p.allows_return,
+              (SELECT url FROM product_photos ph
+               WHERE ph.product_id = p.id ORDER BY sort_order LIMIT 1) AS photo_url
        FROM sale_items si
        JOIN products p ON p.id = si.product_id
        WHERE si.sale_id = $1
