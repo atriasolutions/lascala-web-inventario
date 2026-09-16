@@ -197,21 +197,28 @@ a:focus:not(:focus-visible) {
 .mobile-header {
   position: relative;
   flex-shrink: 0;
-  z-index: 40;
-  /* Sube al borde del shell; el padding-top suma safe-area + aire bajo el notch */
+  z-index: 50;
+  /* Sube al borde del shell; safe-area DIRECTO (no via var — Safari iOS a menudo resuelve var(env()) en 0) */
   margin: -0.75rem calc(var(--page-pad) * -1) 0.85rem;
-  padding: calc(var(--safe-top) + 0.5rem) var(--page-pad) 0.55rem;
+  padding-right: var(--page-pad);
+  padding-bottom: 0.6rem;
+  padding-left: var(--page-pad);
+  /* Fallback fijo + constant (iOS < 11.2) + env; max evita content bajo el notch si env=0 */
+  padding-top: 3.1rem;
+  padding-top: calc(constant(safe-area-inset-top) + 0.75rem);
+  padding-top: max(3.1rem, calc(env(safe-area-inset-top, 0px) + 0.75rem));
   display: flex;
   flex-direction: row;
   align-items: center;
   justify-content: space-between;
   gap: 0.5rem;
-  /* Opaco: evita blur/transparencia detrás del status bar de iOS */
   background: #fff8fb;
-  backdrop-filter: none;
-  -webkit-backdrop-filter: none;
+  background-color: #fff8fb;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
   border-bottom: 1px solid var(--color-line);
-  min-height: calc(var(--header-h) + var(--safe-top));
+  isolation: isolate;
+  min-height: calc(var(--header-h) + 2.35rem);
 }
 
 .mobile-brand {
@@ -10281,7 +10288,26 @@ button.inv-stat.is-active {
   }
 }
 @media (max-width: 900px) {
-  .desktop-only { display: none !important; }
+  /* Fondo opaco en shell: el radial rosa del body no debe verse bajo el status bar */
+  .app-shell,
+  .main {
+    background-color: #fff8fb;
+  }
+  .main {
+    /* El header gestiona safe-area; evita doble offset raro */
+    padding-top: 0;
+  }
+  .mobile-header {
+    margin-top: 0;
+    margin-left: calc(var(--page-pad) * -1);
+    margin-right: calc(var(--page-pad) * -1);
+    margin-bottom: 0.85rem;
+  }
+  .notif-badge {
+    top: 0;
+    right: 0;
+    transform: translate(25%, -25%);
+  }
 }
 
 @media (prefers-reduced-motion: reduce) {
@@ -12396,8 +12422,11 @@ body.help-mode-touch .main-content {
   display: flex;
   flex-direction: row;
   flex-wrap: nowrap;
+  flex: 0 0 auto; /* no encoger: el chapter no debe tapar/recortar los chips */
+  align-items: stretch;
   gap: 0.35rem;
   overflow-x: auto;
+  overflow-y: visible;
   padding-bottom: 0.35rem;
   -webkit-overflow-scrolling: touch;
   scrollbar-width: thin;
@@ -12410,6 +12439,7 @@ body.help-mode-touch .main-content {
   font-weight: 650;
   padding: 0.45rem 0.85rem;
   min-height: 44px;
+  height: auto;
   display: inline-flex;
   align-items: center;
   border-radius: 999px;
@@ -12831,25 +12861,42 @@ body.help-mode-touch .main-content {
   .help-mobile-toolbar {
     display: block;
     margin: 0;
+    flex: 0 0 auto;
   }
   .help-page {
     gap: 0.55rem;
+    overflow: visible;
+  }
+  .help-layout {
+    overflow: visible;
+    gap: 0.65rem;
   }
   .help-index {
+    flex: 0 0 auto;
     gap: 0.45rem;
-    padding: 0.15rem 0 0.55rem;
-    margin: 0 -0.15rem;
-    padding-left: 0.15rem;
-    padding-right: 0.15rem;
+    min-height: 48px;
+    height: auto;
+    padding: 0.2rem 0.15rem 0.45rem;
+    margin: 0;
     scroll-snap-type: x proximity;
+    overflow-x: auto;
+    overflow-y: visible;
   }
   .help-index a {
     font-size: 0.9rem;
     font-weight: 700;
     padding: 0.55rem 1rem;
     min-height: 46px;
+    line-height: 1.2;
     scroll-snap-align: start;
     box-shadow: 0 1px 0 rgba(42, 26, 34, 0.04);
+  }
+  .help-chapter {
+    flex: 1 1 auto;
+    min-height: 0;
+    /* Solo el artículo scrollea; la nav de chips queda fija arriba */
+    position: relative;
+    z-index: 0;
   }
   .help-lede {
     font-size: 0.88rem;
