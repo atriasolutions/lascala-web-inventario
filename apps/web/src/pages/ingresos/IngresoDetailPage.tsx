@@ -56,6 +56,8 @@ type StageItem = {
 
 type LinkModal = { kind: 'link'; barcode: string; product: ProductHit };
 
+type LabelJob = { name: string; code: string; copies: number };
+
 type CategoryOption = { id: string; name: string };
 
 function lineDisplayName(line: PurchaseItem) {
@@ -135,15 +137,9 @@ export function IngresoDetailPage() {
   const [suggestedBarcode, setSuggestedBarcode] = useState('LS000001');
   const [presetBarcode, setPresetBarcode] = useState<string | null>(null);
   const [noBarcodeBusy, setNoBarcodeBusy] = useState(false);
-  const [printLabel, setPrintLabel] = useState<{ name: string; code: string; copies: number } | null>(
-    null,
-  );
+  const [printLabels, setPrintLabels] = useState<LabelJob[] | null>(null);
   const [labelReminderOpen, setLabelReminderOpen] = useState(false);
-  const [pendingLabel, setPendingLabel] = useState<{
-    name: string;
-    code: string;
-    copies: number;
-  } | null>(null);
+  const [pendingLabels, setPendingLabels] = useState<LabelJob[] | null>(null);
   const [photoPreview, setPhotoPreview] = useState<{ url: string; name: string } | null>(null);
 
   // Modal vincular prenda existente (escáner)
@@ -229,53 +225,94 @@ export function IngresoDetailPage() {
   }, [stagePulse]);
 
   useEffect(() => {
-    if (!printLabel) return;
+    if (!printLabels) return;
     const t = window.setTimeout(() => {
       window.print();
-      setPrintLabel(null);
+      setPrintLabels(null);
     }, 100);
     return () => window.clearTimeout(t);
-  }, [printLabel]);
+  }, [printLabels]);
 
-  async function requestLabelPrint(name: string, code: string, copies = 1) {
-    if (printBusy) return;
-    const n = Math.max(1, Math.min(999, Math.floor(Number(copies) || 1)));
-    const label = { name, code, copies: n };
+  async function requestLabelsPrint(jobs: LabelJob[]) {
+    if (printBusy || jobs.length === 0) return;
+    const queue = jobs.map((j) => ({
+      ...j,
+      copies: Math.max(1, Math.min(999, Math.floor(Number(j.copies) || 1))),
+    }));
     setPrintBusy(true);
+    let sent = 0;
+    let printer = '';
     try {
-      const result = await printLabelJob(name, code, n);
-      if (result.ok) {
-        toast.success(
-          n === 1
-            ? `Etiqueta enviada a ${result.printer}`
-            : `${n} etiquetas enviadas a ${result.printer}`,
-        );
+      for (let i = 0; i < queue.length; i += 1) {
+        const job = queue[i];
+        const result = await printLabelJob(job.name, job.code, job.copies);
+        if (result.ok) {
+          sent += job.copies;
+          printer = result.printer;
+          continue;
+        }
+        if (sent > 0) {
+          toast.warn(`${sent} etiquetas enviadas a ${printer}; las demás irán por el navegador`);
+        } else if (
+          result.reason &&
+          !result.reason.includes('deshabilitado') &&
+          !result.reason.includes('Preferencia')
+        ) {
+          toast.warn(`${result.reason} · Se abrirá el diálogo del navegador`);
+        }
+        setPendingLabels(queue.slice(i));
+        setLabelReminderOpen(true);
         return;
       }
-      if (
-        result.reason &&
-        !result.reason.includes('deshabilitado') &&
-        !result.reason.includes('Preferencia')
-      ) {
-        toast.warn(`${result.reason} · Se abrirá el diálogo del navegador`);
-      }
-      setPendingLabel(label);
-      setLabelReminderOpen(true);
+      toast.success(sent === 1 ? `Etiqueta enviada a ${printer}` : `${sent} etiquetas enviadas a ${printer}`);
     } finally {
       setPrintBusy(false);
     }
   }
 
+  function requestLabelPrint(name: string, code: string, copies = 1) {
+    return requestLabelsPrint([{ name, code, copies }]);
+  }
+
   function confirmLabelPrint() {
-    if (!pendingLabel) return;
+    if (!pendingLabels) return;
     setLabelReminderOpen(false);
-    setPrintLabel(pendingLabel);
-    setPendingLabel(null);
+    setPrintLabels(pendingLabels);
+    setPendingLabels(null);
   }
 
   function cancelLabelPrint() {
     setLabelReminderOpen(false);
-    setPendingLabel(null);
+    setPendingLabels(null);
+  }
+
+  const purchaseLabels = useMemo(() => {
+    const jobs: LabelJob[] = [];
+    let missing = 0;
+    for (const line of lines) {
+      const units = Number(line.quantity_ordered) || 0;
+      const code = line.product_code?.trim();
+      if (!line.product_id || !code) {
+        missing += units;
+        continue;
+      }
+      const base = lineDisplayName(line);
+      const name = line.size_label?.trim() ? `${base} · ${line.size_label.trim()}` : base;
+      jobs.push({ name, code, copies: units });
+    }
+    const total = jobs.reduce((sum, j) => sum + j.copies, 0);
+    return { jobs, total, missing };
+  }, [lines]);
+
+  function printPurchaseLabels() {
+    const { jobs, total, missing } = purchaseLabels;
+    if (total === 0) return;
+    const msg =
+      missing > 0
+        ? `Se imprimirán ${total} etiquetas (una por unidad). ${missing} unidades sin prenda vinculada quedan fuera. ¿Continuar?`
+        : `Se imprimirán ${total} etiquetas (una por unidad). ¿Continuar?`;
+    if (!window.confirm(msg)) return;
+    void requestLabelsPrint(jobs);
   }
 
   const pendingLines = useMemo(
@@ -778,6 +815,17 @@ export function IngresoDetailPage() {
             {receivedSummary.received} de {receivedSummary.ordered} recibidas
           </p>
         </div>
+        {purchase.status !== 'cancelled' && purchaseLabels.total > 0 ? (
+          <button
+            type="button"
+            className="btn secondary"
+            onClick={printPurchaseLabels}
+            disabled={printBusy}
+            title="Imprime una etiqueta por unidad de las prendas vinculadas"
+          >
+            {printBusy ? 'Imprimiendo…' : `Imprimir etiquetas (${purchaseLabels.total})`}
+          </button>
+        ) : null}
       </div>
 
       {!locked && (
@@ -1098,16 +1146,17 @@ export function IngresoDetailPage() {
         </div>
       )}
 
-      {printLabel &&
-        Array.from({ length: printLabel.copies }, (_, i) => (
-          <div key={`lbl-${i}`} className="ing-label-print" aria-hidden>
-            <p className="ing-label-name" title={printLabel.name}>
-              {printLabel.name}
+      {printLabels?.flatMap((job, j) =>
+        Array.from({ length: job.copies }, (_, i) => (
+          <div key={`lbl-${j}-${i}`} className="ing-label-print" aria-hidden>
+            <p className="ing-label-name" title={job.name}>
+              {job.name}
             </p>
-            <ThermalBarcode value={printLabel.code} compact className="ing-label-barcode" />
-            <p className="ing-label-code">{printLabel.code}</p>
+            <ThermalBarcode value={job.code} compact className="ing-label-barcode" />
+            <p className="ing-label-code">{job.code}</p>
           </div>
-        ))}
+        )),
+      )}
 
       <PrintReminderModal
         open={labelReminderOpen}

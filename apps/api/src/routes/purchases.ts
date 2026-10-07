@@ -280,6 +280,7 @@ purchasesRouter.get(
     const items = await query(
        `SELECT pi.*,
          pr.name AS product_name,
+         COALESCE(pr.barcode, pr.internal_code) AS product_code,
          pr.size_label,
          pr.color,
          pr.sale_price,
@@ -293,7 +294,7 @@ purchasesRouter.get(
        FROM purchase_items pi
        LEFT JOIN products pr ON pr.id = pi.product_id
        WHERE pi.purchase_id = $1
-       ORDER BY pi.created_at ASC`,
+       ORDER BY pi.created_at ASC, pr.internal_code ASC NULLS LAST, pi.description ASC`,
       [req.params.id],
     );
     res.json({ purchase: purchase.rows[0], items: items.rows });

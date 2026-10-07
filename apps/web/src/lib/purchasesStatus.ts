@@ -35,6 +35,8 @@ export type PurchaseItem = {
   suggested_sale_price: string | number | null;
   /** Joined from product when linked (backend may omit until wired) */
   product_name?: string | null;
+  /** Código de etiqueta (LS…) del producto vinculado */
+  product_code?: string | null;
   photo_url?: string | null;
   size_label?: string | null;
   color?: string | null;
