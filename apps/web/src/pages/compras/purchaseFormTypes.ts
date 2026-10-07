@@ -11,6 +11,12 @@ export type LineDraft = {
   salePrice: string;
   saleTouched: boolean;
   photoUrl: string | null;
+  /** id de purchase_items cuando la línea ya existe en el API */
+  itemId?: string | null;
+  /** Prenda vinculada (se conserva al editar la compra) */
+  productId?: string | null;
+  /** Nombre · talla · código de la prenda vinculada, solo para mostrar */
+  productLabel?: string | null;
 };
 
 export type LineEditor = LineDraft & { photoBusy: boolean };
@@ -104,6 +110,7 @@ export function toApiPayload(values: PurchaseFormValues) {
     notes: notesPacked || null,
     destinationBranchId: values.destinationBranchId || undefined,
     items: values.lines.map((l) => ({
+      id: l.itemId || undefined,
       description: l.description,
       quantityOrdered: Number(l.quantity),
       unitCost: parseChileMoney(l.unitCost) ?? 0,

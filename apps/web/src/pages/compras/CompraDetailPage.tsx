@@ -43,6 +43,14 @@ function toFormValues(purchase: Purchase, items: PurchaseItem[]): PurchaseFormVa
       salePrice: moneyInput(item.suggested_sale_price ?? ''),
       saleTouched: true,
       photoUrl: item.photo_url || null,
+      itemId: item.id,
+      productId: item.product_id,
+      productLabel: item.product_id
+        ? [item.product_name, item.size_label, item.color, item.product_code]
+            .map((v) => v?.trim())
+            .filter(Boolean)
+            .join(' · ')
+        : null,
     })),
   };
 }

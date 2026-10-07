@@ -394,7 +394,8 @@ purchasesRouter.post(
 
 /**
  * Editar documento + líneas de una compra pendiente de recepción.
- * Reemplaza todas las líneas; no aplica si ya hay recepción parcial/total.
+ * Upsert por id de línea: las existentes conservan product_id, las nuevas entran sin vincular
+ * y las omitidas se eliminan. No aplica si ya hay recepción parcial/total.
  */
 purchasesRouter.patch(
   '/:id',
@@ -410,6 +411,7 @@ purchasesRouter.patch(
         items: z
           .array(
             z.object({
+              id: z.string().uuid().optional().nullable(),
               description: z.string().min(1),
               quantityOrdered: z.number().int().positive(),
               unitCost: z.number().positive(),
@@ -455,22 +457,49 @@ purchasesRouter.patch(
         ],
       );
 
-      await client.query(`DELETE FROM purchase_items WHERE purchase_id = $1`, [purchase.id]);
+      const existingRes = await client.query<{ id: string; product_id: string | null }>(
+        `SELECT id, product_id FROM purchase_items WHERE purchase_id = $1 FOR UPDATE`,
+        [purchase.id],
+      );
+      const existing = new Map(existingRes.rows.map((r) => [r.id, r]));
+      const keptIds = new Set(
+        body.items.map((i) => i.id).filter((v): v is string => Boolean(v && existing.has(v))),
+      );
+
+      const removed = [...existing.keys()].filter((itemId) => !keptIds.has(itemId));
+      if (removed.length) {
+        await client.query(`DELETE FROM purchase_items WHERE purchase_id = $1 AND id = ANY($2::uuid[])`, [
+          purchase.id,
+          removed,
+        ]);
+      }
 
       for (const item of body.items) {
+        const suggested = item.suggestedSalePrice ?? Number((item.unitCost * multiplier).toFixed(2));
+        const photoUrl = item.photoUrl?.trim() || null;
+        const prev = item.id ? existing.get(item.id) : undefined;
+        if (prev) {
+          await client.query(
+            `UPDATE purchase_items
+             SET description = $1, quantity_ordered = $2, unit_cost = $3, suggested_sale_price = $4, photo_url = $5
+             WHERE id = $6 AND purchase_id = $7`,
+            [item.description, item.quantityOrdered, item.unitCost, suggested, photoUrl, prev.id, purchase.id],
+          );
+          if (prev.product_id) {
+            await syncProductCostFromPurchaseItem(
+              client,
+              prev.product_id,
+              req.user!.organizationId,
+              item.unitCost,
+            );
+          }
+          continue;
+        }
         await client.query(
           `INSERT INTO purchase_items
             (purchase_id, product_id, description, quantity_ordered, unit_cost, suggested_sale_price, photo_url)
            VALUES ($1,$2,$3,$4,$5,$6,$7)`,
-          [
-            purchase.id,
-            null,
-            item.description,
-            item.quantityOrdered,
-            item.unitCost,
-            item.suggestedSalePrice ?? Number((item.unitCost * multiplier).toFixed(2)),
-            item.photoUrl?.trim() || null,
-          ],
+          [purchase.id, null, item.description, item.quantityOrdered, item.unitCost, suggested, photoUrl],
         );
       }
 

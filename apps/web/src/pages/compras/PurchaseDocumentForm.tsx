@@ -331,6 +331,9 @@ export function PurchaseDocumentForm({
       salePrice: moneyInput(editor.salePrice),
       saleTouched: editor.saleTouched,
       photoUrl: editor.photoUrl,
+      itemId: editor.itemId,
+      productId: editor.productId,
+      productLabel: editor.productLabel,
     };
     setLines((prev) => {
       if (editorMode === 'edit') return prev.map((l) => (l.key === saved.key ? saved : l));
@@ -614,6 +617,11 @@ export function PurchaseDocumentForm({
                             {line.quantity} ud · Precio costo {money(parseChileMoney(line.unitCost) ?? 0)} · Venta{' '}
                             {money(parseChileMoney(line.salePrice) ?? 0)}
                           </span>
+                          {line.productId ? (
+                            <span className="meta">
+                              <span className="badge success">Vinculada</span> {line.productLabel}
+                            </span>
+                          ) : null}
                         </span>
                         <span className="ing-compact-side">
                           <em>{money(sub)}</em>
@@ -640,6 +648,11 @@ export function PurchaseDocumentForm({
                               {line.quantity} ud · Precio costo {money(parseChileMoney(line.unitCost) ?? 0)} · Venta{' '}
                               {money(parseChileMoney(line.salePrice) ?? 0)}
                             </span>
+                            {line.productId ? (
+                              <span className="meta">
+                                <span className="badge success">Vinculada</span> {line.productLabel}
+                              </span>
+                            ) : null}
                           </span>
                           <span className="ing-compact-side">
                             <em>{money(sub)}</em>

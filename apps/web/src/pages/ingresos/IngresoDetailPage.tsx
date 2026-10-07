@@ -248,7 +248,7 @@ export function IngresoDetailPage() {
         const result = await printLabelJob(job.name, job.code, job.copies);
         if (result.ok) {
           sent += job.copies;
-          printer = result.printer;
+          printer = result.printer ?? printer;
           continue;
         }
         if (sent > 0) {
