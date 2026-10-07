@@ -9,6 +9,7 @@ import { useInfiniteList } from '../hooks/useInfiniteList';
 import { api, mediaUrl, money, moneyClp } from '../lib/api';
 import { ProductPhotoPlaceholder } from '../components/ProductPhotoPlaceholder';
 import { useAuth } from '../lib/auth';
+import { formatDay } from '../lib/civilDate';
 import { loadListFilters, saveListFilters } from '../lib/listFiltersPersist';
 import { withListSort, withPagination } from '../lib/pagination';
 import {
@@ -155,13 +156,7 @@ function fmtDate(d: string) {
   });
 }
 
-function fmtDay(d: string) {
-  return new Date(d).toLocaleDateString('es-CL', {
-    day: '2-digit',
-    month: 'short',
-    year: 'numeric',
-  });
-}
+const fmtDay = (d: string) => formatDay(d);
 
 function lineEligibility(item: SaleItem): { ok: boolean; label: string } {
   if (allowsChangeTicket(item)) {

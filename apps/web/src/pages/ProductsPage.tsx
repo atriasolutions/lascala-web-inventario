@@ -20,6 +20,7 @@ import { PosModal } from '../components/PosModal';
 import { IconPencil, IconTrash } from '../components/icons';
 import { api, mediaUrl, money } from '../lib/api';
 import { useAuth } from '../lib/auth';
+import { formatDay } from '../lib/civilDate';
 import { brandLabel } from '../lib/brandDisplay';
 import { isLeadRole, canRegisterProductCode, CODE_REGISTER_FORBIDDEN } from '../lib/roles';
 import { chileMoneyFromNumber, parseChileMoney } from '../lib/chileMoney';
@@ -1235,13 +1236,7 @@ export function ProductsPage() {
                                   <li key={`${row.purchased_at}-${i}`}>
                                     <strong>{money(row.unit_cost)}</strong>
                                     <span className="muted">
-                                      {row.purchased_at
-                                        ? new Date(row.purchased_at).toLocaleDateString('es-CL', {
-                                            day: '2-digit',
-                                            month: 'short',
-                                            year: 'numeric',
-                                          })
-                                        : 'Sin fecha'}
+                                      {row.purchased_at ? formatDay(row.purchased_at) : 'Sin fecha'}
                                       {row.invoice_number ? ` · Doc. ${row.invoice_number}` : ''}
                                       {row.quantity ? ` · ${row.quantity} un.` : ''}
                                     </span>

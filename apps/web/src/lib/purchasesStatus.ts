@@ -1,4 +1,5 @@
 import { parseChileMoney } from './chileMoney';
+import { formatDay } from './civilDate';
 
 export type PurchaseStatus =
   | 'pending_reception'
@@ -124,13 +125,5 @@ export function purchaseProgress(p: Purchase) {
 }
 
 export function formatDate(iso: string) {
-  try {
-    return new Intl.DateTimeFormat('es-CL', {
-      day: '2-digit',
-      month: 'short',
-      year: 'numeric',
-    }).format(new Date(iso));
-  } catch {
-    return iso;
-  }
+  return formatDay(iso);
 }

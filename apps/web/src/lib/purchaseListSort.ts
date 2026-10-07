@@ -1,3 +1,4 @@
+import { parseDateOrInstant } from './civilDate';
 import { purchaseProgress, purchaseRef, type Purchase } from './purchasesStatus';
 
 export type PurchaseSortKey = 'ref' | 'supplier' | 'progress' | 'date' | 'status';
@@ -26,7 +27,7 @@ function valueFor(p: Purchase, key: PurchaseSortKey): string | number {
       return received / ordered;
     }
     case 'date':
-      return new Date(p.purchased_at || p.created_at).getTime() || 0;
+      return parseDateOrInstant(p.purchased_at || p.created_at).getTime() || 0;
     case 'status':
       return STATUS_ORDER[p.status] ?? 99;
     default:
