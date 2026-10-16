@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { clpExact, sameSalePriceExact } from './exchangePrice';
+import { clpExact, exchangePriceDiff, sameSalePriceExact } from './exchangePrice';
 
 describe('exchangePrice', () => {
   it('redondea a CLP entero', () => {
@@ -12,5 +12,17 @@ describe('exchangePrice', () => {
     expect(sameSalePriceExact(19990, '19990')).toBe(true);
     expect(sameSalePriceExact(19990, 18990)).toBe(false);
     expect(sameSalePriceExact(null, 19990)).toBe(false);
+  });
+
+  it('clasifica diferencia de cambio', () => {
+    expect(exchangePriceDiff(19990, 19990).kind).toBe('same');
+    expect(exchangePriceDiff(19990, 24990)).toEqual({
+      returned: 19990,
+      neu: 24990,
+      diff: 5000,
+      kind: 'more_expensive',
+    });
+    expect(exchangePriceDiff(24990, 19990).kind).toBe('cheaper');
+    expect(exchangePriceDiff(24990, 19990).diff).toBe(-5000);
   });
 });

@@ -17,6 +17,7 @@ import { StocktakesListPage } from './pages/StocktakesListPage';
 import { StocktakeDetailPage } from './pages/StocktakeDetailPage';
 import { MovementsPage } from './pages/MovementsPage';
 import { MermasPage } from './pages/MermasPage';
+import { AbonosPage } from './pages/AbonosPage';
 import { HelpPage } from './pages/HelpPage';
 import { ExpensesPage } from './pages/ExpensesPage';
 import { AdminLayout, AdminHomeRedirect, RequireOwner } from './pages/admin/AdminLayout';
@@ -276,6 +277,14 @@ export const router = createBrowserRouter([
         element: (
           <OnlineOnly>
             <MermasPage />
+          </OnlineOnly>
+        ),
+      },
+      {
+        path: 'abonos',
+        element: (
+          <OnlineOnly>
+            <AbonosPage />
           </OnlineOnly>
         ),
       },

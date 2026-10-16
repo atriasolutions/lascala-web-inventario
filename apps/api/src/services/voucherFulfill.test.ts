@@ -4,6 +4,7 @@ import { HttpError } from '../utils/errors.ts';
 import {
   assertExchangeSameSalePrice,
   clpPesos,
+  computeExchangePriceDiff,
   voucherStockInMovementType,
 } from './voucherFulfill.ts';
 
@@ -13,6 +14,32 @@ describe('clpPesos', () => {
     assert.equal(clpPesos('39990.00'), 39990);
     assert.equal(clpPesos(39990.4), 39990);
     assert.equal(clpPesos(39990.6), 39991);
+  });
+});
+
+describe('computeExchangePriceDiff', () => {
+  it('detecta mismo precio', () => {
+    assert.deepEqual(computeExchangePriceDiff(39990, '39990.00'), {
+      returned: 39990,
+      neu: 39990,
+      diff: 0,
+    });
+  });
+
+  it('detecta prenda más cara (cobrar diferencia)', () => {
+    assert.deepEqual(computeExchangePriceDiff(39990, 45990), {
+      returned: 39990,
+      neu: 45990,
+      diff: 6000,
+    });
+  });
+
+  it('detecta prenda más barata (crédito)', () => {
+    assert.deepEqual(computeExchangePriceDiff(45990, 39990), {
+      returned: 45990,
+      neu: 39990,
+      diff: -6000,
+    });
   });
 });
 
@@ -29,7 +56,6 @@ describe('assertExchangeSameSalePrice', () => {
         assert.ok(err instanceof HttpError);
         assert.equal(err.status, 400);
         assert.match(err.message, /mismo precio de venta/);
-        assert.match(err.message, /39\.990|39990/);
         return true;
       },
     );

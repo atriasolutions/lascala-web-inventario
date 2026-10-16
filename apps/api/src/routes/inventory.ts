@@ -173,6 +173,15 @@ function enrichMovement(row: MovementRow) {
       linkLabel = 'Ver mermas y cambios';
       break;
     }
+    case 'DEPOSIT_HOLD':
+    case 'DEPOSIT_RELEASE': {
+      typeLabel = type === 'DEPOSIT_HOLD' ? 'Abono (retención)' : 'Abono (libera)';
+      originKind = 'other';
+      reasonLabel = row.notes?.trim() || typeLabel;
+      webPath = '/abonos';
+      linkLabel = 'Ver abonos';
+      break;
+    }
     default: {
       typeLabel = type;
       reasonLabel = row.notes?.trim() || type;
@@ -478,6 +487,8 @@ inventoryRouter.get(
          WHEN 'RETURN_IN' THEN 'Devolución'
          WHEN 'EXCHANGE_OUT' THEN 'Cambio (salida)'
          WHEN 'EXCHANGE_IN' THEN 'Cambio (entrada)'
+         WHEN 'DEPOSIT_HOLD' THEN 'Abono (retención)'
+         WHEN 'DEPOSIT_RELEASE' THEN 'Abono (libera)'
          ELSE m.movement_type::text
        END`;
     const movOrder =

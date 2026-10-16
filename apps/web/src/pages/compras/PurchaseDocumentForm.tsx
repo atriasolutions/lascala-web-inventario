@@ -415,7 +415,7 @@ export function PurchaseDocumentForm({
 
   return (
     <form
-      className={`ing-new compras-form${dirty ? ' is-dirty' : ''}`}
+      className={`ing-new compras-form${readOnly ? '' : ' is-editing'}${dirty ? ' is-dirty' : ''}`}
       onSubmit={handleSubmit}
     >
       <div className="ing-new-top">
@@ -690,6 +690,19 @@ export function PurchaseDocumentForm({
 
       {error && <p className="error">{error}</p>}
 
+      {!readOnly && onDelete ? (
+        <div className="compra-delete-zone">
+          <button
+            type="button"
+            className="btn ghost compra-delete-link"
+            disabled={busy || deleting || Boolean(editor)}
+            onClick={() => setDeleteOpen(true)}
+          >
+            <IconTrash size={16} /> Eliminar esta compra
+          </button>
+        </div>
+      ) : null}
+
       {!readOnly && (
         <div
           className={`ing-sticky-bar${dirty ? ' is-dirty' : ''}${listNudge !== 'idle' ? ' is-nudge' : ''}`}
@@ -716,7 +729,7 @@ export function PurchaseDocumentForm({
             {onDelete ? (
               <button
                 type="button"
-                className="btn secondary"
+                className="btn secondary ing-sticky-delete"
                 disabled={busy || deleting || Boolean(editor)}
                 onClick={() => setDeleteOpen(true)}
               >
@@ -746,7 +759,7 @@ export function PurchaseDocumentForm({
       )}
 
       {editor && !readOnly && (
-        <PosModal>
+        <PosModal className="compra-line-sheet">
           <ModalOverlayClose onClose={closeEditor}>
           <div className="ing-line-modal-shell">
             <div
@@ -798,6 +811,7 @@ export function PurchaseDocumentForm({
                     <input
                       id="compra-modal-desc"
                       ref={descRef}
+                      enterKeyHint="next"
                       value={editor.description}
                       onChange={(e) => patchEditor({ description: e.target.value })}
                       autoComplete="off"
@@ -806,13 +820,14 @@ export function PurchaseDocumentForm({
                   </div>
                   <div className="ing-line-grid-3">
                     <div className="field">
-                      <label htmlFor="compra-modal-qty">Cant.</label>
+                      <label htmlFor="compra-modal-qty">Cantidad</label>
                       <input
                         id="compra-modal-qty"
                         type="number"
                         min={1}
                         step={1}
                         inputMode="numeric"
+                        enterKeyHint="next"
                         value={editor.quantity}
                         onChange={(e) => patchEditor({ quantity: e.target.value })}
                       />
@@ -821,6 +836,7 @@ export function PurchaseDocumentForm({
                       <label htmlFor="compra-modal-cost">Precio costo (UND)</label>
                       <ChileMoneyInput
                         id="compra-modal-cost"
+                        enterKeyHint="next"
                         value={editor.unitCost}
                         onChange={(unitCost) => setEditorCost(unitCost)}
                         placeholder="0"
@@ -830,15 +846,22 @@ export function PurchaseDocumentForm({
                       <label htmlFor="compra-modal-sale">Venta (UND)</label>
                       <ChileMoneyInput
                         id="compra-modal-sale"
+                        enterKeyHint="done"
                         value={editor.salePrice}
                         onChange={(salePrice) =>
                           patchEditor({ salePrice, saleTouched: true })
                         }
                         placeholder="0"
                       />
+                      <MarginHint
+                        className="ing-line-margin ing-line-margin--inline"
+                        cost={parseChileMoney(editor.unitCost)}
+                        sale={parseChileMoney(editor.salePrice)}
+                      />
                     </div>
                   </div>
                   <MarginHint
+                    className="ing-line-margin ing-line-margin--block"
                     cost={parseChileMoney(editor.unitCost)}
                     sale={parseChileMoney(editor.salePrice)}
                   />

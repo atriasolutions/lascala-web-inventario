@@ -46,7 +46,12 @@ export function PaymentMethodSwitch({
               aria-checked={active}
               disabled={disabled}
               className={`payment-method-segment${active ? ' is-active' : ''}`}
-              onClick={() => onChange(opt.id)}
+              onPointerDown={(e) => e.stopPropagation()}
+              onClick={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                onChange(opt.id);
+              }}
             >
               {opt.label}
             </button>

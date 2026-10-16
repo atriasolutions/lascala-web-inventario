@@ -68,6 +68,7 @@ const navSections: { id: string; label: string; items: NavItem[] }[] = [
     label: 'Tienda',
     items: [
       { to: '/vender', label: 'Ventas', icon: IconPos, helpKey: 'nav.caja' },
+      { to: '/abonos', label: 'Abonos', icon: IconWallet, helpKey: 'nav.abonos' },
       { to: '/ingresos', label: 'Ingresos', icon: IconTruck, helpKey: 'nav.ingresos' },
       { to: '/mermas', label: 'Mermas y cambios', icon: IconAlertTriangle, helpKey: 'nav.mermas' },
     ],
@@ -437,7 +438,7 @@ export function AppShell() {
           </nav>
           <div className="nav-sidebar-footer">
             <NavLink
-              to={helpNavItem.to}
+              to={location.pathname.startsWith('/abonos') ? '/ayuda/abonos' : helpNavItem.to}
               data-help={helpNavItem.helpKey}
               className={({ isActive }) =>
                 `nav-footer-link nav-help-link${isActive ? ' active' : ''}${offlineNavClass(helpNavItem.to)}`

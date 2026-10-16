@@ -30,6 +30,8 @@ export function PosModal({
   role = 'presentation',
 }: Props) {
   const rootRef = useRef<HTMLDivElement>(null);
+  /** El click solo cierra si empezó y terminó en el fondo. Si el panel cambia de alto (p. ej. Efectivo → Tarjeta) el mouseup cae en el overlay y el click se dispara en el ancestro común. */
+  const pressedOverlay = useRef(false);
   useModalScrollLock(open);
   usePosModalViewport(open, rootRef);
 
@@ -38,7 +40,20 @@ export function PosModal({
   const classes = ['pos-modal', 'open', className].filter(Boolean).join(' ');
 
   return createPortal(
-    <div ref={rootRef} className={classes} role={role} onClick={onClick}>
+    <div
+      ref={rootRef}
+      className={classes}
+      role={role}
+      onPointerDown={(e) => {
+        pressedOverlay.current = e.target === e.currentTarget;
+      }}
+      onClick={(e) => {
+        const onBackdrop = pressedOverlay.current && e.target === e.currentTarget;
+        pressedOverlay.current = false;
+        if (!onBackdrop) return;
+        onClick?.(e);
+      }}
+    >
       {children}
     </div>,
     document.body,

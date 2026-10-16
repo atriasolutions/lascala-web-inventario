@@ -116,3 +116,85 @@ export function useSalePrint() {
 
   return { printJob, setPrintJob, reminder };
 }
+
+/**
+ * Imprime el `.sale-print-root` ya montado (comprobantes que no son venta).
+ * Mismo camino: Agent → QZ → diálogo del navegador.
+ */
+export function useMountedReceiptPrint(active: boolean, onDone: () => void, epoch = 0) {
+  const [reminderOpen, setReminderOpen] = useState(false);
+  const attempted = useRef(false);
+  const epochRef = useRef(epoch);
+  const onDoneRef = useRef(onDone);
+  onDoneRef.current = onDone;
+
+  const finish = useCallback(() => {
+    setReminderOpen(false);
+    attempted.current = false;
+    onDoneRef.current();
+  }, []);
+
+  const browserPrint = useCallback(() => {
+    setReminderOpen(false);
+    const prevTitle = document.title;
+    document.title = ' ';
+    window.setTimeout(() => {
+      window.print();
+      document.title = prevTitle;
+      finish();
+    }, 80);
+  }, [finish]);
+
+  useEffect(() => {
+    if (epochRef.current !== epoch) {
+      epochRef.current = epoch;
+      attempted.current = false;
+    }
+    if (!active) {
+      attempted.current = false;
+      return;
+    }
+    if (attempted.current) return;
+    attempted.current = true;
+    let cancelled = false;
+
+    void (async () => {
+      await waitFrames(3);
+      await new Promise((r) => window.setTimeout(r, 120));
+      if (cancelled) return;
+      const root = document.querySelector('.sale-print-root');
+      if (!root) {
+        toast.error('No se pudo armar el comprobante para imprimir');
+        if (!cancelled) setReminderOpen(true);
+        return;
+      }
+      const html = wrapReceiptHtml(root.innerHTML);
+      const result = await printReceiptJob(html);
+      if (cancelled) return;
+      if (result.ok) {
+        toast.success(`Comprobante enviado a ${result.printer}`);
+        finish();
+        return;
+      }
+      const reason = (result.reason || 'No se pudo imprimir el comprobante').trim();
+      const preferBrowser = /Preferencia|diálogo del navegador/i.test(reason);
+      if (/Falta impresora|Sin impresora|No hay impresora/i.test(reason)) toast.error(reason);
+      else if (preferBrowser) toast.warn('Se abrirá el diálogo del navegador para imprimir el comprobante');
+      else toast.warn(`${reason} · Se abrirá el diálogo del navegador`);
+      if (!cancelled) setReminderOpen(true);
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [active, finish, epoch]);
+
+  const reminder = createElement(PrintReminderModal, {
+    open: reminderOpen,
+    profile: 'receipts',
+    onConfirm: browserPrint,
+    onCancel: finish,
+  });
+
+  return { reminder };
+}

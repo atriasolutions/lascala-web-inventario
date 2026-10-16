@@ -17,7 +17,8 @@ import { SaleThermalPrint } from '../components/SaleThermalPrint';
 import { ColorSwatch } from '../components/ColorSwatch';
 import { PaymentMethodSwitch } from '../components/PaymentMethodSwitch';
 import { ProductPhotoPlaceholder } from '../components/ProductPhotoPlaceholder';
-import { api, mediaUrl, money } from '../lib/api';
+import { api, mediaUrl, money, userFacingError } from '../lib/api';
+import { formatDay } from '../lib/civilDate';
 import { useAuth } from '../lib/auth';
 import { parseChileMoney } from '../lib/chileMoney';
 import { useNetworkStatus } from '../lib/networkStatus';
@@ -53,6 +54,7 @@ type Product = {
   allows_exchange?: boolean;
   allows_return?: boolean;
   barcode?: string | null;
+  tracks_stock?: boolean;
 };
 
 function fromCatalog(p: PosCatalogProduct): Product {
@@ -69,6 +71,7 @@ function fromCatalog(p: PosCatalogProduct): Product {
     allows_exchange: p.allows_exchange,
     allows_return: p.allows_return,
     barcode: p.barcode,
+    tracks_stock: p.tracks_stock,
   };
 }
 
@@ -200,6 +203,12 @@ function StagePhoto({ product }: { product: Product }) {
   );
 }
 
+function maskCoupon(code: string | null | undefined): string {
+  const c = String(code ?? '').trim();
+  if (c.length < 4) return '····';
+  return `${c.slice(0, 2)}····${c.slice(-2)}`;
+}
+
 export function PosPage() {
   const { posId, branchId } = useAuth();
   const { online } = useNetworkStatus();
@@ -231,6 +240,14 @@ export function PosPage() {
   const [paymentMethod, setPaymentMethod] = useState<PaymentMethod>('cash');
   const [cashTendered, setCashTendered] = useState('');
   const [globalDiscountPct, setGlobalDiscountPct] = useState<SaleDiscountPct>(0);
+  const [couponCode, setCouponCode] = useState('');
+  const [storeCredit, setStoreCredit] = useState<{
+    id: string;
+    barcode: string;
+    redeemCode?: string | null;
+    amount: string;
+    expires_at: string;
+  } | null>(null);
 
   const [searchOpen, setSearchOpen] = useState(false);
   const [searchQ, setSearchQ] = useState('');
@@ -238,6 +255,7 @@ export function PosPage() {
   const [searchLoading, setSearchLoading] = useState(false);
 
   const barcodeRef = useRef<HTMLInputElement>(null);
+  const cartTotalRef = useRef(0);
   const searchInputRef = useRef<HTMLInputElement>(null);
   const modalPanelRef = useRef<HTMLDivElement>(null);
   const confirmCancelRef = useRef<HTMLButtonElement>(null);
@@ -289,6 +307,20 @@ export function PosPage() {
   }
 
   function addProduct(product: Product) {
+    if (product.tracks_stock !== false) {
+      const stock = stockOf(product);
+      const existing = cart.find((c) => c.product.id === product.id);
+      const nextQty = (existing?.quantity ?? 0) + 1;
+      if (stock != null && nextQty > stock) {
+        toast.error(
+          stock <= 0
+            ? `No hay unidades de ${product.name} en esta sucursal`
+            : `Solo hay ${stock} ${stock === 1 ? 'unidad' : 'unidades'} de ${product.name} en esta sucursal`,
+        );
+        focusBarcode();
+        return;
+      }
+    }
     setCart((prev) => {
       const idx = prev.findIndex((c) => c.product.id === product.id);
       if (idx >= 0) {
@@ -316,11 +348,91 @@ export function PosPage() {
     return () => window.clearTimeout(t);
   }, [stagePulse]);
 
+  async function applyStoreCreditCode(raw: string, opts?: { keepFocus?: boolean }) {
+    const data = await api<{
+      credit: {
+        id: string;
+        barcode: string;
+        redeemCode?: string | null;
+        amount: string;
+        expires_at: string;
+      };
+    }>(`/api/sales/store-credits/lookup/${encodeURIComponent(raw)}`);
+    const amount = Math.round(Number(data.credit.amount) || 0);
+    if (amount <= 0) {
+      toast.error('Cupón inválido');
+      return;
+    }
+    setStoreCredit({
+      id: data.credit.id,
+      barcode: data.credit.barcode,
+      redeemCode: data.credit.redeemCode,
+      amount: data.credit.amount,
+      expires_at: data.credit.expires_at,
+    });
+    setCouponCode('');
+    if (amount > cartTotalRef.current) {
+      toast.error(
+        `El cupón (${money(amount)}) es mayor al total del carrito. No aplica.`,
+      );
+    } else {
+      toast.success(
+        `Cupón aplicado · ${money(amount)} (vence ${formatDay(data.credit.expires_at)})`,
+      );
+    }
+    if (!opts?.keepFocus) {
+      setCode('');
+      if (barcodeRef.current) barcodeRef.current.value = '';
+      focusBarcode();
+    }
+  }
+
+  async function onApplyCoupon(e?: FormEvent) {
+    e?.preventDefault();
+    const raw = couponCode.trim();
+    if (!raw) return;
+    if (!online) {
+      toast.error('El cupón requiere conexión');
+      return;
+    }
+    if (/^CR-?\d+$/i.test(raw)) {
+      toast.error('El folio CR no es el cupón. Usa el código del comprobante.');
+      return;
+    }
+    try {
+      await applyStoreCreditCode(raw, { keepFocus: true });
+    } catch (err) {
+      toast.error(userFacingError(err, 'Cupón no válido'));
+    }
+  }
+
   async function addByCode(e?: FormEvent) {
     e?.preventDefault();
     // Pistola: Enter llega antes de que React flushee onChange → leer el DOM.
     const raw = (barcodeRef.current?.value ?? code).trim();
     if (!raw) return;
+
+    if (/^CR-?\d+$/i.test(raw)) {
+      toast.error('El folio CR no es el cupón. En Finalizar venta pega el código del comprobante.');
+      setCode('');
+      if (barcodeRef.current) barcodeRef.current.value = '';
+      focusBarcode();
+      return;
+    }
+    if (/^[ABCDEFGHJKLMNPQRSTUVWXYZ23456789]{12}$/i.test(raw.replace(/\s+/g, ''))) {
+      if (!online) {
+        toast.error('El cupón requiere conexión');
+        focusBarcode();
+        return;
+      }
+      try {
+        await applyStoreCreditCode(raw);
+      } catch (err) {
+        toast.error(userFacingError(err, 'Cupón no válido'));
+        focusBarcode();
+      }
+      return;
+    }
 
     // Offline: solo catálogo local.
     if (!online) {
@@ -379,16 +491,36 @@ export function PosPage() {
   );
 
   const total = totals.total;
+  cartTotalRef.current = total;
+  const creditAmount = storeCredit ? Math.round(Number(storeCredit.amount) || 0) : 0;
+  const creditApplies = creditAmount > 0 && creditAmount <= total;
+  const creditBlocked = creditAmount > 0 && creditAmount > total;
+  const payableTotal = creditApplies ? Math.max(0, total - creditAmount) : total;
 
   const cashPaid = parseChileMoney(cashTendered);
   const cashShortfall =
-    paymentMethod === 'cash' && cashPaid != null ? Math.max(0, total - cashPaid) : null;
+    paymentMethod === 'cash' && cashPaid != null ? Math.max(0, payableTotal - cashPaid) : null;
   const cashChange =
-    paymentMethod === 'cash' && cashPaid != null ? Math.max(0, cashPaid - total) : null;
+    paymentMethod === 'cash' && cashPaid != null ? Math.max(0, cashPaid - payableTotal) : null;
   const cashInsufficient =
-    paymentMethod === 'cash' && (cashPaid == null || cashPaid < total);
+    paymentMethod === 'cash' && (cashPaid == null || cashPaid < payableTotal);
 
   function bumpQty(id: string, delta: number) {
+    if (delta > 0) {
+      const line = cart.find((c) => c.product.id === id);
+      if (line && line.product.tracks_stock !== false) {
+        const stock = stockOf(line.product);
+        if (stock != null && line.quantity + delta > stock) {
+          toast.error(
+            stock <= 0
+              ? `No hay unidades de ${line.product.name} en esta sucursal`
+              : `Solo hay ${stock} ${stock === 1 ? 'unidad' : 'unidades'} de ${line.product.name} en esta sucursal`,
+          );
+          focusBarcode();
+          return;
+        }
+      }
+    }
     setCart((prev) =>
       prev
         .map((c) => (c.product.id === id ? { ...c, quantity: c.quantity + delta } : c))
@@ -407,6 +539,8 @@ export function PosPage() {
     setCart([]);
     setStage(null);
     setGlobalDiscountPct(0);
+    setStoreCredit(null);
+    setCouponCode('');
     setCashTendered('');
     setConfirmOpen(false);
     focusBarcode();
@@ -449,13 +583,19 @@ export function PosPage() {
 
   async function confirmFinalize() {
     if (!posId || !cart.length || !branchId) return;
+    if (creditBlocked) {
+      toast.error(
+        `El crédito (${money(creditAmount)}) es mayor al total del carrito. No aplica.`,
+      );
+      return;
+    }
     if (paymentMethod === 'cash') {
       const paid = parseChileMoney(cashTendered);
-      if (paid == null || paid < total) {
+      if (paid == null || paid < payableTotal) {
         toast.warn(
           paid == null
             ? 'Indica con cuánto paga la clienta'
-            : `Faltan ${money(total - paid)} para cubrir el total`,
+            : `Faltan ${money(payableTotal - paid)} para cubrir el total`,
         );
         return;
       }
@@ -496,6 +636,8 @@ export function PosPage() {
         setCart([]);
         setStage(null);
         setGlobalDiscountPct(0);
+        setStoreCredit(null);
+    setCouponCode('');
         setLiveMsg('Venta guardada offline');
         focusBarcode();
         return;
@@ -509,6 +651,7 @@ export function PosPage() {
             posId,
             paymentMethod,
             discountPct: globalDiscountPct,
+            storeCreditId: creditApplies && storeCredit ? storeCredit.id : null,
             items: cart.map((c) => ({
               productId: c.product.id,
               quantity: c.quantity,
@@ -543,6 +686,8 @@ export function PosPage() {
       setCart([]);
       setStage(null);
       setGlobalDiscountPct(0);
+      setStoreCredit(null);
+    setCouponCode('');
       setLiveMsg('Venta registrada');
       focusBarcode();
     } catch (err) {
@@ -927,6 +1072,18 @@ export function PosPage() {
                         type="button"
                         onClick={() => bumpQty(c.product.id, 1)}
                         aria-label="Más"
+                        disabled={
+                          c.product.tracks_stock !== false &&
+                          stockOf(c.product) != null &&
+                          c.quantity >= (stockOf(c.product) as number)
+                        }
+                        title={
+                          c.product.tracks_stock !== false &&
+                          stockOf(c.product) != null &&
+                          c.quantity >= (stockOf(c.product) as number)
+                            ? `Solo hay ${stockOf(c.product)} en esta sucursal`
+                            : undefined
+                        }
                       >
                         +
                       </button>
@@ -1110,8 +1267,52 @@ export function PosPage() {
                     : ''}
                 </p>
               ) : null}
+              {storeCredit ? (
+                <p className={`pos-finalize-sub${creditBlocked ? ' error' : ' muted'}`}>
+                  Cupón {maskCoupon(storeCredit.redeemCode)} −{money(creditAmount)}
+                  {creditBlocked
+                    ? ' · mayor al carrito (no aplica)'
+                    : ` · vence ${formatDay(storeCredit.expires_at)}`}
+                  {' · '}
+                  <button
+                    type="button"
+                    className="btn ghost"
+                    style={{ padding: 0, minHeight: 0, fontSize: 'inherit' }}
+                    onClick={() => {
+                      setStoreCredit(null);
+                      setCouponCode('');
+                    }}
+                    disabled={busy}
+                  >
+                    Quitar
+                  </button>
+                </p>
+              ) : (
+                <form className="field pos-finalize-coupon" onSubmit={(e) => void onApplyCoupon(e)}>
+                  <label htmlFor="pos-coupon">Cupón de descuento</label>
+                  <div className="scan-row">
+                    <input
+                      id="pos-coupon"
+                      value={couponCode}
+                      onChange={(e) => setCouponCode(e.target.value)}
+                      placeholder="Pistolea o pega el código"
+                      autoComplete="off"
+                      disabled={busy || !online}
+                    />
+                    <button type="submit" className="btn" disabled={busy || !couponCode.trim()}>
+                      Aplicar
+                    </button>
+                  </div>
+                </form>
+              )}
               <p className="pos-finalize-total">
-                Total <strong>{money(total)}</strong>
+                Total <strong>{money(payableTotal)}</strong>
+                {creditApplies ? (
+                  <span className="muted" style={{ fontWeight: 400, fontSize: '0.85rem' }}>
+                    {' '}
+                    (antes {money(total)})
+                  </span>
+                ) : null}
               </p>
               <PaymentMethodSwitch
                 value={paymentMethod}
@@ -1228,7 +1429,7 @@ export function PosPage() {
                 type="button"
                 className="btn"
                 onClick={() => void confirmFinalize()}
-                disabled={busy || cashInsufficient}
+                disabled={busy || cashInsufficient || creditBlocked}
               >
                 {busy ? 'Procesando…' : online ? 'Confirmar e imprimir' : 'Guardar en este equipo'}
               </button>

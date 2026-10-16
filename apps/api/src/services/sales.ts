@@ -13,8 +13,10 @@ import {
   nextReceiptNumber,
   nextVoucherNumberWithClient,
 } from './inventory.js';
+import { redeemStoreCreditWithClient } from './storeCredits.js';
 import { HttpError } from '../utils/errors.js';
 import { CHILE_TZ } from '../utils/chileDate.js';
+import { clpPesos } from './voucherFulfill.js';
 
 export type CreateSaleItemInput = {
   productId: string;
@@ -43,6 +45,10 @@ export type CreateSaleParams = {
   /** Notas en inventory_movements (auditoría offline) */
   movementNotes?: string | null;
   offlineSyncedAt?: string | Date | null;
+  /** Crédito de tienda CR###### (descuento absoluto; un solo uso). */
+  storeCreditId?: string | null;
+  /** Si true, no mueve stock (p. ej. abono ya hizo hold; el caller hace release+SALE_OUT). */
+  skipStock?: boolean;
 };
 
 export type CreatedSaleResult = {
@@ -123,7 +129,7 @@ export async function createSaleWithClient(
     discountPct = g.discountPct;
     total = g.total;
   } else if (params.discount != null && Number(params.discount) > 0) {
-    // Legacy: monto absoluto sin %
+    // Legacy / crédito / abono: monto absoluto sin %
     subtotal = saleGlobalAmounts(
       lineData.map((l) => l.lineTotal),
       0,
@@ -140,6 +146,40 @@ export async function createSaleWithClient(
     discount = 0;
     discountPct = 0;
     total = g.total;
+  }
+
+  let saleNotes = params.notes ?? null;
+  let cartTotalBeforeCredit = total;
+
+  if (params.storeCreditId) {
+    cartTotalBeforeCredit = total;
+    const todayRes = await client.query<{ d: string }>(
+      `SELECT (timezone($1, now()))::date::text AS d`,
+      [CHILE_TZ],
+    );
+    const todayCl = todayRes.rows[0]?.d || new Date().toISOString().slice(0, 10);
+    const peek = await client.query<{ amount: string; barcode: string; status: string; expires_at: string }>(
+      `SELECT amount::text, barcode, status, expires_at::text
+       FROM store_credits
+       WHERE id = $1 AND organization_id = $2 AND branch_id = $3
+       FOR UPDATE`,
+      [params.storeCreditId, params.organizationId, params.branchId],
+    );
+    if (!peek.rows[0]) throw new HttpError(404, 'Crédito no encontrado');
+    if (peek.rows[0].status !== 'open') throw new HttpError(400, 'Este crédito no está disponible');
+    if (peek.rows[0].expires_at < todayCl) throw new HttpError(400, 'Este crédito está vencido');
+    const creditAmount = clpPesos(peek.rows[0].amount);
+    if (creditAmount > cartTotalBeforeCredit) {
+      throw new HttpError(
+        400,
+        `El crédito ($${creditAmount.toLocaleString('es-CL')}) es mayor al total del carrito. No aplica.`,
+      );
+    }
+    total = Math.max(cartTotalBeforeCredit - creditAmount, 0);
+    discount = Math.max(0, subtotal - total);
+    discountPct = 0;
+    const creditNote = `Crédito ${peek.rows[0].barcode} −$${creditAmount.toLocaleString('es-CL')}`;
+    saleNotes = saleNotes ? `${saleNotes} · ${creditNote}` : creditNote;
   }
 
   const receiptNumber = await nextReceiptNumber(params.organizationId);
@@ -175,7 +215,7 @@ export async function createSaleWithClient(
       discount,
       discountPct,
       total,
-      params.notes ?? null,
+      saleNotes,
       soldAt?.toISOString() ?? null,
       params.clientSaleId ?? null,
       params.offlineSyncedAt
@@ -186,6 +226,21 @@ export async function createSaleWithClient(
   );
   const sale = saleRes.rows[0];
   const vouchers: Record<string, unknown>[] = [];
+
+  if (params.storeCreditId) {
+    const todayRes = await client.query<{ d: string }>(
+      `SELECT (timezone($1, now()))::date::text AS d`,
+      [CHILE_TZ],
+    );
+    await redeemStoreCreditWithClient(client, {
+      organizationId: params.organizationId,
+      branchId: params.branchId,
+      storeCreditId: params.storeCreditId,
+      saleId: sale.id,
+      saleTotalBeforeCredit: cartTotalBeforeCredit,
+      todayCl: todayRes.rows[0]?.d || new Date().toISOString().slice(0, 10),
+    });
+  }
 
   for (const line of lineData) {
     const itemRes = await client.query(
@@ -203,7 +258,7 @@ export async function createSaleWithClient(
       ],
     );
 
-    if (line.tracksStock) {
+    if (line.tracksStock && !params.skipStock) {
       await applyStockDeltaWithClient(client, {
         organizationId: params.organizationId,
         branchId: params.branchId,

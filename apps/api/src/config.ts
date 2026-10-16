@@ -2,6 +2,17 @@ import dotenv from 'dotenv';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
+function corsOrigins() {
+  const raw = process.env.CORS_ORIGIN || 'http://localhost:5173';
+  const list = raw.split(',').map((s) => s.trim()).filter(Boolean);
+  const twins = list.flatMap((origin) => {
+    if (origin.includes('://localhost:')) return [origin.replace('://localhost:', '://127.0.0.1:')];
+    if (origin.includes('://127.0.0.1:')) return [origin.replace('://127.0.0.1:', '://localhost:')];
+    return [];
+  });
+  return [...new Set([...list, ...twins])];
+}
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 dotenv.config({ path: path.resolve(__dirname, '../../../.env') });
 dotenv.config();
@@ -13,7 +24,7 @@ export const env = {
   jwtExpiresIn: process.env.JWT_EXPIRES_IN || '12h',
   /** PWA instalada (standalone móvil). Escritorio / Chrome normal usa jwtExpiresIn. */
   jwtPersistentExpiresIn: process.env.JWT_PERSISTENT_EXPIRES_IN || '10y',
-  corsOrigin: process.env.CORS_ORIGIN || 'http://localhost:5173',
+  corsOrigin: corsOrigins(),
   /** Origen del SPA (links / CORS). */
   webOrigin: process.env.WEB_ORIGIN || process.env.CORS_ORIGIN || 'http://localhost:5173',
   /** Web Push (VAPID). Generar con: npx web-push generate-vapid-keys */

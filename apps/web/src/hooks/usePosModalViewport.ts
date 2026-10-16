@@ -41,9 +41,12 @@ export function usePosModalViewport(
       root.style.setProperty('--vv-left', `${vv.offsetLeft}px`);
       root.style.setProperty('--vv-height', `${vv.height}px`);
       root.style.setProperty('--vv-width', `${vv.width}px`);
+      root.dataset.kb = window.innerHeight - vv.height > 140 ? '1' : '0';
     };
 
-    const scrollFieldIntoBody = (target: HTMLElement) => {
+    const scrollFieldIntoBody = (input: HTMLElement) => {
+      // Label + input (+ hint) visibles juntos, no solo el input
+      const target = (input.closest('.field') as HTMLElement | null) ?? input;
       const bodies = root.querySelectorAll(SCROLL_BODY_SEL);
       let scroller: HTMLElement | null = null;
       for (const node of bodies) {
@@ -60,8 +63,15 @@ export function usePosModalViewport(
 
       const t = target.getBoundingClientRect();
       const s = scroller.getBoundingClientRect();
-      const pad = 20;
-      if (t.bottom > s.bottom - pad) {
+      const pad = 16;
+      if (t.height > s.height - pad * 2) {
+        // Campo más alto que el área visible: priorizar label + input
+        const i = input.getBoundingClientRect();
+        scroller.scrollTop += t.top - (s.top + pad);
+        if (i.bottom - (t.top - (s.top + pad)) > s.bottom - pad) {
+          scroller.scrollTop += i.bottom - (s.bottom - pad);
+        }
+      } else if (t.bottom > s.bottom - pad) {
         scroller.scrollTop += t.bottom - (s.bottom - pad);
       } else if (t.top < s.top + pad) {
         scroller.scrollTop -= s.top + pad - t.top;
@@ -85,19 +95,32 @@ export function usePosModalViewport(
       }, 320);
     };
 
+    const onVvResize = () => {
+      syncViewport();
+      const active = document.activeElement;
+      if (
+        active instanceof HTMLElement &&
+        root.contains(active) &&
+        /^(INPUT|TEXTAREA|SELECT)$/.test(active.tagName)
+      ) {
+        scrollFieldIntoBody(active);
+      }
+    };
+
     syncViewport();
-    vv?.addEventListener('resize', syncViewport);
+    vv?.addEventListener('resize', onVvResize);
     vv?.addEventListener('scroll', syncViewport);
     root.addEventListener('focusin', onFocusIn);
 
     return () => {
-      vv?.removeEventListener('resize', syncViewport);
+      vv?.removeEventListener('resize', onVvResize);
       vv?.removeEventListener('scroll', syncViewport);
       root.removeEventListener('focusin', onFocusIn);
       root.style.removeProperty('--vv-top');
       root.style.removeProperty('--vv-left');
       root.style.removeProperty('--vv-height');
       root.style.removeProperty('--vv-width');
+      delete root.dataset.kb;
     };
   }, [active, rootRef]);
 }

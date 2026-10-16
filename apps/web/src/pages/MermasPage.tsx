@@ -9,6 +9,8 @@ import {
 } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { ExchangeThermalPrint, type ExchangePrintSlip } from '../components/ExchangeThermalPrint';
+import { StoreCreditsPanel } from '../components/StoreCreditsPanel';
 import { BoutiqueLoader } from '../components/BoutiqueLoader';
 import { InfiniteListFooter } from '../components/InfiniteListFooter';
 import { ModalOverlayClose } from '../components/ModalOverlayClose';
@@ -17,7 +19,10 @@ import { SortableTh } from '../components/SortableTh';
 import { useInfiniteList } from '../hooks/useInfiniteList';
 import { api, mediaUrl, money, userFacingError } from '../lib/api';
 import { useAuth } from '../lib/auth';
-import { sameSalePriceExact } from '../lib/exchangePrice';
+import { exchangePriceDiff } from '../lib/exchangePrice';
+import { formatDay } from '../lib/civilDate';
+import { paymentMethodLabel, type PaymentMethod } from '../lib/paymentMethod';
+import { useMountedReceiptPrint } from '../lib/useSalePrint';
 import { loadListFilters, saveListFilters } from '../lib/listFiltersPersist';
 import {
   nextMermaSort,
@@ -30,7 +35,7 @@ import { codesMatch, normalizeScanCode } from '../lib/scanCode';
 import { withListSort, withPagination } from '../lib/pagination';
 import { toast } from '../lib/toast';
 
-type Tab = 'mermas' | 'vouchers';
+type Tab = 'mermas' | 'vouchers' | 'credits';
 type MermaKind = 'discard' | 'supplier';
 type VoucherOutcome = 'exchange' | 'cash_refund';
 type VoucherDest = 'restock' | 'discard' | 'supplier';
@@ -220,9 +225,11 @@ function voucherFulfillSummary(v: Voucher): string | null {
   const outcome =
     v.fulfill_outcome === 'cash_refund'
       ? 'Devolución'
-      : v.fulfill_outcome === 'exchange'
-        ? 'Cambio'
-        : null;
+      : v.fulfill_outcome === 'exchange_credit'
+        ? 'Cambio · crédito'
+        : v.fulfill_outcome === 'exchange'
+          ? 'Cambio'
+          : null;
   if (!outcome) return null;
   const dest =
     v.fulfill_destination === 'restock'
@@ -235,7 +242,9 @@ function voucherFulfillSummary(v: Voucher): string | null {
   const cash =
     v.fulfill_outcome === 'cash_refund' && v.fulfill_cash_amount != null
       ? ` · reembolso ${money(v.fulfill_cash_amount)}`
-      : '';
+      : v.fulfill_outcome === 'exchange' && v.fulfill_cash_amount != null
+        ? ` · diferencia ${money(v.fulfill_cash_amount)}`
+        : '';
   return `${outcome}${dest ? ` · ${dest}` : ''}${cash}`;
 }
 
@@ -403,6 +412,20 @@ function daysLeftLabel(daysLeft: number | string | null, status: string) {
 
 export function MermasPage() {
   const { branches, branchId } = useAuth();
+  const branchName = branches.find((b) => b.id === branchId)?.name ?? null;
+  const [exchangePrint, setExchangePrint] = useState<ExchangePrintSlip | null>(null);
+  const [exchangePrintEpoch, setExchangePrintEpoch] = useState(0);
+  const [exchangeResult, setExchangeResult] = useState<ExchangePrintSlip | null>(null);
+  const { reminder: exchangePrintReminder } = useMountedReceiptPrint(
+    Boolean(exchangePrint),
+    () => setExchangePrint(null),
+    exchangePrintEpoch,
+  );
+
+  function queueExchangePrint(slip: ExchangePrintSlip) {
+    setExchangePrint(slip);
+    setExchangePrintEpoch((n) => n + 1);
+  }
   const [searchParams] = useSearchParams();
   const handledDeepLink = useRef('');
   const activeBranch = branches.find((b) => b.id === branchId);
@@ -472,6 +495,7 @@ export function MermasPage() {
   const [newProduct, setNewProduct] = useState<LookupProduct | null>(null);
   const [newCode, setNewCode] = useState('');
   const [newLooking, setNewLooking] = useState(false);
+  const [diffPaymentMethod, setDiffPaymentMethod] = useState<PaymentMethod>('cash');
   const [overrideNote, setOverrideNote] = useState('');
 
   const [saving, setSaving] = useState(false);
@@ -944,13 +968,30 @@ export function MermasPage() {
     setNewLooking(true);
     try {
       const product = await lookupProduct(code);
-      const expectedPrice = ticket.sale?.unit_price ?? ticket.product.sale_price;
-      if (!sameSalePriceExact(expectedPrice, product.sale_price)) {
-        toast.error(
-          `El cambio exige el mismo precio de venta (${money(expectedPrice)}). Revisa la prenda escaneada.`,
-        );
-        setNewProduct(null);
+      const need = Math.max(1, Number(fulfillQty) || 1);
+      const stock = Number(product.stock);
+      if (product.tracks_stock === false) {
+        toast.error('La prenda nueva no controla stock de vitrina');
         return;
+      }
+      if (!Number.isFinite(stock) || stock < need) {
+        toast.error(
+          !Number.isFinite(stock) || stock <= 0
+            ? `No hay unidades de ${product.name} en esta sucursal`
+            : `Solo hay ${stock} ${stock === 1 ? 'unidad' : 'unidades'} de ${product.name} en esta sucursal`,
+        );
+        return;
+      }
+      const expectedPrice = ticket.sale?.unit_price ?? ticket.product.sale_price;
+      const priced = exchangePriceDiff(expectedPrice, product.sale_price);
+      if (priced.kind === 'more_expensive') {
+        toast.warn(
+          `Prenda más cara: se cobrará diferencia de ${money(priced.diff)} al confirmar.`,
+        );
+      } else if (priced.kind === 'cheaper') {
+        toast.warn(
+          `Prenda más barata: se emitirá crédito de ${money(Math.abs(priced.diff))} (6 meses).`,
+        );
       }
       setNewProduct(product);
       setNewCode(code);
@@ -998,20 +1039,6 @@ export function MermasPage() {
       toast.error('Pistolea la prenda nueva para el cambio');
       return;
     }
-    if (
-      outcome === 'exchange' &&
-      newProduct &&
-      ticket &&
-      !sameSalePriceExact(
-        ticket.sale?.unit_price ?? ticket.product.sale_price,
-        newProduct.sale_price,
-      )
-    ) {
-      toast.error(
-        `El cambio exige el mismo precio de venta (${money(ticket.sale?.unit_price ?? ticket.product.sale_price)}).`,
-      );
-      return;
-    }
     setConfirm({ kind: 'fulfill' });
   }
 
@@ -1020,35 +1047,107 @@ export function MermasPage() {
     setActionBusy(true);
     setSaving(true);
     try {
-      await api(`/api/ops/vouchers/${ticket.id}/fulfill`, {
+      const qtyN = Number(fulfillQty) || 1;
+      const priced =
+        outcome === 'exchange' && newProduct
+          ? exchangePriceDiff(
+              ticket.sale?.unit_price ?? ticket.product.sale_price,
+              newProduct.sale_price,
+            )
+          : null;
+      const result = await api<{
+        outcome?: string;
+        priceDiff?: number | null;
+        paymentMethod?: string | null;
+        storeCredit?: {
+          barcode: string;
+          redeem_code?: string | null;
+          amount: string;
+          expires_at?: string;
+        } | null;
+        cashAmount?: number | null;
+      }>(`/api/ops/vouchers/${ticket.id}/fulfill`, {
         method: 'POST',
         body: {
           scannedCode: garmentCode,
           outcome,
           destination,
-          quantity: Number(fulfillQty) || 1,
+          quantity: qtyN,
           newProductId: outcome === 'exchange' ? newProduct?.id : null,
           cashAmount:
             outcome === 'cash_refund'
-              ? Number(ticket.sale?.unit_price || ticket.product.sale_price || 0) *
-                (Number(fulfillQty) || 1)
+              ? Number(ticket.sale?.unit_price || ticket.product.sale_price || 0) * qtyN
+              : null,
+          paymentMethod:
+            outcome === 'exchange' && priced?.kind === 'more_expensive'
+              ? diffPaymentMethod
               : null,
           overrideExpired: ticket.expired,
           overrideNote: ticket.expired ? overrideNote.trim() : null,
         },
       });
       const remainingAfter =
-        (ticket.unitsRemaining ?? ticket.sale?.quantity ?? 1) - (Number(fulfillQty) || 1);
-      toast.success(
-        outcome === 'exchange'
-          ? remainingAfter > 0
+        (ticket.unitsRemaining ?? ticket.sale?.quantity ?? 1) - qtyN;
+      if (result.storeCredit) {
+        toast.success(
+          `Cambio registrado · crédito ${result.storeCredit.barcode} por ${money(result.storeCredit.amount)} (6 meses)`,
+        );
+      } else if (outcome === 'exchange' && priced?.kind === 'more_expensive') {
+        toast.success(
+          remainingAfter > 0
+            ? `Cambio registrado · diferencia ${money(priced.diff * qtyN)} · quedan ${remainingAfter} ud.`
+            : `Cambio registrado · diferencia ${money(priced.diff * qtyN)} cobrada`,
+        );
+      } else if (outcome === 'exchange') {
+        toast.success(
+          remainingAfter > 0
             ? `Cambio registrado · quedan ${remainingAfter} ud. en el ticket`
-            : 'Cambio registrado'
-          : remainingAfter > 0
+            : 'Cambio registrado',
+        );
+      } else {
+        toast.success(
+          remainingAfter > 0
             ? `Devolución registrada · quedan ${remainingAfter} ud. · gasto en Gastos`
             : 'Devolución registrada · gasto de reembolso en Gastos',
-      );
+        );
+      }
       setConfirm(null);
+      if (outcome === 'exchange' && newProduct) {
+        const diff = Number(result.priceDiff ?? (priced ? priced.diff * qtyN : 0));
+        const base = {
+          voucherNumber: ticket.voucher_number,
+          branchName,
+          outName: ticket.product.name,
+          outCode: ticket.product.internal_code,
+          outSize: ticket.product.size_label,
+          inName: newProduct.name,
+          inCode: newProduct.internal_code,
+          inSize: newProduct.size_label,
+          quantity: qtyN,
+        };
+        if (result.storeCredit) {
+          const slip: ExchangePrintSlip = {
+            kind: 'credit',
+            ...base,
+            creditBarcode: result.storeCredit.redeem_code || '',
+            creditFolio: result.storeCredit.barcode,
+            creditAmount: Math.round(Number(result.storeCredit.amount) || Math.abs(diff)),
+            expiresAt: result.storeCredit.expires_at || null,
+          };
+          setExchangeResult(slip);
+          queueExchangePrint(slip);
+          setTab('credits');
+        } else if (diff > 0) {
+          const slip: ExchangePrintSlip = {
+            kind: 'paid',
+            ...base,
+            paidDiff: diff,
+            paymentMethod: result.paymentMethod || diffPaymentMethod,
+          };
+          setExchangeResult(slip);
+          queueExchangePrint(slip);
+        }
+      }
       closeWizard();
       vouchersList.reload();
       mermasList.reload();
@@ -1154,6 +1253,7 @@ export function MermasPage() {
   const hasExtra = tab === 'mermas' ? hasExtraMermaFilters : hasExtraVoucherFilters;
   const summaryChips = tab === 'mermas' ? mermaChips : voucherChips;
   const showEmptyFigure =
+    tab !== 'credits' &&
     !list.loading &&
     ((tab === 'mermas' && mermasList.items.length === 0) ||
       (tab === 'vouchers' && vouchersList.items.length === 0));
@@ -1170,6 +1270,17 @@ export function MermasPage() {
   const refundPreview =
     outcome === 'cash_refund' && Number.isInteger(fulfillQtyN) && fulfillQtyN > 0
       ? unitPriceForRefund * fulfillQtyN
+      : null;
+  const exchangePriced =
+    outcome === 'exchange' && newProduct && ticket
+      ? exchangePriceDiff(
+          ticket.sale?.unit_price ?? ticket.product.sale_price,
+          newProduct.sale_price,
+        )
+      : null;
+  const exchangeDiffTotal =
+    exchangePriced && Number.isInteger(fulfillQtyN) && fulfillQtyN > 0
+      ? exchangePriced.diff * fulfillQtyN
       : null;
 
   const confirmTitle =
@@ -1188,7 +1299,13 @@ export function MermasPage() {
       ? `Se dará de baja ${mermaQty} ud. de «${mermaProduct.name}» (${MERMA_DESTINATIONS.find((d) => d.id === mermaKind)?.label}). Queda movimiento auditable.`
       : confirm?.kind === 'fulfill' && ticket
         ? `Ticket ${ticket.voucher_number}: ${outcome === 'exchange' ? 'cambio' : 'devolución'} de ${fulfillQtyN} ud.${
-            refundPreview != null ? ` · reembolso ${money(refundPreview)}` : ''
+            refundPreview != null
+              ? ` · reembolso ${money(refundPreview)}`
+              : exchangeDiffTotal != null && exchangeDiffTotal > 0
+                ? ` · cobrar diferencia ${money(exchangeDiffTotal)} (${diffPaymentMethod === 'card' ? 'tarjeta' : 'efectivo'})`
+                : exchangeDiffTotal != null && exchangeDiffTotal < 0
+                  ? ` · emitir crédito ${money(Math.abs(exchangeDiffTotal))}`
+                  : ''
           }. Destino: ${VOUCHER_DESTINATIONS.find((d) => d.id === destination)?.label || ''}.`
         : confirm?.kind === 'cancel'
           ? `Se anulará el ticket ${confirm.voucher.voucher_number}. No podrá usarse después.`
@@ -1214,19 +1331,33 @@ export function MermasPage() {
               >
                 Merma
               </button>
+              <button
+                type="button"
+                className={tab === 'credits' ? 'is-active' : undefined}
+                onClick={() => setTab('credits')}
+              >
+                Créditos
+              </button>
             </nav>
             {tab === 'mermas' ? (
               <button type="button" className="btn merma-register-btn" data-help="cta.mermas.registrar" onClick={openMermaWizard}>
                 Registrar merma
               </button>
-            ) : (
+            ) : tab === 'vouchers' ? (
               <button type="button" className="btn merma-register-btn" data-help="cta.mermas.ticket" onClick={openCambioWizard}>
                 Atender ticket
               </button>
-            )}
+            ) : null}
           </div>
 
 
+          {tab === 'credits' ? (
+            <StoreCreditsPanel
+              branchName={branchName}
+              onPrint={queueExchangePrint}
+            />
+          ) : (
+          <>
           {tab === 'mermas' ? (
             <div className="inv-stats merma-stats" aria-label="Resumen de mermas">
               <div className="inv-stat">
@@ -1753,6 +1884,8 @@ export function MermasPage() {
               </>
             )}
           </div>
+          </>
+          )}
         </div>
 
         {showEmptyFigure ? (
@@ -1886,7 +2019,6 @@ export function MermasPage() {
           </div></ModalOverlayClose>
         </PosModal>
       )}
-
 
       {wizardOpen ? (
         <PosModal
@@ -2207,8 +2339,8 @@ export function MermasPage() {
                             {outcome === 'exchange' ? (
                               <>
                                 <p className="merma-exchange-hint">
-                                  Mismo precio de venta. Puedes escanear la misma referencia (cambio
-                                  1:1) u otra talla al mismo precio.
+                                  Puedes cambiar por la misma referencia u otra. Si el precio es
+                                  distinto: cobras la diferencia o emites un crédito CR (6 meses).
                                 </p>
                                 <form
                                   className="merma-scan-row"
@@ -2236,18 +2368,45 @@ export function MermasPage() {
                               </>
                             ) : null}
                             {newProduct ? (
-                              <ProductFicha
-                                name={newProduct.name}
-                                code={displayProductCode(
-                                  newProduct.internal_code,
-                                  newProduct.barcode,
-                                )}
-                                meta={[newProduct.size_label, newProduct.color]
-                                  .filter(Boolean)
-                                  .join(' · ')}
-                                photoUrl={newProduct.photo_url}
-                                stock={Number(newProduct.stock) || 0}
-                              />
+                              <>
+                                <ProductFicha
+                                  name={newProduct.name}
+                                  code={displayProductCode(
+                                    newProduct.internal_code,
+                                    newProduct.barcode,
+                                  )}
+                                  meta={[newProduct.size_label, newProduct.color]
+                                    .filter(Boolean)
+                                    .join(' · ')}
+                                  photoUrl={newProduct.photo_url}
+                                  stock={Number(newProduct.stock) || 0}
+                                />
+                                {exchangeDiffTotal != null && exchangeDiffTotal > 0 ? (
+                                  <div className="field" style={{ marginTop: '0.5rem' }}>
+                                    <p className="merma-exchange-hint">
+                                      Diferencia a cobrar: <strong>{money(exchangeDiffTotal)}</strong>
+                                    </p>
+                                    <label htmlFor="diff-pay">Medio de pago de la diferencia</label>
+                                    <select
+                                      id="diff-pay"
+                                      value={diffPaymentMethod}
+                                      onChange={(e) =>
+                                        setDiffPaymentMethod(e.target.value as PaymentMethod)
+                                      }
+                                    >
+                                      <option value="cash">Efectivo</option>
+                                      <option value="card">Tarjeta</option>
+                                    </select>
+                                  </div>
+                                ) : null}
+                                {exchangeDiffTotal != null && exchangeDiffTotal < 0 ? (
+                                  <p className="merma-exchange-hint">
+                                    Se emitirá crédito{' '}
+                                    <strong>{money(Math.abs(exchangeDiffTotal))}</strong> (CR, 6 meses,
+                                    un uso).
+                                  </p>
+                                ) : null}
+                              </>
                             ) : null}
                             <div className="field">
                               <label htmlFor="voucher-dest">Destino de la prenda devuelta</label>
@@ -2323,6 +2482,60 @@ export function MermasPage() {
           else if (confirm?.kind === 'cancel') void doCancelVoucher();
         }}
       />
+
+      {exchangeResult ? (
+        <PosModal
+          className="no-print"
+          onClick={(e) => {
+            if (e.target === e.currentTarget) setExchangeResult(null);
+          }}
+        >
+          <ModalOverlayClose onClose={() => setExchangeResult(null)}>
+            <div className="pos-modal-panel" role="dialog" aria-modal="true" aria-labelledby="exchange-result-title">
+              <div className="pos-modal-head">
+                <h3 id="exchange-result-title">
+                  {exchangeResult.kind === 'credit' ? 'Crédito emitido' : 'Cambio registrado'}
+                </h3>
+              </div>
+              {exchangeResult.kind === 'credit' ? (
+                <>
+                  <p>
+                    Código <strong>{exchangeResult.creditBarcode}</strong> ·{' '}
+                    {money(exchangeResult.creditAmount || 0)} a favor
+                    {exchangeResult.expiresAt ? ` · vence ${formatDay(exchangeResult.expiresAt)}` : ''}.
+                  </p>
+                  <p className="muted">
+                    Folio interno {exchangeResult.creditFolio}. En Ventas, dentro de Finalizar venta, pistolea o pega
+                    el código del comprobante. El folio CR no aplica. Un solo uso. Si supera el total del carrito, no
+                    aplica. También queda en Créditos para reimprimirlo.
+                  </p>
+                </>
+              ) : (
+                <p>
+                  Ticket {exchangeResult.voucherNumber}: diferencia pagada{' '}
+                  {money(exchangeResult.paidDiff || 0)} (
+                  {paymentMethodLabel(exchangeResult.paymentMethod)}). {exchangeResult.outName} por{' '}
+                  {exchangeResult.inName}.
+                </p>
+              )}
+              <div className="btn-row">
+                <button
+                  type="button"
+                  className="btn secondary"
+                  onClick={() => queueExchangePrint({ ...exchangeResult, reprint: true })}
+                >
+                  Reimprimir
+                </button>
+                <button type="button" className="btn" onClick={() => setExchangeResult(null)}>
+                  Listo
+                </button>
+              </div>
+            </div>
+          </ModalOverlayClose>
+        </PosModal>
+      ) : null}
+      {exchangePrint ? <ExchangeThermalPrint slip={exchangePrint} /> : null}
+      {exchangePrintReminder}
     </div>
   );
 }

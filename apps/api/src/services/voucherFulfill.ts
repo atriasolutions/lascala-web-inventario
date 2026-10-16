@@ -1,13 +1,14 @@
 import type { PoolClient } from 'pg';
 import { z } from 'zod';
 import { applyStockDeltaWithClient, expandProductCodeVariants } from './inventory.js';
+import { issueStoreCreditWithClient } from './storeCredits.js';
 import { HttpError } from '../utils/errors.js';
 import { CHILE_TZ } from '../utils/chileDate.js';
 
 export const MERMA_KINDS = ['discard', 'supplier'] as const;
 export type MermaKind = (typeof MERMA_KINDS)[number];
 
-export const VOUCHER_OUTCOMES = ['exchange', 'cash_refund'] as const;
+export const VOUCHER_OUTCOMES = ['exchange', 'cash_refund', 'exchange_credit'] as const;
 export const VOUCHER_DESTINATIONS = ['restock', 'discard', 'supplier'] as const;
 
 export function voucherStockInMovementType(
@@ -29,12 +30,15 @@ export function composeMermaReason(kind: MermaKind, notes?: string | null): stri
 export const fulfillBodySchema = z
   .object({
     scannedCode: z.string().trim().min(1, 'Pistolea o ingresa el código de la prenda'),
-    outcome: z.enum(VOUCHER_OUTCOMES),
+    /** UI puede mandar `exchange`; el servidor decide exchange vs exchange_credit según precio. */
+    outcome: z.enum(['exchange', 'cash_refund']),
     destination: z.enum(VOUCHER_DESTINATIONS),
     newProductId: z.string().uuid().optional().nullable(),
     /** Unidades a atender en este fulfill (default 1). */
     quantity: z.number().int().positive().optional(),
     cashAmount: z.number().nonnegative().optional().nullable(),
+    /** Medio de pago de la diferencia si la prenda nueva es más cara. */
+    paymentMethod: z.enum(['cash', 'card']).optional().nullable(),
     overrideExpired: z.boolean().optional().default(false),
     overrideNote: z.string().trim().max(500).optional().nullable(),
     notes: z.string().trim().max(500).optional().nullable(),
@@ -85,17 +89,33 @@ export function clpPesos(amount: number | string): number {
   return Math.round(Number(amount));
 }
 
-/**
- * Cambio de talla: la prenda que se lleva debe costar exactamente lo mismo
- * que la línea/prenda del ticket. No permite otra prenda a distinto precio.
- */
-export function assertExchangeSameSalePrice(returnedSalePrice: number | string, newSalePrice: number | string) {
+export type ExchangePriceDiff = {
+  returned: number;
+  neu: number;
+  /** new − returned (CLP). + = cobrar; − = crédito; 0 = igual. */
+  diff: number;
+};
+
+/** Diferencia de precio de venta para un cambio (CLP enteros). */
+export function computeExchangePriceDiff(
+  returnedSalePrice: number | string,
+  newSalePrice: number | string,
+): ExchangePriceDiff {
   const returned = clpPesos(returnedSalePrice);
   const neu = clpPesos(newSalePrice);
-  if (returned !== neu) {
+  return { returned, neu, diff: neu - returned };
+}
+
+/**
+ * @deprecated Preferir computeExchangePriceDiff. Se mantiene para tests legacy.
+ * Cambio al mismo precio exacto.
+ */
+export function assertExchangeSameSalePrice(returnedSalePrice: number | string, newSalePrice: number | string) {
+  const { returned, neu, diff } = computeExchangePriceDiff(returnedSalePrice, newSalePrice);
+  if (diff !== 0) {
     throw new HttpError(
       400,
-      `El cambio exige la misma prenda al mismo precio de venta ($${returned.toLocaleString('es-CL')})`,
+      `El cambio exige la misma prenda al mismo precio de venta ($${returned.toLocaleString('es-CL')}; nueva $${neu.toLocaleString('es-CL')})`,
     );
   }
 }
@@ -282,7 +302,7 @@ export async function fulfillVoucherWithClient(
   let newAfter: number | null = null;
   let merma: Record<string, unknown> | null = null;
 
-  const auditBits = [
+  const auditBits: string[] = [
     body.outcome === 'exchange' ? 'Cambio' : 'Devolución',
     `ticket ${voucher.voucher_number}`,
     qty > 1 ? `${qty} ud.` : null,
@@ -293,7 +313,7 @@ export async function fulfillVoucherWithClient(
         : 'baja / pérdida',
     expired ? `vencido: ${body.overrideNote!.trim()}` : null,
     body.notes?.trim() || null,
-  ].filter(Boolean);
+  ].filter((v): v is string => Boolean(v));
   const movementNotes = auditBits.join(' · ');
 
   if (body.destination === 'restock') {
@@ -331,15 +351,28 @@ export async function fulfillVoucherWithClient(
     });
   }
 
+  let resolvedOutcome: (typeof VOUCHER_OUTCOMES)[number] = body.outcome;
+  let priceDiff: number | null = null;
+  let paymentMethod: 'cash' | 'card' | null = null;
+  let storeCredit: Awaited<ReturnType<typeof issueStoreCreditWithClient>> | null = null;
+
   if (body.outcome === 'exchange' && body.newProductId) {
     const sameProduct = body.newProductId === voucher.product_id;
-    const neu = await client.query<{ id: string; tracks_stock: boolean; sale_price: string }>(
-      `SELECT id, COALESCE(tracks_stock, true) AS tracks_stock, sale_price::text AS sale_price
+    const neu = await client.query<{
+      id: string;
+      tracks_stock: boolean;
+      sale_price: string;
+      name: string;
+      internal_code: string;
+    }>(
+      `SELECT id, COALESCE(tracks_stock, true) AS tracks_stock, sale_price::text AS sale_price,
+              name, internal_code
        FROM products WHERE id = $1 AND organization_id = $2`,
       [body.newProductId, organizationId],
     );
     if (!neu.rows[0]) throw new HttpError(400, 'La prenda nueva no existe');
-    assertExchangeSameSalePrice(returnedSalePrice, neu.rows[0].sale_price);
+    const priced = computeExchangePriceDiff(returnedSalePrice, neu.rows[0].sale_price);
+    priceDiff = priced.diff * qty;
     if (!neu.rows[0].tracks_stock) {
       throw new HttpError(400, 'La prenda nueva no controla stock de vitrina');
     }
@@ -373,7 +406,34 @@ export async function fulfillVoucherWithClient(
     await client.query(`UPDATE products SET status = 'sold', updated_at = now() WHERE id = $1`, [
       body.newProductId,
     ]);
+
+    if (priceDiff > 0) {
+      // Prenda más cara: cobrar diferencia
+      if (!body.paymentMethod) {
+        throw new HttpError(
+          400,
+          `La prenda nueva cuesta $${priced.neu.toLocaleString('es-CL')} (ticket $${priced.returned.toLocaleString('es-CL')}). Indica cómo cobra la diferencia de $${priceDiff.toLocaleString('es-CL')}.`,
+        );
+      }
+      paymentMethod = body.paymentMethod;
+      cashAmount = priceDiff;
+      auditBits.push(`diferencia cobrada $${priceDiff.toLocaleString('es-CL')} (${paymentMethod === 'card' ? 'tarjeta' : 'efectivo'})`);
+    } else if (priceDiff < 0) {
+      // Prenda más barata: emitir crédito CR
+      resolvedOutcome = 'exchange_credit';
+      const creditAmount = Math.abs(priceDiff);
+      storeCredit = await issueStoreCreditWithClient(client, {
+        organizationId,
+        branchId,
+        amount: creditAmount,
+        userId,
+        notes: `Cambio ticket ${voucher.voucher_number} · crédito por diferencia`,
+      });
+      auditBits.push(`crédito ${storeCredit.barcode} $${creditAmount.toLocaleString('es-CL')}`);
+    }
   }
+
+  const finalNotes = auditBits.filter(Boolean).join(' · ');
 
   await client.query(
     `UPDATE change_vouchers
@@ -386,8 +446,8 @@ export async function fulfillVoucherWithClient(
     `INSERT INTO exchange_returns (
        organization_id, branch_id, voucher_id, original_product_id, new_product_id,
        notes, created_by, outcome, destination, override_expired, override_note,
-       cash_amount, scanned_code, quantity
-     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14)
+       cash_amount, scanned_code, quantity, store_credit_id, payment_method, price_diff
+     ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16,$17)
      RETURNING *`,
     [
       organizationId,
@@ -395,17 +455,27 @@ export async function fulfillVoucherWithClient(
       voucher.id,
       voucher.product_id,
       body.outcome === 'exchange' ? body.newProductId : null,
-      movementNotes,
+      finalNotes,
       userId,
-      body.outcome,
+      resolvedOutcome,
       body.destination,
       expired && body.overrideExpired,
       expired ? body.overrideNote!.trim() : null,
       cashAmount,
       body.scannedCode.trim(),
       qty,
+      storeCredit?.id ?? null,
+      paymentMethod,
+      priceDiff,
     ],
   );
+
+  if (storeCredit) {
+    await client.query(`UPDATE store_credits SET exchange_return_id = $1 WHERE id = $2`, [
+      er.rows[0].id,
+      storeCredit.id,
+    ]);
+  }
 
   /** Devolución con reembolso → gasto de caja (vitrina o pérdida/proveedor). */
   let expense: Record<string, unknown> | null = null;
@@ -451,11 +521,14 @@ export async function fulfillVoucherWithClient(
     status: unitsUsed + qty >= lineQty ? ('used' as const) : (voucher.status as 'open' | 'expired'),
     expired,
     overrideExpired: Boolean(expired && body.overrideExpired),
-    outcome: body.outcome,
+    outcome: resolvedOutcome,
     destination: body.destination,
     quantity: qty,
     unitsRemaining: Math.max(0, unitsRemaining - qty),
     cashAmount,
+    priceDiff,
+    paymentMethod,
+    storeCredit,
     merma,
     expense,
     exchangeReturn: er.rows[0],

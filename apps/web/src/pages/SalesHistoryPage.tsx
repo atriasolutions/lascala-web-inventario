@@ -891,7 +891,7 @@ export function SalesHistoryPage() {
                     const photo = mediaUrl(i.photo_url);
                     return (
                       <div className="list-card sales-detail-item" key={i.id}>
-                        <div className="sales-detail-thumb-wrap desktop-only">
+                        <div className="sales-detail-thumb-wrap">
                           {photo ? (
                             <button
                               type="button"

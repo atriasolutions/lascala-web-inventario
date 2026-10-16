@@ -231,6 +231,14 @@ export function formatVoucherNumber(n: number) {
   return `VC${String(Math.max(1, Math.floor(n))).padStart(6, '0')}`;
 }
 
+export function formatStoreCreditNumber(n: number) {
+  return `CR${String(Math.max(1, Math.floor(n))).padStart(6, '0')}`;
+}
+
+export function formatDepositNumber(n: number) {
+  return `AB${String(Math.max(1, Math.floor(n))).padStart(6, '0')}`;
+}
+
 /** Máximo correlativo numérico de la serie LS###### / LS-###### (ignora LS-JEANS-… etc.). */
 export async function maxNumericInternalCodeWithClient(
   client: PoolClient,
@@ -404,6 +412,34 @@ export async function nextVoucherNumberWithClient(client: PoolClient, organizati
   );
   const n = Number(res.rows[0]?.n || 0) + 1;
   return formatVoucherNumber(n);
+}
+
+export async function nextStoreCreditNumberWithClient(client: PoolClient, organizationId: string) {
+  const res = await client.query<{ n: string }>(
+    `SELECT COALESCE(MAX(
+       CASE WHEN barcode ~ '^CR-?[0-9]+$'
+         THEN regexp_replace(barcode, '^CR-?', '')::int
+       END
+     ), 0)::text AS n
+     FROM store_credits WHERE organization_id = $1`,
+    [organizationId],
+  );
+  const n = Number(res.rows[0]?.n || 0) + 1;
+  return formatStoreCreditNumber(n);
+}
+
+export async function nextDepositNumberWithClient(client: PoolClient, organizationId: string) {
+  const res = await client.query<{ n: string }>(
+    `SELECT COALESCE(MAX(
+       CASE WHEN deposit_number ~ '^AB-?[0-9]+$'
+         THEN regexp_replace(deposit_number, '^AB-?', '')::int
+       END
+     ), 0)::text AS n
+     FROM deposits WHERE organization_id = $1`,
+    [organizationId],
+  );
+  const n = Number(res.rows[0]?.n || 0) + 1;
+  return formatDepositNumber(n);
 }
 
 export async function getSettingNumber(organizationId: string, key: string, fallback: number) {

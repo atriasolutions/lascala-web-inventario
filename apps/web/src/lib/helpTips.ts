@@ -5,6 +5,8 @@ export const HELP_TIPS: Record<string, string> = {
     'Resumen del día y del mes de la sucursal activa: ventas, alertas y atajos. Solo lo ve Administrador/a.',
   'nav.caja':
     'Ventas: pistolea o busca, aplica descuentos si hay promo, cobra en Efectivo o Tarjeta y deja el movimiento en esta sucursal y esta caja.',
+  'nav.abonos':
+    'Abonos: reserva prendas con un pago inicial. Al crear, el stock queda retenido. Completar el faltante emite la venta; anular lo libera.',
   'nav.ingresos':
     'Recepción a piso: confirma mercadería de una compra. Recién ahí entra al stock de la sucursal.',
   'nav.compras':

@@ -4,12 +4,68 @@ import { pool, query } from '../db/pool.js';
 import { parseSalePaymentMethod, parseSalePaymentMethodFilter } from '../domain/paymentMethod.js';
 import { assertUserCanUsePos, requireAuth, requireBranch, requireRoles } from '../middleware/auth.js';
 import { createSaleWithClient, findSaleByClientSaleId } from '../services/sales.js';
+import { findOpenStoreCreditWithClient, listStoreCredits } from '../services/storeCredits.js';
+import { chileTodayWithClient } from '../services/voucherFulfill.js';
 import { asyncHandler, HttpError, formatDbErrorMessage, isUniqueViolation } from '../utils/errors.js';
 import { fetchLimit, parsePagination, slicePage } from '../utils/pagination.js';
 import { orderByClause, parseSortBy, parseSortDir } from '../utils/listSort.js';
 
 export const salesRouter = Router();
 salesRouter.use(requireAuth, requireBranch);
+
+salesRouter.get(
+  '/store-credits',
+  requireRoles('owner', 'branch_manager', 'seller'),
+  asyncHandler(async (req, res) => {
+    const statusRaw = String(req.query.status || 'open');
+    const status = ['open', 'used', 'expired', 'cancelled', 'all'].includes(statusRaw)
+      ? (statusRaw as 'open' | 'used' | 'expired' | 'cancelled' | 'all')
+      : 'open';
+    const q = String(req.query.q || '').trim();
+    const credits = await listStoreCredits({
+      organizationId: req.user!.organizationId,
+      branchId: req.activeBranchId!,
+      status,
+      q,
+    });
+    res.json({ credits });
+  }),
+);
+
+salesRouter.get(
+  '/store-credits/lookup/:code',
+  requireRoles('owner', 'branch_manager', 'seller'),
+  asyncHandler(async (req, res) => {
+    const code = String(req.params.code || '').trim();
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      const todayCl = await chileTodayWithClient(client);
+      const credit = await findOpenStoreCreditWithClient(client, {
+        organizationId: req.user!.organizationId,
+        branchId: req.activeBranchId!,
+        code,
+        todayCl,
+      });
+      await client.query('COMMIT');
+      res.json({
+        credit: {
+          id: credit.id,
+          barcode: credit.barcode,
+          redeemCode: credit.redeem_code,
+          amount: credit.amount,
+          expires_at: credit.expires_at,
+          status: credit.status,
+        },
+      });
+    } catch (e) {
+      await client.query('ROLLBACK');
+      throw e;
+    } finally {
+      client.release();
+    }
+  }),
+);
 
 const discountPctSchema = z
   .union([z.literal(0), z.literal(5), z.literal(10), z.literal(15), z.literal(20), z.literal(25), z.literal(30)])
@@ -422,6 +478,7 @@ salesRouter.post(
         discount: z.number().nonnegative().optional(),
         discountPct: discountPctSchema,
         paymentMethod: paymentMethodSchema,
+        storeCreditId: z.string().uuid().optional().nullable(),
         items: z.array(saleItemSchema).min(1),
       })
       .parse(req.body);
@@ -441,6 +498,7 @@ salesRouter.post(
         discount: body.discount,
         discountPct: body.discountPct,
         paymentMethod: parseSalePaymentMethod(body.paymentMethod),
+        storeCreditId: body.storeCreditId ?? null,
         items: body.items,
         allowNegative: false,
       });
