@@ -3302,7 +3302,8 @@ body.modal-scroll-lock .main-content {
   .pos-modal.open .print-reminder-body,
   .pos-modal.open .prod-filter-fields,
   .pos-modal.open .inv-adjust-modal > .field,
-  .pos-modal.open .inv-filters-sheet .ing-filters-sheet-body {
+  .pos-modal.open .inv-filters-sheet .ing-filters-sheet-body,
+  .pos-modal.open .pos-finalize-body {
     flex: 1 1 auto;
     min-height: 0;
     overflow-x: hidden;
@@ -6842,13 +6843,34 @@ button.ing-row-action {
 .pos-finalize-panel {
   position: relative;
   width: min(440px, calc(100vw - 2rem));
-  max-height: none;
+  /* Cabe en viewport bajo; overflow visible para no clippear la X half-out */
+  max-height: min(
+    85dvh,
+    calc(var(--vv-height, 100dvh) - 2rem - env(safe-area-inset-top, 0px) - env(safe-area-inset-bottom, 0px))
+  );
   overflow: visible;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  box-sizing: border-box;
+}
+.pos-finalize-panel > .pos-modal-head,
+.pos-finalize-panel > .confirm-dialog-actions {
+  flex-shrink: 0;
 }
 .pos-finalize-body {
   margin: 0.25rem 0 0.85rem;
-  max-height: min(60dvh, 520px);
-  overflow: auto;
+  flex: 1 1 auto;
+  min-height: 0;
+  /* Reserva aire para título + botones; el scroll vive acá, no en el panel */
+  max-height: min(
+    56dvh,
+    calc(var(--vv-height, 100dvh) - 11.5rem)
+  );
+  overflow-x: hidden;
+  overflow-y: auto;
+  -webkit-overflow-scrolling: touch;
+  overscroll-behavior: contain;
 }
 .pos-finalize-total {
   margin: 0 0 0.65rem;

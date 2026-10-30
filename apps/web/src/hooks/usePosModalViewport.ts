@@ -12,6 +12,7 @@ const SCROLL_BODY_SEL = [
   '.sales-detail-scroll',
   '.print-reminder-body',
   '.prod-filter-fields',
+  '.pos-finalize-body',
 ].join(', ');
 
 /**
